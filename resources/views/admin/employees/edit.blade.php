@@ -74,6 +74,7 @@
                         <option value="employee" {{ old('role', $employee->role) === 'employee' ? 'selected' : '' }}>Employee</option>
                         <option value="manager" {{ old('role', $employee->role) === 'manager' ? 'selected' : '' }}>Manager</option>
                         <option value="admin" {{ old('role', $employee->role) === 'admin' ? 'selected' : '' }}>Admin</option>
+                        <option value="superadmin" {{ old('role', $employee->role) === 'superadmin' ? 'selected' : '' }}>Super Admin</option>
                     </select>
                 </div>
             </div>
@@ -127,10 +128,6 @@
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="mb-2">
-                    <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Tanggal Akhir Kontrak</label>
-                    <input type="date" name="contract_end_date" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10" value="{{ old('contract_end_date', $employee->contract_end_date?->format('Y-m-d')) }}">
-                </div>
-                <div class="mb-2">
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Manager</label>
                     <select name="manager_id" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
                         <option value="">Tidak Ada</option>
@@ -138,19 +135,6 @@
                             <option value="{{ $mgr->id }}" {{ old('manager_id', $employee->manager_id) == $mgr->id ? 'selected' : '' }}>Lv{{ $mgr->job_level }} — {{ $mgr->full_name }} ({{ $mgr->position }})</option>
                         @endforeach
                     </select>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="mb-2">
-                    <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Approver (Atasan untuk Approval) <span class="text-indigo-500">*penting</span></label>
-                    <select name="approver_id" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
-                        <option value="">Tidak Ada (Top Level)</option>
-                        @foreach($managers as $mgr)
-                            <option value="{{ $mgr->id }}" {{ old('approver_id', $employee->approver_id) == $mgr->id ? 'selected' : '' }}>Lv{{ $mgr->job_level }} — {{ $mgr->full_name }} ({{ $mgr->position }})</option>
-                        @endforeach
-                    </select>
-                    <p class="text-[11px] text-gray-400 mt-1">Menentukan siapa yang approve pengajuan karyawan ini. Chain: karyawan → approver → approver's approver → dst.</p>
                 </div>
             </div>
 
@@ -240,7 +224,136 @@
         </form>
     </div>
 </div>
+
+{{-- Approval Chain Configuration --}}
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm mt-5">
+    <div class="px-5 py-4 border-b border-gray-100">
+        <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">approval</span> Pengaturan Approval — {{ $employee->full_name }}</h3>
+        <p class="text-[12px] text-gray-400 mt-1">Atur siapa saja yang harus menyetujui pengajuan karyawan ini, per tipe pengajuan.</p>
+    </div>
+    <div class="p-5">
+        <form action="{{ route('admin.employees.approvers.store', $employee->id) }}" method="POST" id="approvalForm">
+            @csrf
+            @php $types = ['leave' => 'Cuti', 'overtime' => 'Lembur', 'attendance' => 'Presensi']; @endphp
+
+            <div class="flex gap-0 border-b-2 border-gray-200 mb-5">
+                @foreach($types as $tKey => $tLabel)
+                    <button type="button" onclick="switchApprovalTab('{{ $tKey }}')"
+                       class="approval-tab px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200"
+                       data-tab="{{ $tKey }}"
+                       id="tab-{{ $tKey }}">
+                        {{ $tLabel }}
+                    </button>
+                @endforeach
+            </div>
+
+            @foreach($types as $tKey => $tLabel)
+            <div class="approval-panel" id="panel-{{ $tKey }}" style="display: none;">
+                <div id="chain-{{ $tKey }}" class="space-y-2 mb-4">
+                    @if(isset($approvalChains[$tKey]) && $approvalChains[$tKey]->count())
+                        @foreach($approvalChains[$tKey] as $i => $chain)
+                        <div class="flex items-center gap-3 step-row">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-400 text-white flex items-center justify-center text-[12px] font-bold shrink-0 step-num">{{ $i + 1 }}</div>
+                            <select name="chains[{{ $tKey }}][]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-[13px] outline-none focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
+                                <option value="">Pilih Approver</option>
+                                @foreach($managers as $mgr)
+                                    <option value="{{ $mgr->id }}" {{ $chain->approver_id == $mgr->id ? 'selected' : '' }}>Lv{{ $mgr->job_level }} — {{ $mgr->full_name }} ({{ $mgr->position }})</option>
+                                @endforeach
+                            </select>
+                            <button type="button" onclick="removeStep(this)" class="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"><span class="material-symbols-outlined text-[18px]">close</span></button>
+                        </div>
+                        @endforeach
+                    @endif
+                </div>
+
+                {{-- Flow visualization --}}
+                <div class="flex items-center gap-2 py-2 px-3 bg-gray-50 rounded-lg mb-3 flow-vis" id="flow-{{ $tKey }}"></div>
+
+                <button type="button" onclick="addStep('{{ $tKey }}')" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer">
+                    <span class="material-symbols-outlined text-[14px]">add</span> Tambah Step
+                </button>
+            </div>
+            @endforeach
+
+            <div class="mt-5 pt-4 border-t border-gray-100">
+                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+                    <span class="material-symbols-outlined text-[14px] align-text-bottom">save</span> Simpan Pengaturan Approval
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 @endsection
+
+@push('scripts')
+<script>
+const managersData = @json($managers->map(fn($m) => ['id' => $m->id, 'label' => 'Lv'.($m->job_level ?? '?').' — '.$m->full_name.' ('.($m->position ?? '-').')']));
+
+function switchApprovalTab(tab) {
+    document.querySelectorAll('.approval-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.approval-tab').forEach(t => {
+        t.classList.remove('text-indigo-600', 'border-indigo-600');
+        t.classList.add('text-gray-500', 'border-transparent');
+    });
+    document.getElementById('panel-' + tab).style.display = 'block';
+    const activeTab = document.getElementById('tab-' + tab);
+    activeTab.classList.add('text-indigo-600', 'border-indigo-600');
+    activeTab.classList.remove('text-gray-500', 'border-transparent');
+    updateFlow(tab);
+}
+
+function addStep(type) {
+    const chain = document.getElementById('chain-' + type);
+    const count = chain.querySelectorAll('.step-row').length;
+    const opts = managersData.map(m => `<option value="${m.id}">${m.label}</option>`).join('');
+    const html = `<div class="flex items-center gap-3 step-row">
+        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-400 text-white flex items-center justify-center text-[12px] font-bold shrink-0 step-num">${count + 1}</div>
+        <select name="chains[${type}][]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-[13px] outline-none focus:border-indigo-500" onchange="updateFlow('${type}')">
+            <option value="">Pilih Approver</option>${opts}
+        </select>
+        <button type="button" onclick="removeStep(this)" class="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"><span class="material-symbols-outlined text-[18px]">close</span></button>
+    </div>`;
+    chain.insertAdjacentHTML('beforeend', html);
+    updateFlow(type);
+}
+
+function removeStep(btn) {
+    const row = btn.closest('.step-row');
+    const chain = row.parentElement;
+    const type = chain.id.replace('chain-', '');
+    row.remove();
+    renumberSteps(type);
+    updateFlow(type);
+}
+
+function renumberSteps(type) {
+    const rows = document.querySelectorAll('#chain-' + type + ' .step-row');
+    rows.forEach((r, i) => { r.querySelector('.step-num').textContent = i + 1; });
+}
+
+function updateFlow(type) {
+    const flow = document.getElementById('flow-' + type);
+    const selects = document.querySelectorAll('#chain-' + type + ' select');
+    let html = '<span class="text-[11px] font-semibold text-gray-500">Flow:</span><span class="text-[11px] text-gray-600">Submit</span>';
+    selects.forEach(s => {
+        if (s.value) {
+            const txt = s.options[s.selectedIndex].text.split(' — ')[1] || s.options[s.selectedIndex].text;
+            html += `<span class="text-gray-400">→</span><span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-600">${txt}</span>`;
+        }
+    });
+    html += '<span class="text-gray-400">→</span><span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-600">✓ Approved</span>';
+    flow.innerHTML = html;
+}
+
+// Add onchange to existing selects
+document.querySelectorAll('.step-row select').forEach(s => {
+    const type = s.closest('.approval-panel').id.replace('panel-', '');
+    s.addEventListener('change', () => updateFlow(type));
+});
+
+switchApprovalTab('leave');
+</script>
+@endpush
 
 <script>
 function previewPhoto(input) {

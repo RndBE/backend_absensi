@@ -129,10 +129,14 @@ class ProfileController extends Controller
             }
         }
 
-        $approver = $employee->approver;
-        if ($approver) {
+        // Notify superadmin(s) instead of approver chain
+        $superadmins = \App\Models\Employee::where('role', 'superadmin')
+            ->where('is_active', true)
+            ->get();
+
+        foreach ($superadmins as $superadmin) {
             Notification::create([
-                'employee_id' => $approver->id,
+                'employee_id' => $superadmin->id,
                 'title' => 'Pengajuan Perubahan Data',
                 'message' => "{$employee->full_name} mengajukan perubahan data {$request->field_name}",
                 'type' => 'approval',

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
 use App\Models\Notification;
 use App\Models\OvertimeRequest;
 use App\Services\FcmService;
@@ -55,10 +56,10 @@ class OvertimeController extends Controller
             }
         }
 
-        $approver = $request->user()->approver;
-        if ($approver) {
+        $firstApprover = EmployeeApprover::getApproverAt($request->user()->id, 'overtime', 1);
+        if ($firstApprover) {
             Notification::create([
-                'employee_id' => $approver->id,
+                'employee_id' => $firstApprover->id,
                 'title' => 'Pengajuan Lembur Baru',
                 'message' => "{$request->user()->full_name} mengajukan lembur tanggal {$request->date}",
                 'type' => 'approval',
@@ -66,7 +67,7 @@ class OvertimeController extends Controller
                 'reference_id' => $overtimeRequest->id,
             ]);
 
-            FcmService::sendToEmployee($approver, 'Pengajuan Lembur Baru',
+            FcmService::sendToEmployee($firstApprover, 'Pengajuan Lembur Baru',
                 "{$request->user()->full_name} mengajukan lembur tanggal {$request->date}",
                 ['type' => 'approval', 'reference_type' => 'overtime', 'reference_id' => (string) $overtimeRequest->id]
             );
@@ -85,51 +86,26 @@ class OvertimeController extends Controller
             ->with(['attachments', 'approvalLogs.approver', 'employee'])
             ->findOrFail($id);
 
-        // Build approval chain
         $approvalSteps = [];
-        $employee = $overtimeRequest->employee;
-        $current = $employee;
-        $stepNum = 1;
-        $visited = [];
+        $chain = EmployeeApprover::getChain($overtimeRequest->employee_id, 'overtime');
 
-        $directlyResolved = in_array($overtimeRequest->status, ['approved', 'rejected'])
-            && $overtimeRequest->approvalLogs->isEmpty();
-
-        while ($current->approver_id && !in_array($current->approver_id, $visited)) {
-            $visited[] = $current->id;
-            $approver = Employee::find($current->approver_id);
-            if (!$approver) break;
-
-            $log = $overtimeRequest->approvalLogs
-                ->where('step_order', $stepNum)
-                ->first();
-
-            if ($log) {
-                $stepStatus = $log->action;
-            } elseif ($directlyResolved) {
-                $stepStatus = $overtimeRequest->status;
-            } elseif ($overtimeRequest->status === 'approved') {
-                $stepStatus = 'approved';
-            } elseif ($overtimeRequest->status === 'rejected') {
-                $stepStatus = $stepNum <= $overtimeRequest->current_step ? 'rejected' : 'waiting';
-            } elseif ($overtimeRequest->current_step == $stepNum) {
-                $stepStatus = 'pending';
-            } else {
-                $stepStatus = 'waiting';
-            }
+        foreach ($chain as $step) {
+            $log = $overtimeRequest->approvalLogs->where('step_order', $step->step_order)->first();
+            if ($log) { $stepStatus = $log->action; }
+            elseif ($overtimeRequest->status === 'approved') { $stepStatus = 'approved'; }
+            elseif ($overtimeRequest->status === 'rejected') { $stepStatus = $step->step_order <= $overtimeRequest->current_step ? 'rejected' : 'waiting'; }
+            elseif ($overtimeRequest->current_step == $step->step_order) { $stepStatus = 'pending'; }
+            else { $stepStatus = 'waiting'; }
 
             $approvalSteps[] = [
-                'step' => $stepNum,
-                'approver_id' => $approver->id,
-                'approver_name' => $approver->full_name,
-                'approver_position' => $approver->position,
+                'step' => $step->step_order,
+                'approver_id' => $step->approver->id,
+                'approver_name' => $step->approver->full_name,
+                'approver_position' => $step->approver->position,
                 'status' => $stepStatus,
                 'notes' => $log?->notes,
                 'approved_at' => $log?->created_at?->toDateTimeString(),
             ];
-
-            $current = $approver;
-            $stepNum++;
         }
 
         $data = $overtimeRequest->toArray();

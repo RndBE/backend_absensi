@@ -27,12 +27,14 @@
                 Presensi
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'attendance' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $attendance->count() }}</span>
             </a>
+            @if($admin->role === 'superadmin')
             <a href="{{ route('admin.approvals.index', ['tab' => 'data-change']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
                       {{ $tab === 'data-change' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
                 Perubahan Data
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'data-change' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $dataChange->count() }}</span>
             </a>
+            @endif
         </div>
 
         {{-- Leave Tab --}}

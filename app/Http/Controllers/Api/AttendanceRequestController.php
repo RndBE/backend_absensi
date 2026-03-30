@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceRequest;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
 use App\Models\Notification;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
@@ -58,11 +59,11 @@ class AttendanceRequestController extends Controller
             }
         }
 
-        // Notify approver
-        $approver = $request->user()->approver;
-        if ($approver) {
+        // Notify step 1 approver
+        $firstApprover = EmployeeApprover::getApproverAt($request->user()->id, 'attendance', 1);
+        if ($firstApprover) {
             Notification::create([
-                'employee_id' => $approver->id,
+                'employee_id' => $firstApprover->id,
                 'title' => 'Pengajuan Presensi Baru',
                 'message' => "{$request->user()->full_name} mengajukan presensi tanggal {$request->date}",
                 'type' => 'approval',
@@ -70,7 +71,7 @@ class AttendanceRequestController extends Controller
                 'reference_id' => $attRequest->id,
             ]);
 
-            FcmService::sendToEmployee($approver, 'Pengajuan Presensi Baru',
+            FcmService::sendToEmployee($firstApprover, 'Pengajuan Presensi Baru',
                 "{$request->user()->full_name} mengajukan presensi tanggal {$request->date}",
                 ['type' => 'approval', 'reference_type' => 'attendance', 'reference_id' => (string) $attRequest->id]
             );
@@ -89,51 +90,26 @@ class AttendanceRequestController extends Controller
             ->with(['attachments', 'approvalLogs.approver', 'employee'])
             ->findOrFail($id);
 
-        // Build approval chain
         $approvalSteps = [];
-        $employee = $attRequest->employee;
-        $current = $employee;
-        $stepNum = 1;
-        $visited = [];
+        $chain = EmployeeApprover::getChain($attRequest->employee_id, 'attendance');
 
-        $directlyResolved = in_array($attRequest->status, ['approved', 'rejected'])
-            && $attRequest->approvalLogs->isEmpty();
-
-        while ($current->approver_id && !in_array($current->approver_id, $visited)) {
-            $visited[] = $current->id;
-            $approver = Employee::find($current->approver_id);
-            if (!$approver) break;
-
-            $log = $attRequest->approvalLogs
-                ->where('step_order', $stepNum)
-                ->first();
-
-            if ($log) {
-                $stepStatus = $log->action;
-            } elseif ($directlyResolved) {
-                $stepStatus = $attRequest->status;
-            } elseif ($attRequest->status === 'approved') {
-                $stepStatus = 'approved';
-            } elseif ($attRequest->status === 'rejected') {
-                $stepStatus = $stepNum <= $attRequest->current_step ? 'rejected' : 'waiting';
-            } elseif ($attRequest->current_step == $stepNum) {
-                $stepStatus = 'pending';
-            } else {
-                $stepStatus = 'waiting';
-            }
+        foreach ($chain as $step) {
+            $log = $attRequest->approvalLogs->where('step_order', $step->step_order)->first();
+            if ($log) { $stepStatus = $log->action; }
+            elseif ($attRequest->status === 'approved') { $stepStatus = 'approved'; }
+            elseif ($attRequest->status === 'rejected') { $stepStatus = $step->step_order <= $attRequest->current_step ? 'rejected' : 'waiting'; }
+            elseif ($attRequest->current_step == $step->step_order) { $stepStatus = 'pending'; }
+            else { $stepStatus = 'waiting'; }
 
             $approvalSteps[] = [
-                'step' => $stepNum,
-                'approver_id' => $approver->id,
-                'approver_name' => $approver->full_name,
-                'approver_position' => $approver->position,
+                'step' => $step->step_order,
+                'approver_id' => $step->approver->id,
+                'approver_name' => $step->approver->full_name,
+                'approver_position' => $step->approver->position,
                 'status' => $stepStatus,
                 'notes' => $log?->notes,
                 'approved_at' => $log?->created_at?->toDateTimeString(),
             ];
-
-            $current = $approver;
-            $stepNum++;
         }
 
         $data = $attRequest->toArray();

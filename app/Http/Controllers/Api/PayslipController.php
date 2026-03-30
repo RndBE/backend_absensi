@@ -46,7 +46,7 @@ class PayslipController extends Controller
 
     public function show(Request $request, $id)
     {
-        $employee = $request->user();
+        $employee = $request->user()->load('company');
 
         $detail = PayrollRunDetail::with(['payrollRun:id,period,status'])
             ->where('employee_id', $employee->id)
@@ -73,6 +73,7 @@ class PayslipController extends Controller
             'data' => [
                 'id' => $detail->id,
                 'period' => $detail->payrollRun->period,
+                'company_name' => $employee->company?->name ?? '-',
                 'employee_name' => $employee->full_name,
                 'employee_code' => $employee->employee_code,
                 'department' => $employee->department->name ?? '-',

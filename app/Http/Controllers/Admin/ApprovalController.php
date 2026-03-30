@@ -7,6 +7,7 @@ use App\Models\ApprovalLog;
 use App\Models\AttendanceRequest;
 use App\Models\DataChangeRequest;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\Notification;
@@ -34,9 +35,14 @@ class ApprovalController extends Controller
             ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name'])
             ->orderBy('created_at', 'desc')->get();
 
-        $dataChange = $this->getMyPendingRequests(DataChangeRequest::class, $admin)
-            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name'])
-            ->orderBy('created_at', 'desc')->get();
+        // Data change requests: only visible to superadmin
+        if ($admin->role === 'superadmin') {
+            $dataChange = DataChangeRequest::whereIn('status', ['pending', 'in_review'])
+                ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'attachments'])
+                ->orderBy('created_at', 'desc')->get();
+        } else {
+            $dataChange = collect();
+        }
 
         return view('admin.approvals.index', compact('leave', 'overtime', 'attendance', 'dataChange', 'tab', 'admin'));
     }
@@ -48,11 +54,18 @@ class ApprovalController extends Controller
         $typeLabel = $this->typeLabel($type);
         $item = $modelClass::with('employee')->findOrFail($id);
 
-        // Check: is this admin the current approver in the chain?
-        $expectedApprover = $this->getApproverAtStep($item->employee, $item->current_step);
-
-        if (!$expectedApprover || $expectedApprover->id !== $admin->id) {
-            return back()->with('error', 'Anda bukan approver untuk step ini.');
+        // Data change requests: only superadmin can approve
+        if ($type === 'data-change') {
+            if ($admin->role !== 'superadmin') {
+                return back()->with('error', 'Hanya superadmin yang dapat menyetujui perubahan data.');
+            }
+        } else {
+            // Other types: follow approver chain from employee_approvers
+            $requestType = $this->modelToRequestType($modelClass);
+            $expectedApprover = $this->getApproverAtStep($item->employee, $item->current_step, $requestType);
+            if (!$expectedApprover || $expectedApprover->id !== $admin->id) {
+                return back()->with('error', 'Anda bukan approver untuk step ini.');
+            }
         }
 
         // Log the approval
@@ -65,8 +78,30 @@ class ApprovalController extends Controller
             'notes' => $request->notes,
         ]);
 
+        // Data change: superadmin is always final approver (no chain)
+        if ($type === 'data-change') {
+            $item->update(['status' => 'approved']);
+            $this->onFinalApproval($modelClass, $item);
+
+            Notification::create([
+                'employee_id' => $item->employee_id,
+                'title' => "Pengajuan $typeLabel Disetujui",
+                'message' => "Pengajuan perubahan data anda telah disetujui oleh {$admin->full_name}",
+                'type' => 'info',
+                'reference_type' => $modelClass,
+                'reference_id' => $item->id,
+            ]);
+
+            FcmService::sendToEmployee($item->employee, "Pengajuan $typeLabel Disetujui",
+                "Pengajuan perubahan data anda telah disetujui oleh {$admin->full_name}"
+            );
+
+            return back()->with('success', 'Perubahan data disetujui dan telah diterapkan.');
+        }
+
         // Check: is there a next approver in the chain?
-        $nextApprover = $this->getApproverAtStep($item->employee, $item->current_step + 1);
+        $requestType = $this->modelToRequestType($modelClass);
+        $nextApprover = $this->getApproverAtStep($item->employee, $item->current_step + 1, $requestType);
 
         if ($nextApprover) {
             // Move to next step
@@ -131,10 +166,17 @@ class ApprovalController extends Controller
         $typeLabel = $this->typeLabel($type);
         $item = $modelClass::with('employee')->findOrFail($id);
 
-        $expectedApprover = $this->getApproverAtStep($item->employee, $item->current_step);
-
-        if (!$expectedApprover || $expectedApprover->id !== $admin->id) {
-            return back()->with('error', 'Anda bukan approver untuk step ini.');
+        // Data change requests: only superadmin can reject
+        if ($type === 'data-change') {
+            if ($admin->role !== 'superadmin') {
+                return back()->with('error', 'Hanya superadmin yang dapat menolak perubahan data.');
+            }
+        } else {
+            $requestType = $this->modelToRequestType($modelClass);
+            $expectedApprover = $this->getApproverAtStep($item->employee, $item->current_step, $requestType);
+            if (!$expectedApprover || $expectedApprover->id !== $admin->id) {
+                return back()->with('error', 'Anda bukan approver untuk step ini.');
+            }
         }
 
         $item->update(['status' => 'rejected']);
@@ -165,53 +207,51 @@ class ApprovalController extends Controller
     }
 
     /**
-     * Follow the approver_id chain to find who is the approver at step N.
+     * Get the approver at a specific step using employee_approvers table.
      */
-    private function getApproverAtStep(Employee $employee, int $step): ?Employee
+    private function getApproverAtStep(Employee $employee, int $step, string $requestType = 'leave'): ?Employee
     {
-        $current = $employee;
-
-        for ($i = 0; $i < $step; $i++) {
-            if (!$current->approver_id) {
-                return null;
-            }
-            $current = Employee::find($current->approver_id);
-            if (!$current) {
-                return null;
-            }
-        }
-
-        return $current;
+        return EmployeeApprover::getApproverAt($employee->id, $requestType, $step);
     }
 
-    private function getChainLength(Employee $employee): int
+    /**
+     * Map model class to request_type string for employee_approvers lookup.
+     */
+    private function modelToRequestType(string $modelClass): string
     {
-        $count = 0;
-        $current = $employee;
-        $visited = [];
-
-        while ($current->approver_id && !in_array($current->approver_id, $visited)) {
-            $visited[] = $current->id;
-            $current = Employee::find($current->approver_id);
-            if (!$current) break;
-            $count++;
-        }
-
-        return $count;
+        return match ($modelClass) {
+            LeaveRequest::class => 'leave',
+            OvertimeRequest::class => 'overtime',
+            AttendanceRequest::class => 'attendance',
+            default => 'leave',
+        };
     }
 
     private function getMyPendingRequests(string $modelClass, Employee $admin)
     {
+        $requestType = $this->modelToRequestType($modelClass);
+
+        // Find all employees where this admin is an approver for this request type
+        $employeeSteps = EmployeeApprover::where('approver_id', $admin->id)
+            ->where('request_type', $requestType)
+            ->get()
+            ->groupBy('employee_id');
+
         $pending = $modelClass::whereIn('status', ['pending', 'in_review'])
-            ->with('employee:id,full_name,approver_id,job_level,company_id')
             ->get();
 
         $myIds = [];
 
         foreach ($pending as $req) {
-            $expectedApprover = $this->getApproverAtStep($req->employee, $req->current_step);
-            if ($expectedApprover && $expectedApprover->id === $admin->id) {
-                $myIds[] = $req->id;
+            if (isset($employeeSteps[$req->employee_id])) {
+                // Check if this admin is the approver at the current step
+                $steps = $employeeSteps[$req->employee_id];
+                foreach ($steps as $stepRecord) {
+                    if ($stepRecord->step_order === $req->current_step) {
+                        $myIds[] = $req->id;
+                        break;
+                    }
+                }
             }
         }
 
@@ -233,6 +273,21 @@ class ApprovalController extends Controller
                     'used_days' => $balance->used_days + $item->total_days,
                     'remaining_days' => $balance->remaining_days - $item->total_days,
                 ]);
+            }
+        }
+
+        // Data change: apply the approved change to employee record
+        if ($modelClass === DataChangeRequest::class) {
+            $employee = Employee::find($item->employee_id);
+            if ($employee && $item->field_name) {
+                $allowedFields = [
+                    'full_name', 'nik', 'residential_address', 'ktp_address',
+                    'religion', 'phone', 'email', 'marital_status',
+                    'blood_type', 'postal_code',
+                ];
+                if (in_array($item->field_name, $allowedFields)) {
+                    $employee->update([$item->field_name => $item->new_value]);
+                }
             }
         }
     }

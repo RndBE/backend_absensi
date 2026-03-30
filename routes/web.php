@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\AttendanceRecapController;
 use App\Http\Controllers\Admin\LeavePolicyController;
 use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\AttendanceSettingController;
+use App\Http\Controllers\Admin\CompanyController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root to admin
@@ -38,6 +39,10 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::get('/employees/{id}/edit', [EmployeeController::class, 'edit'])->name('employees.edit');
     Route::put('/employees/{id}', [EmployeeController::class, 'update'])->name('employees.update');
     Route::delete('/employees/{id}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
+
+    // Employee Approver Chains
+    Route::get('/employees/{id}/approvers', [\App\Http\Controllers\Admin\EmployeeApproverController::class, 'index'])->name('employees.approvers.index');
+    Route::post('/employees/{id}/approvers', [\App\Http\Controllers\Admin\EmployeeApproverController::class, 'store'])->name('employees.approvers.store');
 
     // Departments
     Route::get('/departments', [DepartmentController::class, 'index'])->name('departments.index');
@@ -103,13 +108,13 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::post('/approvals/{type}/{id}/approve', [ApprovalController::class, 'approve'])->name('approvals.approve');
     Route::post('/approvals/{type}/{id}/reject', [ApprovalController::class, 'reject'])->name('approvals.reject');
 
-    // Approval Rules
+    // Approval Rules (Recap Dashboard)
     Route::get('/approval-rules', [ApprovalRuleController::class, 'index'])->name('approval-rules.index');
-    Route::post('/approval-rules', [ApprovalRuleController::class, 'store'])->name('approval-rules.store');
-    Route::put('/approval-rules/{id}', [ApprovalRuleController::class, 'update'])->name('approval-rules.update');
-    Route::delete('/approval-rules/{id}', [ApprovalRuleController::class, 'destroy'])->name('approval-rules.destroy');
-    Route::post('/approval-rules/reorder', [ApprovalRuleController::class, 'reorder'])->name('approval-rules.reorder');
-    Route::post('/approval-rules/{id}/toggle', [ApprovalRuleController::class, 'toggle'])->name('approval-rules.toggle');
+    Route::post('/approval-rules/bulk-assign', [ApprovalRuleController::class, 'bulkAssign'])->name('approval-rules.bulk-assign');
+
+    // Company Settings
+    Route::get('/company', [CompanyController::class, 'index'])->name('company.index');
+    Route::put('/company', [CompanyController::class, 'update'])->name('company.update');
 
     // Attendance Settings
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');

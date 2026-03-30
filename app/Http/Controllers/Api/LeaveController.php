@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\LeaveType;
@@ -93,11 +94,11 @@ class LeaveController extends Controller
             }
         }
 
-        // Notify approver
-        $approver = $request->user()->approver;
-        if ($approver) {
+        // Notify step 1 approver from employee_approvers table
+        $firstApprover = EmployeeApprover::getApproverAt($request->user()->id, 'leave', 1);
+        if ($firstApprover) {
             Notification::create([
-                'employee_id' => $approver->id,
+                'employee_id' => $firstApprover->id,
                 'title' => 'Pengajuan Cuti Baru',
                 'message' => "{$request->user()->full_name} mengajukan cuti dari {$request->start_date} s/d {$request->end_date}",
                 'type' => 'approval',
@@ -105,7 +106,7 @@ class LeaveController extends Controller
                 'reference_id' => $leaveRequest->id,
             ]);
 
-            FcmService::sendToEmployee($approver, 'Pengajuan Cuti Baru',
+            FcmService::sendToEmployee($firstApprover, 'Pengajuan Cuti Baru',
                 "{$request->user()->full_name} mengajukan cuti dari {$request->start_date} s/d {$request->end_date}",
                 ['type' => 'approval', 'reference_type' => 'leave', 'reference_id' => (string) $leaveRequest->id]
             );
@@ -124,55 +125,34 @@ class LeaveController extends Controller
             ->with(['leaveType', 'attachments', 'approvalLogs.approver', 'delegate', 'employee'])
             ->findOrFail($id);
 
-        // Build approval chain
+        // Build approval chain from employee_approvers table
         $approvalSteps = [];
-        $employee = $leaveRequest->employee;
-        $current = $employee;
-        $stepNum = 1;
-        $visited = [];
+        $chain = EmployeeApprover::getChain($leaveRequest->employee_id, 'leave');
 
-        // Check if it was directly approved/rejected without going through chain
-        $directlyResolved = in_array($leaveRequest->status, ['approved', 'rejected'])
-            && $leaveRequest->approvalLogs->isEmpty();
-
-        while ($current->approver_id && !in_array($current->approver_id, $visited)) {
-            $visited[] = $current->id;
-            $approver = Employee::find($current->approver_id);
-            if (!$approver) break;
-
-            // Check if this step has a log
-            $log = $leaveRequest->approvalLogs
-                ->where('step_order', $stepNum)
-                ->first();
+        foreach ($chain as $step) {
+            $log = $leaveRequest->approvalLogs->where('step_order', $step->step_order)->first();
 
             if ($log) {
-                $stepStatus = $log->action; // approved / rejected
-            } elseif ($directlyResolved) {
-                // Super admin approved/rejected directly — all steps follow final status
-                $stepStatus = $leaveRequest->status;
+                $stepStatus = $log->action;
             } elseif ($leaveRequest->status === 'approved') {
-                // Fully approved but this step has no individual log (shouldn't happen normally)
                 $stepStatus = 'approved';
             } elseif ($leaveRequest->status === 'rejected') {
-                $stepStatus = $stepNum <= $leaveRequest->current_step ? 'rejected' : 'waiting';
-            } elseif ($leaveRequest->current_step == $stepNum) {
-                $stepStatus = 'pending'; // menunggu approver ini
+                $stepStatus = $step->step_order <= $leaveRequest->current_step ? 'rejected' : 'waiting';
+            } elseif ($leaveRequest->current_step == $step->step_order) {
+                $stepStatus = 'pending';
             } else {
-                $stepStatus = 'waiting'; // belum sampai step ini
+                $stepStatus = 'waiting';
             }
 
             $approvalSteps[] = [
-                'step' => $stepNum,
-                'approver_id' => $approver->id,
-                'approver_name' => $approver->full_name,
-                'approver_position' => $approver->position,
+                'step' => $step->step_order,
+                'approver_id' => $step->approver->id,
+                'approver_name' => $step->approver->full_name,
+                'approver_position' => $step->approver->position,
                 'status' => $stepStatus,
                 'notes' => $log?->notes,
                 'approved_at' => $log?->created_at?->toDateTimeString(),
             ];
-
-            $current = $approver;
-            $stepNum++;
         }
 
         $data = $leaveRequest->toArray();

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\Company;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -76,6 +77,29 @@ class DashboardController extends Controller
                 'team_members' => $teamMembers,
                 'absent_today' => $absentToday,
             ],
+        ]);
+    }
+
+    public function companyInfo(Request $request)
+    {
+        $employee = $request->user();
+        $company = $employee->company;
+
+        if (!$company) {
+            $company = Company::first();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $company ? [
+                'id' => $company->id,
+                'name' => $company->name,
+                'logo' => $company->logo ? asset('storage/' . $company->logo) : null,
+                'address' => $company->address,
+                'phone' => $company->phone,
+                'email' => $company->email,
+                'npwp' => $company->npwp,
+            ] : null,
         ]);
     }
 }

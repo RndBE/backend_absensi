@@ -91,12 +91,13 @@
                     ]],
                     ['label' => 'Persetujuan', 'icon' => 'task_alt', 'key' => 'approval', 'items' => [
                         ['route' => 'admin.approvals.index', 'icon' => 'task_alt', 'label' => 'Persetujuan', 'match' => 'admin.approvals.*', 'badge' => true],
-                        ['route' => 'admin.approval-rules.index', 'icon' => 'settings', 'label' => 'Aturan Approval', 'match' => 'admin.approval-rules.*'],
+                        ['route' => 'admin.approval-rules.index', 'icon' => 'settings', 'label' => 'Pengaturan Approval', 'match' => 'admin.approval-rules.*'],
                     ]],
                     ['label' => 'Laporan', 'icon' => 'analytics', 'key' => 'reports', 'items' => [
                         ['route' => 'admin.reports.index', 'icon' => 'analytics', 'label' => 'Pusat Laporan', 'match' => 'admin.reports.*'],
                     ]],
                     ['label' => 'Pengaturan', 'icon' => 'settings', 'key' => 'settings', 'items' => [
+                        ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*'],
                         ['route' => 'admin.attendance-settings.index', 'icon' => 'tune', 'label' => 'Pengaturan Presensi', 'match' => 'admin.attendance-settings.*'],
                     ]],
                 ];
@@ -265,5 +266,6 @@
 
     @include('admin.partials.searchable-select')
     @include('admin.partials.currency-format')
+@stack('scripts')
 </body>
 </html>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\WorkSchedule;
@@ -113,7 +114,13 @@ class EmployeeController extends Controller
             ->orderBy('job_level')->orderBy('full_name')
             ->get();
 
-        return view('admin.employees.edit', compact('employee', 'departments', 'workSchedules', 'managers'));
+        // Load approval chains
+        $approvalChains = [];
+        foreach (['leave', 'overtime', 'attendance'] as $type) {
+            $approvalChains[$type] = EmployeeApprover::getChain($id, $type);
+        }
+
+        return view('admin.employees.edit', compact('employee', 'departments', 'workSchedules', 'managers', 'approvalChains'));
     }
 
     public function update(Request $request, $id)
@@ -126,7 +133,7 @@ class EmployeeController extends Controller
             'email' => 'required|email|unique:employees,email,' . $id,
             'department_id' => 'required|exists:departments,id',
             'employment_status' => 'required|in:permanent,contract,intern,probation',
-            'role' => 'required|in:admin,manager,employee',
+            'role' => 'required|in:superadmin,admin,manager,employee',
             'photo' => 'nullable|image|max:2048',
             'birth_place' => 'nullable|string|max:255',
             'birth_date' => 'nullable|date',

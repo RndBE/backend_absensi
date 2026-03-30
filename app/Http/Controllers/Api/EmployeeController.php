@@ -45,9 +45,11 @@ class EmployeeController extends Controller
                 'email' => $employee->email,
                 'phone' => $employee->phone,
                 'position' => $employee->position,
+                'job_level' => $employee->job_level,
                 'department' => $employee->department?->name,
                 'company' => $employee->company?->name,
-                'photo' => $employee->photo,
+                'residential_address' => $employee->residential_address,
+                'photo' => $employee->photo ? asset('storage/' . $employee->photo) : null,
             ],
         ]);
     }
