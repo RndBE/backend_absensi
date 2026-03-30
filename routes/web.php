@@ -114,5 +114,79 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     // Attendance Settings
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');
     Route::put('/attendance-settings', [AttendanceSettingController::class, 'update'])->name('attendance-settings.update');
+
+    // Payroll Groups
+    Route::get('/payroll-groups', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'index'])->name('payroll-groups.index');
+    Route::post('/payroll-groups', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'store'])->name('payroll-groups.store');
+    Route::put('/payroll-groups/{id}', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'update'])->name('payroll-groups.update');
+    Route::post('/payroll-groups/{id}/toggle', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'toggle'])->name('payroll-groups.toggle');
+    Route::delete('/payroll-groups/{id}', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'destroy'])->name('payroll-groups.destroy');
+
+    // Payroll Components
+    Route::get('/payroll-components', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'index'])->name('payroll-components.index');
+    Route::post('/payroll-components', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'store'])->name('payroll-components.store');
+    Route::put('/payroll-components/{id}', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'update'])->name('payroll-components.update');
+    Route::post('/payroll-components/{id}/toggle', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'toggle'])->name('payroll-components.toggle');
+    Route::delete('/payroll-components/{id}', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'destroy'])->name('payroll-components.destroy');
+
+    // Employee Payrolls
+    Route::get('/employee-payrolls', [\App\Http\Controllers\Admin\EmployeePayrollController::class, 'index'])->name('employee-payrolls.index');
+    Route::get('/employee-payrolls/{id}/edit', [\App\Http\Controllers\Admin\EmployeePayrollController::class, 'edit'])->name('employee-payrolls.edit');
+    Route::put('/employee-payrolls/{id}', [\App\Http\Controllers\Admin\EmployeePayrollController::class, 'updatePayroll'])->name('employee-payrolls.update-payroll');
+    Route::post('/employee-payrolls/{id}/assign-component', [\App\Http\Controllers\Admin\EmployeePayrollController::class, 'assignComponent'])->name('employee-payrolls.assign-component');
+    Route::put('/employee-payrolls/{employeeId}/components/{componentId}', [\App\Http\Controllers\Admin\EmployeePayrollController::class, 'updateComponent'])->name('employee-payrolls.update-component');
+    Route::post('/employee-payrolls/{employeeId}/components/{componentId}/toggle', [\App\Http\Controllers\Admin\EmployeePayrollController::class, 'toggleComponent'])->name('employee-payrolls.toggle-component');
+    Route::post('/employee-payrolls/bulk-assign', [\App\Http\Controllers\Admin\EmployeePayrollController::class, 'bulkAssign'])->name('employee-payrolls.bulk-assign');
+
+    // Payroll Runs
+    Route::get('/payroll-runs', [\App\Http\Controllers\Admin\PayrollRunController::class, 'index'])->name('payroll-runs.index');
+    Route::post('/payroll-runs', [\App\Http\Controllers\Admin\PayrollRunController::class, 'store'])->name('payroll-runs.store');
+    Route::get('/payroll-runs/{id}', [\App\Http\Controllers\Admin\PayrollRunController::class, 'show'])->name('payroll-runs.show');
+    Route::put('/payroll-runs/{runId}/details/{detailId}', [\App\Http\Controllers\Admin\PayrollRunController::class, 'updateDetail'])->name('payroll-runs.update-detail');
+    Route::post('/payroll-runs/{id}/finalize', [\App\Http\Controllers\Admin\PayrollRunController::class, 'finalize'])->name('payroll-runs.finalize');
+    Route::post('/payroll-runs/{id}/publish', [\App\Http\Controllers\Admin\PayrollRunController::class, 'publish'])->name('payroll-runs.publish');
+    Route::post('/payroll-runs/{id}/unpublish', [\App\Http\Controllers\Admin\PayrollRunController::class, 'unpublish'])->name('payroll-runs.unpublish');
+    Route::post('/payroll-runs/{id}/lock', [\App\Http\Controllers\Admin\PayrollRunController::class, 'lock'])->name('payroll-runs.lock');
+    Route::post('/payroll-runs/{id}/unlock', [\App\Http\Controllers\Admin\PayrollRunController::class, 'unlock'])->name('payroll-runs.unlock');
+    Route::post('/payroll-runs/{id}/reopen', [\App\Http\Controllers\Admin\PayrollRunController::class, 'reopen'])->name('payroll-runs.reopen');
+    Route::post('/payroll-runs/{id}/regenerate', [\App\Http\Controllers\Admin\PayrollRunController::class, 'regenerate'])->name('payroll-runs.regenerate');
+    Route::delete('/payroll-runs/{id}', [\App\Http\Controllers\Admin\PayrollRunController::class, 'destroy'])->name('payroll-runs.destroy');
+
+    // Payslips
+    Route::get('/payslips', [\App\Http\Controllers\Admin\PayslipController::class, 'index'])->name('payslips.index');
+    Route::get('/payslips/{id}', [\App\Http\Controllers\Admin\PayslipController::class, 'show'])->name('payslips.show');
+    Route::get('/payslips/{id}/download', [\App\Http\Controllers\Admin\PayslipController::class, 'downloadPdf'])->name('payslips.download');
+
+    // Payroll Adjustments
+    Route::get('/payroll-adjustments', [\App\Http\Controllers\Admin\PayrollAdjustmentController::class, 'index'])->name('payroll-adjustments.index');
+    Route::get('/payroll-adjustments/create', [\App\Http\Controllers\Admin\PayrollAdjustmentController::class, 'create'])->name('payroll-adjustments.create');
+    Route::post('/payroll-adjustments', [\App\Http\Controllers\Admin\PayrollAdjustmentController::class, 'store'])->name('payroll-adjustments.store');
+    Route::get('/payroll-adjustments/bulk', [\App\Http\Controllers\Admin\PayrollAdjustmentController::class, 'bulkCreate'])->name('payroll-adjustments.bulk-create');
+    Route::post('/payroll-adjustments/bulk', [\App\Http\Controllers\Admin\PayrollAdjustmentController::class, 'bulkStore'])->name('payroll-adjustments.bulk-store');
+    Route::post('/payroll-adjustments/{id}/cancel', [\App\Http\Controllers\Admin\PayrollAdjustmentController::class, 'cancel'])->name('payroll-adjustments.cancel');
+    Route::post('/payroll-adjustments/generate-backpay', [\App\Http\Controllers\Admin\PayrollAdjustmentController::class, 'generateBackpay'])->name('payroll-adjustments.generate-backpay');
+
+    // Tax & BPJS
+    Route::get('/tax/settings', [\App\Http\Controllers\Admin\TaxController::class, 'settings'])->name('tax.settings');
+    Route::put('/tax/settings/{id}', [\App\Http\Controllers\Admin\TaxController::class, 'updateSetting'])->name('tax.update-setting');
+    Route::put('/tax/bpjs-settings/{id}', [\App\Http\Controllers\Admin\TaxController::class, 'updateBpjsSetting'])->name('tax.update-bpjs-setting');
+    Route::put('/tax/bpjs-settings', [\App\Http\Controllers\Admin\TaxController::class, 'updateBpjsAll'])->name('tax.update-bpjs-all');
+    Route::get('/tax/simulator', [\App\Http\Controllers\Admin\TaxController::class, 'simulator'])->name('tax.simulator');
+    Route::post('/tax/simulator', [\App\Http\Controllers\Admin\TaxController::class, 'simulate'])->name('tax.simulate');
+    Route::get('/tax/bukti-potong', [\App\Http\Controllers\Admin\TaxController::class, 'buktiPotong'])->name('tax.bukti-potong');
+    Route::post('/tax/bukti-potong/generate', [\App\Http\Controllers\Admin\TaxController::class, 'generateBuktiPotong'])->name('tax.generate-bukti-potong');
+    Route::post('/tax/recalculate', [\App\Http\Controllers\Admin\TaxController::class, 'recalculate'])->name('tax.recalculate');
+    Route::get('/tax/export-efiling', [\App\Http\Controllers\Admin\TaxController::class, 'exportEfiling'])->name('tax.export-efiling');
+
+    // Reports
+    Route::get('/reports', [\App\Http\Controllers\Admin\ReportController::class, 'index'])->name('reports.index');
+    Route::get('/reports/attendance', [\App\Http\Controllers\Admin\ReportController::class, 'attendance'])->name('reports.attendance');
+    Route::get('/reports/attendance/export', [\App\Http\Controllers\Admin\ReportController::class, 'exportAttendance'])->name('reports.export-attendance');
+    Route::get('/reports/leave', [\App\Http\Controllers\Admin\ReportController::class, 'leave'])->name('reports.leave');
+    Route::get('/reports/leave/export', [\App\Http\Controllers\Admin\ReportController::class, 'exportLeave'])->name('reports.export-leave');
+    Route::get('/reports/overtime', [\App\Http\Controllers\Admin\ReportController::class, 'overtime'])->name('reports.overtime');
+    Route::get('/reports/overtime/export', [\App\Http\Controllers\Admin\ReportController::class, 'exportOvertime'])->name('reports.export-overtime');
+    Route::get('/reports/payroll', [\App\Http\Controllers\Admin\ReportController::class, 'payroll'])->name('reports.payroll');
+    Route::get('/reports/payroll/export', [\App\Http\Controllers\Admin\ReportController::class, 'exportPayroll'])->name('reports.export-payroll');
 });
 

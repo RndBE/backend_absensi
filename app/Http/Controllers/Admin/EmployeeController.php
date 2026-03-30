@@ -75,6 +75,16 @@ class EmployeeController extends Controller
             'manager_id' => 'nullable|exists:employees,id',
             'approver_id' => 'nullable|exists:employees,id',
             'photo' => 'nullable|image|max:2048',
+            'birth_place' => 'nullable|string|max:255',
+            'birth_date' => 'nullable|date',
+            'gender' => 'nullable|in:Male,Female',
+            'marital_status' => 'nullable|in:Single,Married,Divorced,Widowed',
+            'blood_type' => 'nullable|in:A,B,AB,O',
+            'religion' => 'nullable|string|max:50',
+            'nik' => 'nullable|string|max:20',
+            'postal_code' => 'nullable|string|max:10',
+            'ktp_address' => 'nullable|string',
+            'residential_address' => 'nullable|string',
         ]);
 
         $data = array_merge($request->except('photo'), [
@@ -118,6 +128,16 @@ class EmployeeController extends Controller
             'employment_status' => 'required|in:permanent,contract,intern,probation',
             'role' => 'required|in:admin,manager,employee',
             'photo' => 'nullable|image|max:2048',
+            'birth_place' => 'nullable|string|max:255',
+            'birth_date' => 'nullable|date',
+            'gender' => 'nullable|in:Male,Female',
+            'marital_status' => 'nullable|in:Single,Married,Divorced,Widowed',
+            'blood_type' => 'nullable|in:A,B,AB,O',
+            'religion' => 'nullable|string|max:50',
+            'nik' => 'nullable|string|max:20',
+            'postal_code' => 'nullable|string|max:10',
+            'ktp_address' => 'nullable|string',
+            'residential_address' => 'nullable|string',
         ]);
 
         $data = $request->except(['password', 'photo', 'remove_photo']);

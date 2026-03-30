@@ -77,4 +77,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Employees (Pegawai)
     Route::get('/employees', [EmployeeController::class, 'index']);
     Route::get('/employees/{id}', [EmployeeController::class, 'show']);
+
+    // Payslips
+    Route::get('/payslips', [\App\Http\Controllers\Api\PayslipController::class, 'index']);
+    Route::get('/payslips/{id}', [\App\Http\Controllers\Api\PayslipController::class, 'show']);
+    Route::get('/payslips/{id}/download', [\App\Http\Controllers\Api\PayslipController::class, 'downloadPdf']);
 });

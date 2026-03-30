@@ -17,7 +17,7 @@ class Employee extends Authenticatable
         'email', 'phone', 'password',
         'birth_place', 'birth_date', 'gender', 'marital_status', 'blood_type',
         'religion', 'nik', 'postal_code', 'ktp_address', 'residential_address',
-        'position', 'job_level', 'employment_status', 'join_date',
+        'position', 'job_level', 'employment_status', 'join_date', 'resign_date',
         'contract_end_date', 'photo', 'is_active', 'role', 'fcm_token',
     ];
 
@@ -102,6 +102,21 @@ class Employee extends Authenticatable
     public function notifications(): HasMany
     {
         return $this->hasMany(Notification::class);
+    }
+
+    public function payroll(): HasMany
+    {
+        return $this->hasMany(EmployeePayroll::class);
+    }
+
+    public function activePayroll()
+    {
+        return $this->hasOne(EmployeePayroll::class)->where('is_active', true)->latest('effective_date');
+    }
+
+    public function payrollComponents(): HasMany
+    {
+        return $this->hasMany(EmployeePayrollComponent::class);
     }
 
     public function getMasaKerjaAttribute(): string
