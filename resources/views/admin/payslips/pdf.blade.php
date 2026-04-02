@@ -1,162 +1,287 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>Payslip</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Helvetica', 'Arial', sans-serif; font-size: 12px; color: #333; padding: 30px; }
+<meta charset="utf-8">
+<title>Payslip</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        .header { text-align: center; margin-bottom: 25px; border-bottom: 3px double #1a1a2e; padding-bottom: 15px; }
-        .company-name { font-size: 18px; font-weight: bold; color: #1a1a2e; text-transform: uppercase; letter-spacing: 1px; }
-        .company-sub { font-size: 10px; color: #666; margin-top: 2px; }
-        .doc-title { font-size: 14px; font-weight: bold; color: #1a1a2e; margin-top: 10px; letter-spacing: 2px; text-transform: uppercase; }
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 9.5px;
+        color: #1a1a1a;
+        background: #fff;
+        padding: 28px 30px;
+    }
 
-        .info-table { width: 100%; margin-bottom: 20px; }
-        .info-table td { padding: 3px 0; vertical-align: top; }
-        .info-label { color: #888; font-size: 11px; width: 130px; }
-        .info-value { font-weight: 600; font-size: 12px; }
+    /* ── UTILITIES ── */
+    .w100 { width: 100%; }
+    .bold { font-weight: bold; }
+    .right { text-align: right; }
+    .muted { color: #6b7280; }
+    .red { color: #dc2626; font-weight: bold; font-size: 9px; letter-spacing: 0.5px; }
 
-        .period-badge { display: inline-block; background: #1a1a2e; color: white; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+    /* ── COMPANY TITLE ── */
+    .company-name { font-size: 16px; font-weight: bold; color: #111; }
+    .company-addr { font-size: 8px; color: #6b7280; margin-top: 2px; }
+    .doc-title    { font-size: 15px; font-weight: bold; letter-spacing: 3px; color: #111; }
 
-        .section-title { font-size: 12px; font-weight: bold; color: #1a1a2e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #e0e0e0; }
+    /* ── DIVIDER ── */
+    .divider-top { border-top: 2px solid #111; padding-top: 10px; margin-bottom: 12px; }
 
-        .comp-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-        .comp-table th { background: #f5f5f5; padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #666; border-bottom: 2px solid #ddd; }
-        .comp-table td { padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 11px; }
-        .comp-table .amount { text-align: right; font-weight: 600; }
-        .comp-table .earning { color: #0d9488; }
-        .comp-table .deduction { color: #dc2626; }
+    /* ── INFO TABLE ── */
+    .info-tbl td { padding: 2px 0; font-size: 9.5px; vertical-align: top; }
+    .info-key  { color: #6b7280; width: 130px; }
+    .info-sep  { width: 10px; color: #6b7280; }
+    .info-val  { font-weight: 600; }
+    .info-gap  { width: 30px; }
 
-        .summary-box { background: #1a1a2e; color: white; padding: 15px 20px; border-radius: 6px; margin-top: 20px; }
-        .summary-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
-        .summary-table { width: 100%; }
-        .summary-table td { padding: 4px 0; }
-        .summary-table .label { color: #aaa; font-size: 11px; }
-        .summary-table .value { text-align: right; font-size: 12px; font-weight: 600; }
-        .summary-table .net { font-size: 16px; font-weight: bold; color: #4ade80; }
-        .summary-table .net-label { font-size: 13px; font-weight: bold; color: white; }
-        .summary-table hr { border: none; border-top: 1px solid #444; margin: 5px 0; }
+    /* ── MAIN PAYROLL TABLE ── */
+    .main-tbl { border-collapse: collapse; margin-top: 14px; }
+    .main-tbl th {
+        background: #f3f4f6;
+        padding: 7px 10px;
+        text-align: left;
+        font-size: 9.5px;
+        font-weight: bold;
+        border: 1px solid #d1d5db;
+    }
+    .main-tbl td {
+        padding: 4.5px 10px;
+        font-size: 9.5px;
+        border-bottom: 1px solid #f0f0f0;
+        vertical-align: top;
+    }
+    .main-tbl td.divider { border-left: 1px solid #d1d5db; }
+    .main-tbl .num { text-align: right; white-space: nowrap; }
+    .main-tbl .total-row td {
+        border-top: 1.5px solid #d1d5db;
+        border-bottom: none;
+        background: #f9fafb;
+        font-weight: bold;
+        font-size: 9.5px;
+    }
 
-        .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #999; }
-        .confidential { font-size: 9px; color: #ccc; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
-    </style>
+    /* ── TAKE HOME PAY ── */
+    .thp-tbl { border-collapse: collapse; margin-top: 0; }
+    .thp-tbl td {
+        padding: 9px 10px;
+        border: 1px solid #d1d5db;
+        border-top: none;
+        font-size: 13px;
+        font-weight: bold;
+    }
+    .thp-tbl td.thp-right { text-align: right; }
+
+    /* ── BENEFITS ── */
+    .benefits-section { margin-top: 18px; }
+    .benefits-title { font-size: 10px; font-weight: bold; margin-bottom: 7px; }
+    .ben-tbl { border-collapse: collapse; }
+    .ben-tbl td { padding: 2.5px 0; font-size: 9.5px; }
+    .ben-tbl .ben-lbl { width: 220px; }
+    .ben-tbl .ben-amt { text-align: right; width: 90px; white-space: nowrap; }
+    .ben-tbl .ben-muted { color: #6b7280; }
+    .ben-total td {
+        border-top: 1px solid #111;
+        padding-top: 5px;
+        font-weight: bold;
+    }
+
+    /* ── FOOTER ── */
+    .footer { margin-top: 24px; text-align: center; font-size: 8px; color: #9ca3af; }
+</style>
 </head>
 <body>
-    <div class="header">
-        <div class="company-name">PT ARTA TEKNOLOGI COMUNINDO</div>
-        <div class="company-sub">Jl. Indonesia</div>
-        <div class="doc-title">Slip Gaji Karyawan</div>
-    </div>
 
-    @php
-        $emp = $detail->employee;
-        $run = $detail->payrollRun;
-        $periodLabel = \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y');
-        $earnings = [];
-        $deductions = [];
-        if ($detail->components) {
-            foreach ($detail->components as $c) {
-                if ($c['type'] === 'earning') $earnings[] = $c;
-                else $deductions[] = $c;
+@php
+    $emp     = $detail->employee;
+    $run     = $detail->payrollRun;
+    $payroll = $emp->activePayroll;
+
+    $periodDate  = \Carbon\Carbon::parse($run->period . '-01');
+    $periodStart = $periodDate->copy()->startOfMonth()->format('d');
+    $periodEnd   = $periodDate->copy()->endOfMonth()->format('d M Y');
+
+    $earnings    = [];
+    $deductions  = [];
+
+    $comps = is_array($detail->components)
+           ? $detail->components
+           : (json_decode($detail->components, true) ?? []);
+
+    foreach ($comps as $c) {
+        if (($c['type'] ?? '') === 'earning')       $earnings[]   = $c;
+        elseif (($c['type'] ?? '') === 'deduction') $deductions[] = $c;
+    }
+
+    // Total rows = max of (earnings+1 for basic) vs deductions
+    $earningRows   = count($earnings) + 1;  // +1 for Basic Salary
+    $deductionRows = count($deductions);
+    $maxRows       = max($earningRows, $deductionRows);
+@endphp
+
+{{-- ══ HEADER: Logo  +  *CONFIDENTIAL ══ --}}
+<table class="w100" style="margin-bottom:14px;">
+    <tr>
+        <td style="width:50%; vertical-align:bottom;">
+            @if($logoBase64)
+                <img src="{{ $logoBase64 }}" alt="Logo" style="height:40px; width:auto;">
+            @else
+                <span style="font-size:20px; font-weight:900; letter-spacing:-1px;">{{ strtoupper(substr($company->name ?? 'CO', 0, 3)) }}</span>
+            @endif
+        </td>
+        <td style="text-align:right; vertical-align:top;">
+            <span class="red">*CONFIDENTIAL</span>
+        </td>
+    </tr>
+</table>
+
+{{-- ══ COMPANY NAME + PAYSLIP TITLE ══ --}}
+<div class="divider-top">
+    <table class="w100">
+        <tr>
+            <td>
+                <div class="company-name">{{ $company->name ?? 'PT. Perusahaan' }}</div>
+                <div class="company-addr">{{ $company->address ?? '' }}</div>
+            </td>
+            <td style="text-align:right; vertical-align:top;">
+                <span class="doc-title">PAYSLIP</span>
+            </td>
+        </tr>
+    </table>
+</div>
+
+{{-- ══ INFO GRID (2 columns) ══ --}}
+<table class="w100 info-tbl" style="margin-top:10px; margin-bottom:14px;">
+    <tr>
+        <td class="info-key">Payroll cut off</td>
+        <td class="info-sep">:</td>
+        <td class="info-val">{{ $periodStart }} - {{ $periodEnd }}</td>
+        <td class="info-gap"></td>
+        <td class="info-key">PTKP</td>
+        <td class="info-sep">:</td>
+        <td class="info-val">{{ $payroll->ptkp_status ?? 'TK/0' }}</td>
+    </tr>
+    <tr>
+        <td class="info-key">ID / Name</td>
+        <td class="info-sep">:</td>
+        <td class="info-val">{{ $emp->employee_code }} / {{ strtoupper($emp->full_name) }}</td>
+        <td class="info-gap"></td>
+        <td class="info-key">NPWP</td>
+        <td class="info-sep">:</td>
+        <td class="info-val">{{ $payroll->npwp ?? '-' }}</td>
+    </tr>
+    <tr>
+        <td class="info-key">Job position</td>
+        <td class="info-sep">:</td>
+        <td class="info-val">{{ strtoupper($emp->position ?? '-') }}</td>
+        <td class="info-gap"></td>
+        <td class="info-key">BPJS Kesehatan</td>
+        <td class="info-sep">:</td>
+        <td class="info-val">{{ $payroll->bpjs_kesehatan ?? '-' }}</td>
+    </tr>
+    <tr>
+        <td class="info-key">Organization</td>
+        <td class="info-sep">:</td>
+        <td class="info-val">{{ strtoupper($emp->department->name ?? '-') }}</td>
+        <td class="info-gap"></td>
+        <td class="info-key">BPJS Ketenagakerjaan</td>
+        <td class="info-sep">:</td>
+        <td class="info-val">{{ $payroll->bpjs_ketenagakerjaan ?? '-' }}</td>
+    </tr>
+</table>
+
+{{-- ══ MAIN TABLE: Earnings | Deductions (50% | 50%) ══ --}}
+<table class="w100 main-tbl" style="border:1px solid #d1d5db;">
+    <thead>
+        <tr>
+            <th style="width:40%; border-right:none;">Earnings</th>
+            <th style="width:10%; text-align:right; border-left:none; border-right:none;"></th>
+            <th style="width:40%; border-left:1px solid #d1d5db; border-right:none;">Deductions</th>
+            <th style="width:10%; text-align:right; border-left:none;"></th>
+        </tr>
+    </thead>
+    <tbody>
+        @for($i = 0; $i < $maxRows; $i++)
+        @php
+            // Earnings column
+            if ($i === 0) {
+                $eName  = 'Basic Salary';
+                $eAmt   = $detail->basic_salary;
+                $hasE   = true;
+            } elseif (isset($earnings[$i - 1])) {
+                $eName  = $earnings[$i - 1]['name'];
+                $eAmt   = $earnings[$i - 1]['amount'];
+                $hasE   = true;
+            } else {
+                $eName  = '';
+                $eAmt   = null;
+                $hasE   = false;
             }
-        }
-    @endphp
 
-    <table class="info-table">
+            // Deductions column
+            if (isset($deductions[$i])) {
+                $dName  = $deductions[$i]['name'];
+                $dAmt   = $deductions[$i]['amount'];
+                $hasD   = true;
+            } else {
+                $dName  = '';
+                $dAmt   = null;
+                $hasD   = false;
+            }
+        @endphp
         <tr>
-            <td class="info-label">Nama Karyawan</td>
-            <td class="info-value">: {{ $emp->full_name }}</td>
-            <td class="info-label">Periode</td>
-            <td class="info-value">: <span class="period-badge">{{ $periodLabel }}</span></td>
+            <td>{{ $eName }}</td>
+            <td class="num">{{ $hasE && $eAmt !== null ? number_format($eAmt, 0, ',', '.') : '' }}</td>
+            <td class="divider">{{ $dName }}</td>
+            <td class="num">{{ $hasD && $dAmt !== null ? number_format($dAmt, 0, ',', '.') : '' }}</td>
         </tr>
-        <tr>
-            <td class="info-label">ID Karyawan</td>
-            <td class="info-value">: {{ $emp->employee_code }}</td>
-            <td class="info-label">Departemen</td>
-            <td class="info-value">: {{ $emp->department->name ?? '-' }}</td>
+        @endfor
+    </tbody>
+    <tfoot>
+        <tr class="total-row">
+            <td>Total earnings</td>
+            <td class="num">{{ number_format($detail->total_earning, 0, ',', '.') }}</td>
+            <td class="divider">Total deductions</td>
+            <td class="num">{{ number_format($detail->total_deduction, 0, ',', '.') }}</td>
         </tr>
-        <tr>
-            <td class="info-label">Jabatan</td>
-            <td class="info-value">: {{ $emp->position ?? '-' }}</td>
-            <td class="info-label"></td>
-            <td class="info-value"></td>
+    </tfoot>
+</table>
+
+{{-- ══ TAKE HOME PAY ══ --}}
+<table class="w100 thp-tbl">
+    <tr>
+        <td style="width:50%;">Take Home Pay</td>
+        <td class="thp-right" style="width:50%;">Rp{{ number_format($detail->net_salary, 0, ',', '.') }}</td>
+    </tr>
+</table>
+
+{{-- ══ BENEFITS ══ --}}
+@if(!empty($bpjsData['items']))
+<div class="benefits-section">
+    <div class="benefits-title">Benefits* <span style="font-weight:normal; color:#9ca3af; font-size:8.5px;">(ditanggung perusahaan)</span></div>
+    <table class="ben-tbl">
+        @foreach($bpjsData['items'] as $b)
+        <tr class="{{ $b['is_basis'] ? 'ben-muted' : '' }}">
+            <td class="ben-lbl {{ $b['is_basis'] ? 'ben-muted' : '' }}">{{ $b['label'] }}</td>
+            <td class="ben-amt" style="font-weight:{{ $b['is_basis'] ? 'normal' : '600' }};">{{ number_format($b['amount'], 0, ',', '.') }}</td>
+        </tr>
+        @endforeach
+        <tr class="ben-total">
+            <td class="ben-lbl">Total benefits</td>
+            <td class="ben-amt">{{ number_format($bpjsData['total'], 0, ',', '.') }}</td>
         </tr>
     </table>
+</div>
+@endif
 
-    {{-- Basic Salary --}}
-    <div class="section-title">Gaji Pokok</div>
-    <table class="comp-table">
-        <tr>
-            <td>Gaji Pokok</td>
-            <td class="amount earning">Rp {{ number_format($detail->basic_salary, 0, ',', '.') }}</td>
-        </tr>
-    </table>
+{{-- ══ FOOTER ══ --}}
+<div class="footer">
+    Dokumen ini bersifat rahasia — hanya untuk penerima yang bersangkutan<br>
+    {{ $company->name ?? '' }}
+    @if($company->phone ?? null) &bull; {{ $company->phone }} @endif
+    @if($company->email ?? null) &bull; {{ $company->email }} @endif
+</div>
 
-    {{-- Earnings --}}
-    @if(count($earnings) > 0)
-    <div class="section-title">Tunjangan / Pendapatan Lain</div>
-    <table class="comp-table">
-        <thead>
-            <tr>
-                <th>Komponen</th>
-                <th style="text-align: right">Jumlah</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach($earnings as $e)
-            <tr>
-                <td>{{ $e['name'] }}</td>
-                <td class="amount earning">Rp {{ number_format($e['amount'], 0, ',', '.') }}</td>
-            </tr>
-            @endforeach
-        </tbody>
-    </table>
-    @endif
-
-    {{-- Deductions --}}
-    @if(count($deductions) > 0)
-    <div class="section-title">Potongan</div>
-    <table class="comp-table">
-        <thead>
-            <tr>
-                <th>Komponen</th>
-                <th style="text-align: right">Jumlah</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach($deductions as $d)
-            <tr>
-                <td>{{ $d['name'] }}</td>
-                <td class="amount deduction">Rp {{ number_format($d['amount'], 0, ',', '.') }}</td>
-            </tr>
-            @endforeach
-        </tbody>
-    </table>
-    @endif
-
-    {{-- Summary --}}
-    <div class="summary-box">
-        <table class="summary-table">
-            <tr>
-                <td class="label">Total Pendapatan</td>
-                <td class="value">Rp {{ number_format($detail->total_earning, 0, ',', '.') }}</td>
-            </tr>
-            <tr>
-                <td class="label">Total Potongan</td>
-                <td class="value" style="color: #f87171;">Rp {{ number_format($detail->total_deduction, 0, ',', '.') }}</td>
-            </tr>
-            <tr><td colspan="2"><hr></td></tr>
-            <tr>
-                <td class="net-label">Gaji Bersih (Take Home Pay)</td>
-                <td class="net">Rp {{ number_format($detail->net_salary, 0, ',', '.') }}</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="footer">
-        <p>Diterbitkan oleh sistem payroll PT Arta Teknologi Comunindo</p>
-        <p class="confidential">Dokumen ini bersifat rahasia — hanya untuk penerima yang bersangkutan</p>
-    </div>
 </body>
 </html>

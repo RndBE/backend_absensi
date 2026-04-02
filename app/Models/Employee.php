@@ -16,9 +16,12 @@ class Employee extends Authenticatable
         'schedule_template_id', 'manager_id', 'approver_id', 'full_name',
         'email', 'phone', 'password',
         'birth_place', 'birth_date', 'gender', 'marital_status', 'blood_type',
-        'religion', 'nik', 'postal_code', 'ktp_address', 'residential_address',
+        'religion', 'nik', 'npwp_15', 'npwp_16', 'ptkp',
+        'bpjs_tk', 'bpjs_kesehatan', 'bank_account', 'bank_name',
+        'postal_code', 'ktp_address', 'residential_address',
         'position', 'job_level', 'employment_status', 'join_date', 'resign_date',
-        'contract_end_date', 'photo', 'is_active', 'role', 'fcm_token',
+        'resign_reason', 'resign_notes', 'last_working_date',
+        'contract_start_date', 'contract_end_date', 'photo', 'is_active', 'role', 'fcm_token',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -28,6 +31,7 @@ class Employee extends Authenticatable
         return [
             'birth_date' => 'date',
             'join_date' => 'date',
+            'contract_start_date' => 'date',
             'contract_end_date' => 'date',
             'is_active' => 'boolean',
             'password' => 'hashed',

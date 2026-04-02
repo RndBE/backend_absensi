@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class EmployeePayroll extends Model
 {
     protected $fillable = [
-        'employee_id', 'payroll_group_id', 'basic_salary',
+        'employee_id', 'basic_salary',
         'payment_schedule', 'payment_method',
         'bank_name', 'bank_account_number', 'bank_account_name',
         'npwp', 'ptkp_status', 'bpjs_kesehatan', 'bpjs_ketenagakerjaan',
@@ -33,10 +33,5 @@ class EmployeePayroll extends Model
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
-    }
-
-    public function payrollGroup(): BelongsTo
-    {
-        return $this->belongsTo(PayrollGroup::class);
     }
 }

@@ -105,7 +105,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="mb-2">
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Status Kepegawaian *</label>
-                    <select name="employment_status" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10" required>
+                    <select name="employment_status" id="employmentStatusCreate" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10" data-no-search required>
                         <option value="contract" {{ old('employment_status','contract') === 'contract' ? 'selected' : '' }}>Kontrak</option>
                         <option value="permanent" {{ old('employment_status') === 'permanent' ? 'selected' : '' }}>Tetap</option>
                         <option value="intern" {{ old('employment_status') === 'intern' ? 'selected' : '' }}>Magang</option>
@@ -118,11 +118,19 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {{-- Contract Dates (shown when status = contract/intern/probation) --}}
+            <div id="contractDatesRowCreate" class="grid grid-cols-1 md:grid-cols-2 gap-4" style="{{ in_array(old('employment_status', 'contract'), ['contract','intern','probation']) ? '' : 'display:none' }}">
                 <div class="mb-2">
-                    <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Tanggal Akhir Kontrak</label>
+                    <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Kontrak Mulai</label>
+                    <input type="date" name="contract_start_date" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10" value="{{ old('contract_start_date') }}">
+                </div>
+                <div class="mb-2">
+                    <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Kontrak Berakhir</label>
                     <input type="date" name="contract_end_date" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10" value="{{ old('contract_end_date') }}">
                 </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="mb-2">
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Manager</label>
                     <select name="manager_id" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
@@ -185,18 +193,18 @@
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Jenis Kelamin</label>
                     <select name="gender" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
                         <option value="">Pilih Jenis Kelamin</option>
-                        <option value="Male" {{ old('gender') == 'Male' ? 'selected' : '' }}>Laki-laki</option>
-                        <option value="Female" {{ old('gender') == 'Female' ? 'selected' : '' }}>Perempuan</option>
+                        <option value="male" {{ old('gender') == 'male' ? 'selected' : '' }}>Laki-laki</option>
+                        <option value="female" {{ old('gender') == 'female' ? 'selected' : '' }}>Perempuan</option>
                     </select>
                 </div>
                 <div class="mb-2">
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Status Perkawinan</label>
                     <select name="marital_status" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
                         <option value="">Status</option>
-                        <option value="Single" {{ old('marital_status') == 'Single' ? 'selected' : '' }}>Belum Menikah</option>
-                        <option value="Married" {{ old('marital_status') == 'Married' ? 'selected' : '' }}>Menikah</option>
-                        <option value="Divorced" {{ old('marital_status') == 'Divorced' ? 'selected' : '' }}>Cerai</option>
-                        <option value="Widowed" {{ old('marital_status') == 'Widowed' ? 'selected' : '' }}>Cerai Mati</option>
+                        <option value="single" {{ old('marital_status') == 'single' ? 'selected' : '' }}>Belum Menikah</option>
+                        <option value="married" {{ old('marital_status') == 'married' ? 'selected' : '' }}>Menikah</option>
+                        <option value="divorced" {{ old('marital_status') == 'divorced' ? 'selected' : '' }}>Cerai</option>
+                        <option value="widowed" {{ old('marital_status') == 'widowed' ? 'selected' : '' }}>Cerai Mati</option>
                     </select>
                 </div>
                 <div class="mb-2">
@@ -246,5 +254,20 @@ function previewPhoto(input) {
         reader.readAsDataURL(input.files[0]);
     }
 }
-</script>
 
+// Toggle contract dates based on employment status
+document.addEventListener('DOMContentLoaded', function() {
+    const statusSelect = document.getElementById('employmentStatusCreate');
+    const contractRow = document.getElementById('contractDatesRowCreate');
+
+    function toggleContractDates() {
+        const val = statusSelect.value;
+        const show = ['contract', 'intern', 'probation'].includes(val);
+        contractRow.style.display = show ? '' : 'none';
+    }
+
+    if (statusSelect && contractRow) {
+        statusSelect.addEventListener('change', toggleContractDates);
+    }
+});
+</script>

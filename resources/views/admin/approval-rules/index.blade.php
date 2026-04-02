@@ -194,11 +194,17 @@ function addBulkStep() {
         </select>
         <button type="button" onclick="removeBulkStep(this)" class="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"><span class="material-symbols-outlined text-[18px]">close</span></button>
     </div>`);
+    // Init searchable select on the newly added select
+    const newSelect = chain.querySelector('.bulk-step:last-child select');
+    if (newSelect && typeof initSearchableSelect === 'function') {
+        initSearchableSelect(newSelect);
+    }
     updateBulkFlow();
 }
 
 function removeBulkStep(btn) {
-    btn.closest('.bulk-step').remove();
+    const step = btn.closest('.bulk-step');
+    step.remove();
     document.querySelectorAll('#bulkChain .bulk-step').forEach((r, i) => r.querySelector('.bs-num').textContent = i + 1);
     updateBulkFlow();
 }

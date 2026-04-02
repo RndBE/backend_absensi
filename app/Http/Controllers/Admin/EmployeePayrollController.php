@@ -7,7 +7,6 @@ use App\Models\Employee;
 use App\Models\EmployeePayroll;
 use App\Models\EmployeePayrollComponent;
 use App\Models\PayrollComponent;
-use App\Models\PayrollGroup;
 use Illuminate\Http\Request;
 
 class EmployeePayrollController extends Controller
@@ -18,7 +17,7 @@ class EmployeePayrollController extends Controller
 
         $query = Employee::where('company_id', $admin->company_id)
             ->where('is_active', true)
-            ->with(['department:id,name', 'activePayroll.payrollGroup']);
+            ->with(['department:id,name', 'activePayroll']);
 
         if ($request->search) {
             $query->where(function ($q) use ($request) {
@@ -42,15 +41,14 @@ class EmployeePayrollController extends Controller
     {
         $employee = Employee::with([
             'department:id,name',
-            'activePayroll.payrollGroup',
+            'activePayroll',
             'payroll' => fn($q) => $q->orderBy('effective_date', 'desc'),
             'payrollComponents' => fn($q) => $q->where('is_active', true)->with('component'),
         ])->findOrFail($id);
 
-        $groups = PayrollGroup::where('is_active', true)->orderBy('name')->get();
         $components = PayrollComponent::where('is_active', true)->orderBy('type')->orderBy('name')->get();
 
-        return view('admin.employee-payrolls.edit', compact('employee', 'groups', 'components'));
+        return view('admin.employee-payrolls.edit', compact('employee', 'components'));
     }
 
     public function updatePayroll(Request $request, $id)
@@ -58,7 +56,6 @@ class EmployeePayrollController extends Controller
         $employee = Employee::findOrFail($id);
 
         $request->validate([
-            'payroll_group_id' => 'nullable|exists:payroll_groups,id',
             'basic_salary' => 'required|numeric|min:0',
             'payment_schedule' => 'required|in:monthly,biweekly,weekly',
             'payment_method' => 'required|in:transfer,cash',
@@ -78,7 +75,7 @@ class EmployeePayrollController extends Controller
         // Create new payroll record
         EmployeePayroll::create(array_merge(
             $request->only([
-                'payroll_group_id', 'basic_salary', 'payment_schedule', 'payment_method',
+                'basic_salary', 'payment_schedule', 'payment_method',
                 'bank_name', 'bank_account_number', 'bank_account_name',
                 'npwp', 'ptkp_status', 'bpjs_kesehatan', 'bpjs_ketenagakerjaan',
                 'effective_date',

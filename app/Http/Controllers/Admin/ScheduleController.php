@@ -87,8 +87,15 @@ class ScheduleController extends Controller
             ->get()
             ->keyBy(fn($h) => $h->date->format('Y-m-d'));
 
+        // All active employees for bulk assign modal (unfiltered)
+        $allEmployees = Employee::where('company_id', $admin->company_id)
+            ->where('is_active', true)
+            ->with(['department:id,name'])
+            ->orderBy('department_id')->orderBy('full_name')
+            ->get();
+
         return view('admin.schedules.index', compact(
-            'employees', 'dates', 'rangeStart', 'rangeEnd', 'rangeLabel',
+            'employees', 'allEmployees', 'dates', 'rangeStart', 'rangeEnd', 'rangeLabel',
             'assignments', 'shifts', 'departments', 'departmentId', 'search',
             'templates', 'holidays', 'viewMode', 'prevParam', 'nextParam', 'todayParam'
         ));
@@ -113,18 +120,20 @@ class ScheduleController extends Controller
     public function bulkStore(Request $request)
     {
         $request->validate([
-            'employee_ids' => 'required|array|min:1',
-            'employee_ids.*' => 'exists:employees,id',
-            'shift_id' => 'required|exists:shifts,id',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'include_weekends' => 'sometimes|boolean',
+            'employee_ids'    => 'required|array|min:1',
+            'employee_ids.*'  => 'exists:employees,id',
+            'shift_id'        => 'required|exists:shifts,id',
+            'start_date'      => 'required|date',
+            'end_date'        => 'required|date|after_or_equal:start_date',
+            'include_weekends'  => 'sometimes|boolean',
+            'include_holidays'  => 'sometimes|boolean',
         ]);
 
         $admin = Employee::find(session('admin_id'));
         $start = Carbon::parse($request->start_date);
-        $end = Carbon::parse($request->end_date);
-        $includeWeekends = $request->boolean('include_weekends');
+        $end   = Carbon::parse($request->end_date);
+        $includeWeekends  = $request->boolean('include_weekends');
+        $includeHolidays  = $request->boolean('include_holidays');
         $count = 0;
 
         // Load holidays for the date range
@@ -138,11 +147,19 @@ class ScheduleController extends Controller
             $current = $start->copy();
             while ($current->lte($end)) {
                 $dateStr = $current->format('Y-m-d');
-                // Skip weekends (if not included) and holidays
-                if ((!$includeWeekends && $current->isWeekend()) || in_array($dateStr, $holidays)) {
+
+                // Skip weekend jika tidak di-centang
+                if (!$includeWeekends && $current->isWeekend()) {
                     $current->addDay();
                     continue;
                 }
+
+                // Skip hari libur HANYA jika include_holidays tidak di-centang
+                if (!$includeHolidays && in_array($dateStr, $holidays)) {
+                    $current->addDay();
+                    continue;
+                }
+
                 ScheduleAssignment::updateOrCreate(
                     ['employee_id' => $empId, 'date' => $dateStr],
                     ['shift_id' => $request->shift_id]
@@ -152,7 +169,8 @@ class ScheduleController extends Controller
             }
         }
 
-        return back()->with('success', "{$count} jadwal berhasil di-assign (hari libur di-skip).");
+        $skipped = $includeHolidays ? '' : ' (hari libur di-skip)';
+        return back()->with('success', "{$count} jadwal berhasil di-assign{$skipped}.");
     }
 
     public function destroy($id)

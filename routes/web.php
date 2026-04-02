@@ -36,9 +36,12 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
     Route::get('/employees/create', [EmployeeController::class, 'create'])->name('employees.create');
     Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
+    Route::get('/employees/{id}', [EmployeeController::class, 'show'])->name('employees.show');
     Route::get('/employees/{id}/edit', [EmployeeController::class, 'edit'])->name('employees.edit');
     Route::put('/employees/{id}', [EmployeeController::class, 'update'])->name('employees.update');
     Route::delete('/employees/{id}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
+    Route::get('/employees/{id}/resign', [EmployeeController::class, 'resign'])->name('employees.resign');
+    Route::post('/employees/{id}/resign', [EmployeeController::class, 'processResign'])->name('employees.process-resign');
 
     // Employee Approver Chains
     Route::get('/employees/{id}/approvers', [\App\Http\Controllers\Admin\EmployeeApproverController::class, 'index'])->name('employees.approvers.index');
@@ -120,12 +123,7 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');
     Route::put('/attendance-settings', [AttendanceSettingController::class, 'update'])->name('attendance-settings.update');
 
-    // Payroll Groups
-    Route::get('/payroll-groups', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'index'])->name('payroll-groups.index');
-    Route::post('/payroll-groups', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'store'])->name('payroll-groups.store');
-    Route::put('/payroll-groups/{id}', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'update'])->name('payroll-groups.update');
-    Route::post('/payroll-groups/{id}/toggle', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'toggle'])->name('payroll-groups.toggle');
-    Route::delete('/payroll-groups/{id}', [\App\Http\Controllers\Admin\PayrollGroupController::class, 'destroy'])->name('payroll-groups.destroy');
+
 
     // Payroll Components
     Route::get('/payroll-components', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'index'])->name('payroll-components.index');
@@ -133,6 +131,11 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::put('/payroll-components/{id}', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'update'])->name('payroll-components.update');
     Route::post('/payroll-components/{id}/toggle', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'toggle'])->name('payroll-components.toggle');
     Route::delete('/payroll-components/{id}', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'destroy'])->name('payroll-components.destroy');
+    // Assign employees to a component
+    Route::get('/payroll-components/{id}/employees', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'employees'])->name('payroll-components.employees');
+    Route::post('/payroll-components/{id}/employees', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'assignEmployee'])->name('payroll-components.assign-employee');
+    Route::put('/payroll-components/{id}/employees/{assignId}', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'updateAssignment'])->name('payroll-components.update-assignment');
+    Route::delete('/payroll-components/{id}/employees/{assignId}', [\App\Http\Controllers\Admin\PayrollComponentController::class, 'removeAssignment'])->name('payroll-components.remove-assignment');
 
     // Employee Payrolls
     Route::get('/employee-payrolls', [\App\Http\Controllers\Admin\EmployeePayrollController::class, 'index'])->name('employee-payrolls.index');
@@ -155,6 +158,7 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::post('/payroll-runs/{id}/unlock', [\App\Http\Controllers\Admin\PayrollRunController::class, 'unlock'])->name('payroll-runs.unlock');
     Route::post('/payroll-runs/{id}/reopen', [\App\Http\Controllers\Admin\PayrollRunController::class, 'reopen'])->name('payroll-runs.reopen');
     Route::post('/payroll-runs/{id}/regenerate', [\App\Http\Controllers\Admin\PayrollRunController::class, 'regenerate'])->name('payroll-runs.regenerate');
+    Route::post('/payroll-runs/{id}/inject-bpjs', [\App\Http\Controllers\Admin\PayrollRunController::class, 'injectBpjs'])->name('payroll-runs.inject-bpjs');
     Route::delete('/payroll-runs/{id}', [\App\Http\Controllers\Admin\PayrollRunController::class, 'destroy'])->name('payroll-runs.destroy');
 
     // Payslips

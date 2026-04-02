@@ -51,14 +51,11 @@
 .ss-empty { padding: 16px; text-align: center; font-size: 12px; color: #9ca3af; }
 </style>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('select').forEach(function(sel) {
-        // Skip selects already enhanced or explicitly excluded
-        if (sel.dataset.ssInit || sel.dataset.noSearch) return;
-        // Skip selects inside hidden elements
-        if (sel.offsetParent === null && !sel.closest('.hidden')) return;
+function initSearchableSelect(sel) {
+    // Skip selects already enhanced or explicitly excluded
+    if (sel.dataset.ssInit || sel.dataset.noSearch) return;
 
-        sel.dataset.ssInit = '1';
+    sel.dataset.ssInit = '1';
 
         // Measure computed width BEFORE hiding
         const computedStyle = window.getComputedStyle(sel);
@@ -226,15 +223,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 o.classList.toggle('ss-selected', i === sel.selectedIndex);
             });
         });
-        observer.observe(sel, { attributes: true, childList: true, subtree: true });
+    observer.observe(sel, { attributes: true, childList: true, subtree: true });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('select').forEach(function(sel) {
+        // Skip selects inside hidden elements
+        if (sel.offsetParent === null && !sel.closest('.hidden')) return;
+        initSearchableSelect(sel);
     });
 
-    // Re-init for modals that become visible
+    // Re-init for modals/dynamic content that become visible
     document.addEventListener('click', function(e) {
         setTimeout(function() {
             document.querySelectorAll('select:not([data-ss-init])').forEach(function(sel) {
                 if (sel.offsetParent !== null) {
-                    sel.dispatchEvent(new Event('ss-init'));
+                    initSearchableSelect(sel);
                 }
             });
         }, 100);

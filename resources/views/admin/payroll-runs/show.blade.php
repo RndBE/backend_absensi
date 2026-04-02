@@ -13,12 +13,11 @@
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Periode</div>
         <div class="text-[18px] font-bold text-gray-900">{{ \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y') }}</div>
-        <div class="text-[12px] text-gray-500 mt-0.5">{{ $run->payrollGroup->name ?? 'Semua Group' }}</div>
+        <div class="text-[12px] text-gray-500 mt-0.5">{{ $details->count() }} karyawan</div>
     </div>
     <div class="bg-white rounded-xl border border-emerald-200 shadow-sm p-4">
         <div class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Total Earning</div>
         <div class="text-[18px] font-bold text-emerald-700">Rp {{ number_format($run->total_earning, 0, ',', '.') }}</div>
-        <div class="text-[12px] text-gray-500 mt-0.5">{{ $details->count() }} karyawan</div>
     </div>
     <div class="bg-white rounded-xl border border-red-200 shadow-sm p-4">
         <div class="text-[11px] font-bold text-red-600 uppercase tracking-wider mb-1">Total Deduction</div>
@@ -102,6 +101,22 @@
         </button>
     </form>
     @endif
+
+    {{-- Inject BPJS: tersedia di semua status untuk fix data lama --}}
+    @php
+        $hasBpjs = $details->contains(function($d) {
+            $comps = is_array($d->components) ? $d->components : json_decode($d->components, true) ?? [];
+            return collect($comps)->contains(fn($c) => str_contains($c['name'] ?? '', 'BPJS'));
+        });
+    @endphp
+    @if(!$hasBpjs || $run->status === 'draft')
+    <form action="{{ route('admin.payroll-runs.inject-bpjs', $run->id) }}" method="POST" onsubmit="return confirm('Inject komponen BPJS ke semua karyawan dalam payroll ini?')">
+        @csrf
+        <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-blue-600 to-cyan-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+            <span class="material-symbols-outlined text-[16px]">health_and_safety</span> Inject BPJS
+        </button>
+    </form>
+    @endif
 </div>
 
 {{-- Detail Table --}}
@@ -144,6 +159,14 @@
                                     <span class="text-emerald-600">+</span>
                                     <span class="text-gray-700">{{ $comp['name'] }}</span>
                                     <span class="font-semibold text-emerald-600 ml-auto">Rp {{ number_format($comp['amount'], 0, ',', '.') }}</span>
+                                @elseif($comp['type'] === 'info')
+                                    <span class="text-blue-500">ℹ</span>
+                                    <span class="text-gray-500">{{ $comp['name'] }}</span>
+                                    @if($comp['amount'] > 0)
+                                        <span class="font-semibold text-blue-500 ml-auto">Rp {{ number_format($comp['amount'], 0, ',', '.') }}</span>
+                                    @else
+                                        <span class="text-gray-400 ml-auto">{{ $comp['detail'] ?? '' }}</span>
+                                    @endif
                                 @else
                                     <span class="text-red-600">−</span>
                                     <span class="text-gray-700">{{ $comp['name'] }}</span>

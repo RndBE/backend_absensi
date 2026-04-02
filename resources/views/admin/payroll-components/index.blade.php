@@ -72,7 +72,13 @@
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-center">
                             <div class="flex items-center justify-center gap-1.5">
-                                <button onclick="openEdit({{ $c->id }}, '{{ $c->name }}', '{{ $c->type }}', '{{ $c->category }}', {{ $c->default_amount }}, {{ $c->is_taxable ? 1 : 0 }})" class="p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">edit</span></button>
+                                <a href="{{ route('admin.payroll-components.employees', $c->id) }}"
+                                   title="Kelola Karyawan"
+                                   class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
+                                    <span class="material-symbols-outlined text-[13px]">group</span>
+                                    <span>{{ $c->employee_components_count }}</span>
+                                </a>
+                                <button onclick="openEdit({{ $c->id }}, '{{ addslashes($c->name) }}', '{{ $c->type }}', '{{ $c->category }}', {{ $c->default_amount }}, {{ $c->is_taxable ? 1 : 0 }})" class="p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">edit</span></button>
                                 <form action="{{ route('admin.payroll-components.destroy', $c->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus komponen ini?')">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">delete</span></button>

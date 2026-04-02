@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class PayrollRun extends Model
 {
     protected $fillable = [
-        'period', 'payroll_group_id', 'status',
+        'period', 'status',
         'total_earning', 'total_deduction', 'total_net',
         'finalized_at', 'published_at', 'locked_at', 'created_by',
     ];
@@ -24,11 +24,6 @@ class PayrollRun extends Model
             'published_at' => 'datetime',
             'locked_at' => 'datetime',
         ];
-    }
-
-    public function payrollGroup(): BelongsTo
-    {
-        return $this->belongsTo(PayrollGroup::class);
     }
 
     public function creator(): BelongsTo

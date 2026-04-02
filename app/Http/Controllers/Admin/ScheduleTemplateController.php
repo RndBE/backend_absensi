@@ -15,7 +15,7 @@ class ScheduleTemplateController extends Controller
     {
         $admin = Employee::find(session('admin_id'));
         $templates = ScheduleTemplate::where('company_id', $admin->company_id)
-            ->with(['days.shift'])
+            ->with(['days.shift', 'employees:id,schedule_template_id'])
             ->withCount('employees')
             ->get();
 
@@ -94,22 +94,50 @@ class ScheduleTemplateController extends Controller
     }
 
     /**
-     * Bulk assign template to employees
+     * Sync template assignment — checked = assign, unchecked = lepas dari template ini
      */
     public function assignBulk(Request $request)
     {
         $request->validate([
-            'template_id' => 'required|exists:schedule_templates,id',
-            'employee_ids' => 'required|array|min:1',
+            'template_id'    => 'required|exists:schedule_templates,id',
+            'employee_ids'   => 'nullable|array',
             'employee_ids.*' => 'exists:employees,id',
         ]);
 
-        Employee::whereIn('id', $request->employee_ids)
-            ->update(['schedule_template_id' => $request->template_id]);
+        $admin      = Employee::find(session('admin_id'));
+        $templateId = (int) $request->template_id;
+        $template   = ScheduleTemplate::find($templateId);
 
-        $template = ScheduleTemplate::find($request->template_id);
-        $count = count($request->employee_ids);
+        // Semua karyawan aktif di company
+        $allIds      = Employee::where('company_id', $admin->company_id)
+                                ->where('is_active', true)
+                                ->pluck('id')
+                                ->toArray();
 
-        return back()->with('success', "{$count} karyawan berhasil di-assign ke template '{$template->name}'.");
+        $checkedIds  = array_map('intval', $request->input('employee_ids', []));
+        $uncheckedIds = array_diff($allIds, $checkedIds);
+
+        // Assign yang di-centang ke template ini
+        if (!empty($checkedIds)) {
+            Employee::whereIn('id', $checkedIds)
+                ->update(['schedule_template_id' => $templateId]);
+        }
+
+        // Lepas yang tidak di-centang HANYA jika mereka sedang pakai template ini
+        if (!empty($uncheckedIds)) {
+            Employee::whereIn('id', $uncheckedIds)
+                ->where('schedule_template_id', $templateId)
+                ->update(['schedule_template_id' => null]);
+        }
+
+        $assigned   = count($checkedIds);
+        $unassigned = Employee::whereIn('id', $uncheckedIds)
+                               ->whereNull('schedule_template_id')
+                               ->count();
+
+        return back()->with('success',
+            "{$assigned} karyawan di-assign ke template '{$template->name}'."
+            . ($unassigned > 0 ? " {$unassigned} karyawan dilepas dari template ini." : '')
+        );
     }
 }

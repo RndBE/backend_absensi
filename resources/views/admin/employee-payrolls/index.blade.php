@@ -29,7 +29,6 @@
                     <tr>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Karyawan</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Departemen</th>
-                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Group</th>
                         <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Gaji Pokok</th>
                         <th class="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Jadwal</th>
                         <th class="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Status</th>
@@ -50,13 +49,6 @@
                             </div>
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-[13px] text-gray-600">{{ $emp->department->name ?? '-' }}</td>
-                        <td class="px-4 py-3.5 border-b border-gray-100 text-[13px] text-gray-600">
-                            @if($payroll && $payroll->payrollGroup)
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700">{{ $payroll->payrollGroup->name }}</span>
-                            @else
-                                <span class="text-gray-400">-</span>
-                            @endif
-                        </td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-right text-[13px] font-semibold text-gray-800">
                             @if($payroll)
                                 Rp {{ number_format($payroll->basic_salary, 0, ',', '.') }}
@@ -81,7 +73,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="7" class="text-center py-12 text-gray-400 text-sm">Tidak ada karyawan ditemukan</td></tr>
+                    <tr><td colspan="6" class="text-center py-12 text-gray-400 text-sm">Tidak ada karyawan ditemukan</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -77,7 +77,6 @@
                         ['route' => 'admin.holidays.index', 'icon' => 'celebration', 'label' => 'Hari Libur', 'match' => 'admin.holidays.*'],
                     ]],
                     ['label' => 'Payroll', 'icon' => 'payments', 'key' => 'payroll', 'items' => [
-                        ['route' => 'admin.payroll-groups.index', 'icon' => 'workspaces', 'label' => 'Payroll Group', 'match' => 'admin.payroll-groups.*'],
                         ['route' => 'admin.payroll-components.index', 'icon' => 'list_alt', 'label' => 'Komponen Gaji', 'match' => 'admin.payroll-components.*'],
                         ['route' => 'admin.employee-payrolls.index', 'icon' => 'account_balance', 'label' => 'Master Payroll', 'match' => 'admin.employee-payrolls.*'],
                         ['route' => 'admin.payroll-runs.index', 'icon' => 'payments', 'label' => 'Run Payroll', 'match' => 'admin.payroll-runs.*'],
@@ -94,7 +93,8 @@
                         ['route' => 'admin.approval-rules.index', 'icon' => 'settings', 'label' => 'Pengaturan Approval', 'match' => 'admin.approval-rules.*'],
                     ]],
                     ['label' => 'Laporan', 'icon' => 'analytics', 'key' => 'reports', 'items' => [
-                        ['route' => 'admin.reports.index', 'icon' => 'analytics', 'label' => 'Pusat Laporan', 'match' => 'admin.reports.*'],
+                        ['route' => 'admin.reports.index', 'icon' => 'analytics', 'label' => 'Pusat Laporan', 'match' => 'admin.reports.index'],
+                        ['route' => 'admin.reports.overtime', 'icon' => 'more_time', 'label' => 'Rekap Lembur', 'match' => 'admin.reports.overtime*'],
                     ]],
                     ['label' => 'Pengaturan', 'icon' => 'settings', 'key' => 'settings', 'items' => [
                         ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*'],
