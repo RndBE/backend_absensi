@@ -180,9 +180,10 @@ class ReportController extends Controller
         foreach ($overtimes->where('status', 'approved') as $ot) {
             $empId = $ot->employee_id;
             if (!isset($otSummary[$empId])) {
-                $otSummary[$empId] = ['employee' => $ot->employee, 'total_minutes' => 0, 'count' => 0];
+                $otSummary[$empId] = ['employee' => $ot->employee, 'total_minutes' => 0, 'actual_minutes' => 0, 'count' => 0];
             }
             $otSummary[$empId]['total_minutes'] += (int) $ot->total_duration;
+            $otSummary[$empId]['actual_minutes'] += $ot->getPayableDuration();
             $otSummary[$empId]['count']++;
         }
 
@@ -208,15 +209,20 @@ class ReportController extends Controller
         $data = $query->orderByDesc('date')->get();
 
         return $this->streamCsv("overtime_{$month}.csv", [
-            'Tanggal', 'Kode Karyawan', 'Nama', 'Pre-Shift (menit)', 'Post-Shift (menit)', 'Total (menit)', 'Total (jam)', 'Status', 'Alasan',
+            'Tanggal', 'Kode Karyawan', 'Nama', 'Tipe', 'Pre-Shift (menit)', 'Post-Shift (menit)',
+            'Total (menit)', 'Break (menit)', 'Aktual (menit)', 'Aktual (jam)', 'Clock Out', 'Status', 'Alasan',
         ], $data->map(fn($o) => [
             $o->date->format('Y-m-d'),
             $o->employee->employee_code ?? '',
             $o->employee->full_name ?? '',
+            $o->overtime_type ?? 'workday',
             $o->pre_shift_duration ?? 0,
             $o->post_shift_duration ?? 0,
             $o->total_duration ?? 0,
-            round(($o->total_duration ?? 0) / 60, 1),
+            $o->approved_break ?? $o->break_duration ?? 0,
+            $o->actual_duration ?? '-',
+            !is_null($o->actual_duration) ? round($o->actual_duration / 60, 1) : '-',
+            $o->actual_clock_out ? substr($o->actual_clock_out, 0, 5) : '-',
             $o->status,
             $o->reason ?? '',
         ]));

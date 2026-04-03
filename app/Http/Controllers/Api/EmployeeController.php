@@ -27,6 +27,18 @@ class EmployeeController extends Controller
             ->orderBy('full_name')
             ->paginate(20);
 
+        $employees->getCollection()->transform(function ($employee) {
+            return [
+                'id' => $employee->id,
+                'employee_code' => $employee->employee_code,
+                'full_name' => $employee->full_name,
+                'phone' => $employee->phone,
+                'photo' => $employee->photo ? asset('storage/' . $employee->photo) : null,
+                'position' => $employee->position,
+                'department' => $employee->department?->name,
+            ];
+        });
+
         return response()->json(['success' => true, 'data' => $employees]);
     }
 

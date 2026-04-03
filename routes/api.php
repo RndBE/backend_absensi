@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Overtime (Lembur)
     Route::get('/overtime/requests', [OvertimeController::class, 'index']);
     Route::post('/overtime/requests', [OvertimeController::class, 'store']);
+    Route::get('/overtime/check-shift', [OvertimeController::class, 'checkShift']);
     Route::get('/overtime/requests/{id}', [OvertimeController::class, 'show']);
 
     // Notifications

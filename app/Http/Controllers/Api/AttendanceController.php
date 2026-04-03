@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
+use App\Models\Employee;
 use App\Models\Holiday;
 use App\Models\LeaveRequest;
+use App\Models\OvertimeRequest;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
 use Illuminate\Http\Request;
@@ -421,17 +423,47 @@ class AttendanceController extends Controller
             $photoPath = $this->storeBase64Photo($request->photo_base64, 'attendance/clock-out');
         }
 
+        $clockOutTime = now();
+
         $attendance->update([
-            'clock_out' => now()->format('H:i:s'),
+            'clock_out' => $clockOutTime->format('H:i:s'),
             'clock_out_lat' => $request->latitude,
             'clock_out_lng' => $request->longitude,
             'clock_out_photo' => $photoPath,
         ]);
 
+        // === OVERTIME ACTUAL CALCULATION ===
+        $overtimeInfo = null;
+        $overtimeRequest = OvertimeRequest::where('employee_id', $employee->id)
+            ->where('date', $today)
+            ->where('status', 'approved')
+            ->first();
+
+        if ($overtimeRequest) {
+            $actualOt = $this->calculateActualOvertime(
+                $overtimeRequest, $employee, $today, $attendance, $clockOutTime
+            );
+
+            $overtimeRequest->update([
+                'actual_duration' => $actualOt,
+                'actual_clock_in' => $attendance->clock_in,
+                'actual_clock_out' => $clockOutTime->format('H:i:s'),
+            ]);
+
+            $overtimeInfo = [
+                'overtime_type' => $overtimeRequest->overtime_type,
+                'requested_duration' => $overtimeRequest->total_duration,
+                'break_duration' => $overtimeRequest->approved_break ?? $overtimeRequest->break_duration,
+                'actual_duration' => $actualOt,
+                'actual_formatted' => $overtimeRequest->fresh()->actual_duration_formatted,
+            ];
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Clock out berhasil',
+            'message' => 'Clock out berhasil' . ($overtimeInfo ? ' (Lembur: ' . $overtimeInfo['actual_formatted'] . ')' : ''),
             'data' => $attendance,
+            'overtime' => $overtimeInfo,
         ]);
     }
 
@@ -559,6 +591,162 @@ class AttendanceController extends Controller
             IMAGETYPE_GIF => @imagecreatefromgif($path),
             default => false,
         };
+    }
+
+    /**
+     * Calculate actual overtime based on clock out time.
+     * Applies 15-minute rounding (ceil).
+     */
+    private function calculateActualOvertime(
+        OvertimeRequest $otRequest,
+        Employee $employee,
+        Carbon $today,
+        Attendance $attendance,
+        \Carbon\CarbonInterface $clockOutTime
+    ): int {
+        $duration = $otRequest->approved_duration ?? $otRequest->total_duration;
+        $breakMin = $otRequest->approved_break ?? $otRequest->break_duration ?? 0;
+        $actualOt = 0;
+
+        if ($otRequest->overtime_type === 'holiday') {
+            // === HARI LIBUR/OFF: hitung dari planned_start/end vs clock in/out ===
+            $plannedStart = Carbon::parse($today->format('Y-m-d') . ' ' . $otRequest->planned_start);
+            $plannedEnd = Carbon::parse($today->format('Y-m-d') . ' ' . $otRequest->planned_end);
+            $actualStart = Carbon::parse($today->format('Y-m-d') . ' ' . $attendance->clock_in);
+
+            // Effective start = whichever is later (clock_in or planned_start)
+            $effectiveStart = $actualStart->greaterThan($plannedStart) ? $actualStart : $plannedStart;
+
+            // Effective end = whichever is earlier (clock_out or planned_end)
+            $effectiveEnd = $clockOutTime->lessThan($plannedEnd) ? $clockOutTime : $plannedEnd;
+
+            $workMinutes = max(0, $effectiveEnd->diffInMinutes($effectiveStart, false));
+
+            // Subtract break, cap to max approved
+            $maxOt = max(0, $duration - $breakMin);
+            $actualOt = min(max(0, $workMinutes - $breakMin), $maxOt);
+        } else {
+            // === HARI KERJA: pre-shift + post-shift ===
+
+            // -- Post-shift overtime --
+            if (($otRequest->post_shift_duration ?? 0) > 0 || $otRequest->total_duration > 0) {
+                $shiftEndTime = $this->getShiftEndTime($employee, $today);
+
+                if ($shiftEndTime) {
+                    $otRequest->update(['shift_end_time' => $shiftEndTime]);
+                    $shiftEnd = Carbon::parse($today->format('Y-m-d') . ' ' . $shiftEndTime);
+
+                    // Minutes worked after shift end
+                    $postShiftMinutes = max(0, (int) $clockOutTime->floatDiffInMinutes($shiftEnd, false));
+
+                    $postBreak = $otRequest->approved_break
+                        ?? $otRequest->post_shift_break ?? 0;
+                    $postOt = max(0, $postShiftMinutes - $postBreak);
+
+                    // Cap to approved/requested post-shift duration minus break
+                    $approvedPost = $otRequest->approved_duration
+                        ?? $otRequest->post_shift_duration
+                        ?? $otRequest->total_duration ?? 0;
+                    $maxPostOt = max(0, $approvedPost - $postBreak);
+                    $postOt = min($postOt, $maxPostOt);
+
+                    $actualOt += $postOt;
+                }
+            }
+
+            // -- Pre-shift overtime --
+            if (($otRequest->pre_shift_duration ?? 0) > 0 && $attendance->clock_in) {
+                $shiftStartTime = $this->getShiftStartTime($employee, $today);
+
+                if ($shiftStartTime) {
+                    $shiftStart = Carbon::parse($today->format('Y-m-d') . ' ' . $shiftStartTime);
+                    $clockIn = Carbon::parse($today->format('Y-m-d') . ' ' . $attendance->clock_in);
+
+                    // Minutes worked before shift start
+                    $preShiftMinutes = max(0, (int) $shiftStart->floatDiffInMinutes($clockIn, false));
+
+                    $preBreak = $otRequest->pre_shift_break ?? 0;
+                    $preOt = max(0, $preShiftMinutes - $preBreak);
+
+                    // Cap to requested pre-shift duration minus break
+                    $maxPreOt = max(0, $otRequest->pre_shift_duration - $preBreak);
+                    $preOt = min($preOt, $maxPreOt);
+
+                    $actualOt += $preOt;
+                }
+            }
+        }
+
+        // Round up to nearest 15 minutes
+        $actualOt = (int) (ceil($actualOt / 15) * 15);
+
+        return $actualOt;
+    }
+
+    /**
+     * Get shift end time for an employee on a specific date.
+     */
+    private function getShiftEndTime(Employee $employee, Carbon $date): ?string
+    {
+        // 1. Check override in schedule_assignments
+        $override = ScheduleAssignment::with('shift')
+            ->where('employee_id', $employee->id)
+            ->where('date', $date)
+            ->first();
+
+        if ($override?->shift && !$override->shift->is_off) {
+            return $override->shift->end_time;
+        }
+
+        // 2. Fallback to schedule template
+        if ($employee->schedule_template_id) {
+            $employee->loadMissing('scheduleTemplate.days.shift');
+            $shift = $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
+            if ($shift && !$shift->is_off) {
+                return $shift->end_time;
+            }
+        }
+
+        // 3. Fallback to work schedule
+        if ($employee->work_schedule_id) {
+            $employee->loadMissing('workSchedule');
+            return $employee->workSchedule?->end_time;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get shift start time for an employee on a specific date.
+     */
+    private function getShiftStartTime(Employee $employee, Carbon $date): ?string
+    {
+        // 1. Check override in schedule_assignments
+        $override = ScheduleAssignment::with('shift')
+            ->where('employee_id', $employee->id)
+            ->where('date', $date)
+            ->first();
+
+        if ($override?->shift && !$override->shift->is_off) {
+            return $override->shift->start_time;
+        }
+
+        // 2. Fallback to schedule template
+        if ($employee->schedule_template_id) {
+            $employee->loadMissing('scheduleTemplate.days.shift');
+            $shift = $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
+            if ($shift && !$shift->is_off) {
+                return $shift->start_time;
+            }
+        }
+
+        // 3. Fallback to work schedule
+        if ($employee->work_schedule_id) {
+            $employee->loadMissing('workSchedule');
+            return $employee->workSchedule?->start_time;
+        }
+
+        return null;
     }
 }
 

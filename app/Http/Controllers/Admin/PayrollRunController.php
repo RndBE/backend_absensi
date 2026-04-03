@@ -782,6 +782,7 @@ class PayrollRunController extends Controller
      * Hitung lembur:
      * - Hari biasa: 1/173 × gaji pokok per jam
      * - Hari libur/off shift: 2/173 × gaji pokok per jam (×2)
+     * Uses actual_duration if available (from clock out calculation)
      */
     private function calculateOvertime(int $empId, $periodStart, $periodEnd, array $holidayDates, float $basicSalary, float $multiplier = 1): array
     {
@@ -809,11 +810,17 @@ class PayrollRunController extends Controller
         $holidayHours = 0;
 
         foreach ($overtimes as $ot) {
-            $hours = round($ot->total_duration / 60, 1);
+            // Use actual_duration (from clock out) if available, else approved, else total - break
+            $payableMinutes = $ot->getPayableDuration();
+            if ($payableMinutes <= 0) continue;
+
+            $hours = round($payableMinutes / 60, 1);
             $dateStr = Carbon::parse($ot->date)->format('Y-m-d');
 
-            // Check if it's a holiday or off-shift day
-            $isHoliday = in_array($dateStr, $holidayDates) || in_array($dateStr, $offDates);
+            // Check if it's a holiday, off-shift day, or holiday-type overtime
+            $isHoliday = $ot->overtime_type === 'holiday'
+                || in_array($dateStr, $holidayDates)
+                || in_array($dateStr, $offDates);
 
             if ($isHoliday) {
                 $totalAmount += $hours * $hourlyRate * 2;

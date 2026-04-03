@@ -78,6 +78,14 @@ class ApprovalController extends Controller
             'notes' => $request->notes,
         ]);
 
+        // If overtime: approver can adjust duration/break
+        if ($modelClass === OvertimeRequest::class && $request->filled('adjusted_duration')) {
+            $item->update([
+                'approved_duration' => (int) $request->adjusted_duration,
+                'approved_break' => (int) ($request->adjusted_break ?? $item->break_duration),
+            ]);
+        }
+
         // Data change: superadmin is always final approver (no chain)
         if ($type === 'data-change') {
             $item->update(['status' => 'approved']);

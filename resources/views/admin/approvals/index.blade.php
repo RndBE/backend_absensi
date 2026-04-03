@@ -98,14 +98,15 @@
                     <tr>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Karyawan</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Tanggal</th>
-                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Durasi</th>
+                        <th class="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Tipe</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Detail</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Alasan</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($overtime as $ot)
-                    <tr class="hover:bg-gray-50 transition-colors">
+                    <tr class="hover:bg-gray-50 transition-colors" id="ot-row-{{ $ot->id }}">
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex items-center gap-2">
                                 <div class="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($ot->employee->full_name ?? '?', 0, 1) }}</div>
@@ -116,21 +117,103 @@
                             </div>
                         </td>
                         <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $ot->date->format('d/m/Y') }}</td>
-                        <td class="px-4 py-3.5 text-[13.5px] font-semibold text-gray-800 border-b border-gray-100">{{ intdiv($ot->total_duration, 60) }}j {{ $ot->total_duration % 60 }}m</td>
+                        <td class="px-4 py-3.5 text-center border-b border-gray-100">
+                            <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold {{ $ot->overtime_type === 'holiday' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700' }}">
+                                {{ $ot->overtime_type === 'holiday' ? 'Libur' : 'Kerja' }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <div class="text-[13.5px] font-semibold text-gray-800">{{ $ot->total_duration_formatted }}</div>
+                            @if($ot->overtime_type === 'holiday' && $ot->planned_start)
+                                <div class="text-[11px] text-gray-400">{{ substr($ot->planned_start, 0, 5) }} - {{ substr($ot->planned_end, 0, 5) }}</div>
+                            @else
+                                @if(($ot->pre_shift_duration ?? 0) > 0)
+                                    <div class="text-[11px] text-gray-400">Pre: {{ $ot->pre_shift_duration }}m (break {{ $ot->pre_shift_break ?? 0 }}m)</div>
+                                @endif
+                                @if(($ot->post_shift_duration ?? 0) > 0)
+                                    <div class="text-[11px] text-gray-400">Post: {{ $ot->post_shift_duration }}m (break {{ $ot->post_shift_break ?? 0 }}m)</div>
+                                @endif
+                            @endif
+                            @if(($ot->break_duration ?? 0) > 0)
+                                <div class="text-[11px] text-amber-600">Break: {{ $ot->break_duration }}m</div>
+                            @endif
+                        </td>
                         <td class="px-4 py-3.5 text-[13px] text-gray-600 border-b border-gray-100 max-w-[200px]">{{ Str::limit($ot->reason, 60) }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
-                            <div class="flex gap-2">
-                                <form action="{{ route('admin.approvals.approve', ['type' => 'overtime', 'id' => $ot->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Setujui?')">check_circle</button></form>
-                                <form action="{{ route('admin.approvals.reject', ['type' => 'overtime', 'id' => $ot->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Tolak?')">cancel</button></form>
+                            <div class="flex flex-col gap-1.5">
+                                <button type="button" onclick="document.getElementById('ot-adjust-{{ $ot->id }}').classList.toggle('hidden')"
+                                    class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer">
+                                    <span class="material-symbols-outlined text-[14px]">tune</span> Sesuaikan
+                                </button>
+                                <div class="flex gap-1.5">
+                                    <form action="{{ route('admin.approvals.approve', ['type' => 'overtime', 'id' => $ot->id]) }}" method="POST" id="ot-approve-form-{{ $ot->id }}">
+                                        @csrf
+                                        <input type="hidden" name="adjusted_duration" id="ot-adj-dur-{{ $ot->id }}">
+                                        <input type="hidden" name="adjusted_break" id="ot-adj-brk-{{ $ot->id }}">
+                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="syncAdjust({{ $ot->id }}); return confirm('Setujui lembur ini?')">
+                                            <span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Setujui
+                                        </button>
+                                    </form>
+                                    <form action="{{ route('admin.approvals.reject', ['type' => 'overtime', 'id' => $ot->id]) }}" method="POST">
+                                        @csrf
+                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Tolak lembur ini?')">
+                                            <span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Tolak
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {{-- Adjust row (hidden by default) --}}
+                    <tr id="ot-adjust-{{ $ot->id }}" class="hidden bg-indigo-50/50">
+                        <td colspan="6" class="px-4 py-3 border-b border-gray-200">
+                            <div class="flex flex-wrap items-end gap-4">
+                                <div class="text-[11px] font-bold text-indigo-600 uppercase">Sesuaikan Durasi & Break</div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-gray-500 uppercase mb-0.5">Durasi (menit)</label>
+                                    <input type="number" min="0" id="ot-dur-input-{{ $ot->id }}" value="{{ $ot->total_duration }}"
+                                        class="w-24 px-2.5 py-1.5 text-[12px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-gray-500 uppercase mb-0.5">Break (menit)</label>
+                                    <input type="number" min="0" id="ot-brk-input-{{ $ot->id }}" value="{{ $ot->break_duration ?? 0 }}"
+                                        class="w-24 px-2.5 py-1.5 text-[12px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
+                                </div>
+                                <div class="text-[11px] text-gray-500">
+                                    OT Terhitung = <span class="font-bold text-amber-600" id="ot-calc-{{ $ot->id }}">{{ max(0, $ot->total_duration - ($ot->break_duration ?? 0)) }}m</span>
+                                </div>
                             </div>
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="5" class="text-center py-12 text-gray-400 text-sm">Tidak ada pengajuan lembur pending</td></tr>
+                    <tr><td colspan="6" class="text-center py-12 text-gray-400 text-sm">Tidak ada pengajuan lembur pending</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
+
+        <script>
+        function syncAdjust(id) {
+            const durInput = document.getElementById('ot-dur-input-' + id);
+            const brkInput = document.getElementById('ot-brk-input-' + id);
+            const adjRow = document.getElementById('ot-adjust-' + id);
+
+            if (adjRow && !adjRow.classList.contains('hidden')) {
+                document.getElementById('ot-adj-dur-' + id).value = durInput.value;
+                document.getElementById('ot-adj-brk-' + id).value = brkInput.value;
+            }
+        }
+
+        document.querySelectorAll('[id^="ot-dur-input-"], [id^="ot-brk-input-"]').forEach(input => {
+            input.addEventListener('input', function() {
+                const id = this.id.replace('ot-dur-input-', '').replace('ot-brk-input-', '');
+                const dur = parseInt(document.getElementById('ot-dur-input-' + id)?.value || 0);
+                const brk = parseInt(document.getElementById('ot-brk-input-' + id)?.value || 0);
+                const calc = document.getElementById('ot-calc-' + id);
+                if (calc) calc.textContent = Math.max(0, dur - brk) + 'm';
+            });
+        });
+        </script>
         @endif
 
         {{-- Attendance Request Tab --}}

@@ -102,7 +102,11 @@ class ApprovalController extends Controller
 
     public function approve(Request $request, $type, $id)
     {
-        $request->validate(['notes' => 'nullable|string']);
+        $request->validate([
+            'notes' => 'nullable|string',
+            'adjusted_duration' => 'nullable|integer|min:0',
+            'adjusted_break' => 'nullable|integer|min:0',
+        ]);
 
         $modelClass = $this->typeMap[$type] ?? null;
         $typeLabel = $this->typeLabels[$type] ?? 'Pengajuan';
@@ -127,6 +131,14 @@ class ApprovalController extends Controller
             'notes' => $request->notes,
             'step_order' => $currentStep,
         ]);
+
+        // If overtime: approver can adjust duration/break
+        if ($modelClass === OvertimeRequest::class && $request->filled('adjusted_duration')) {
+            $item->update([
+                'approved_duration' => $request->adjusted_duration,
+                'approved_break' => $request->adjusted_break ?? $item->break_duration,
+            ]);
+        }
 
         // Check if there's a next approver in the chain
         $nextApprover = $request->user()->approver; // the approver of the current approver
