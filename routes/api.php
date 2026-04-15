@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\ApprovalController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AttendanceRequestController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\LeaveController;
@@ -67,6 +68,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/approvals/{type}/{id}', [ApprovalController::class, 'show']);
     Route::post('/approvals/{type}/{id}/approve', [ApprovalController::class, 'approve']);
     Route::post('/approvals/{type}/{id}/reject', [ApprovalController::class, 'reject']);
+
+    // Budget / Reimbursement
+    Route::get('/budget/requests', [BudgetController::class, 'index']);
+    Route::post('/budget/requests', [BudgetController::class, 'store']);
+    Route::get('/budget/item-types', [BudgetController::class, 'itemTypes']);
+    Route::get('/budget/requests/{id}', [BudgetController::class, 'show']);
+
+    // Travel Reports (LHP)
+    Route::get('/travel-reports', [\App\Http\Controllers\Api\TravelReportController::class, 'index']);
+    Route::post('/travel-reports', [\App\Http\Controllers\Api\TravelReportController::class, 'store']);
+    Route::get('/travel-reports/available-requests', [\App\Http\Controllers\Api\TravelReportController::class, 'availableRequests']);
+    Route::get('/travel-reports/{id}', [\App\Http\Controllers\Api\TravelReportController::class, 'show']);
 
     // Profile
     Route::get('/profile', [ProfileController::class, 'index']);

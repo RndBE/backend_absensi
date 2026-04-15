@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalLog;
 use App\Models\AttendanceRequest;
+use App\Models\BudgetRequest;
+use App\Models\TravelReport;
 use App\Models\DataChangeRequest;
 use App\Models\Employee;
 use App\Models\LeaveBalance;
@@ -21,6 +23,8 @@ class ApprovalController extends Controller
         'overtime' => OvertimeRequest::class,
         'attendance' => AttendanceRequest::class,
         'data-change' => DataChangeRequest::class,
+        'budget' => BudgetRequest::class,
+        'travel_report' => TravelReport::class,
     ];
 
     private $typeLabels = [
@@ -28,6 +32,8 @@ class ApprovalController extends Controller
         'overtime' => 'Lembur',
         'attendance' => 'Presensi',
         'data-change' => 'Perubahan Data',
+        'budget' => 'Anggaran',
+        'travel_report' => 'LHP',
     ];
 
     public function index(Request $request)
@@ -42,6 +48,10 @@ class ApprovalController extends Controller
         $pending['attendance'] = $this->getMyPendingItems(AttendanceRequest::class, $employee,
             ['employee:id,full_name,photo,department_id,approver_id', 'employee.department:id,name']);
         $pending['data_change'] = $this->getMyPendingItems(DataChangeRequest::class, $employee,
+            ['employee:id,full_name,photo,department_id,approver_id', 'employee.department:id,name']);
+        $pending['budget'] = $this->getMyPendingItems(BudgetRequest::class, $employee,
+            ['employee:id,full_name,photo,department_id,approver_id', 'employee.department:id,name', 'items']);
+        $pending['travel_report'] = $this->getMyPendingItems(TravelReport::class, $employee,
             ['employee:id,full_name,photo,department_id,approver_id', 'employee.department:id,name']);
 
         return response()->json(['success' => true, 'data' => $pending]);
@@ -95,7 +105,18 @@ class ApprovalController extends Controller
             return response()->json(['success' => false, 'message' => 'Tipe tidak valid'], 404);
         }
 
-        $item = $modelClass::with(['employee', 'attachments', 'approvalLogs.approver'])->findOrFail($id);
+        $relations = ['employee', 'attachments', 'approvalLogs.approver'];
+        if ($modelClass === BudgetRequest::class) {
+            $relations[] = 'items';
+            $relations[] = 'participants';
+        }
+        if ($modelClass === TravelReport::class) {
+            $relations[] = 'activities.documents';
+            $relations[] = 'documents';
+            $relations[] = 'budgetRequest';
+        }
+
+        $item = $modelClass::with($relations)->findOrFail($id);
 
         return response()->json(['success' => true, 'data' => $item]);
     }

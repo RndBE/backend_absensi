@@ -156,6 +156,7 @@ class EmployeeController extends Controller
             'contract_end_date' => 'nullable|date',
             'role' => 'required|in:superadmin,admin,manager,employee',
             'photo' => 'nullable|image|max:2048',
+            'signature' => 'nullable|image|max:2048',
             'birth_place' => 'nullable|string|max:255',
             'birth_date' => 'nullable|date',
             'gender' => 'nullable|in:male,female',
@@ -168,7 +169,7 @@ class EmployeeController extends Controller
             'residential_address' => 'nullable|string',
         ]);
 
-        $data = $request->except(['password', 'photo', 'remove_photo']);
+        $data = $request->except(['password', 'photo', 'remove_photo', 'signature', 'remove_signature']);
         if ($request->filled('password')) {
             $data['password'] = $request->password;
         }
@@ -184,6 +185,19 @@ class EmployeeController extends Controller
                 Storage::disk('public')->delete($employee->photo);
             }
             $data['photo'] = $request->file('photo')->store('employees/photos', 'public');
+        }
+
+        // Handle signature
+        if ($request->boolean('remove_signature')) {
+            if ($employee->signature) {
+                Storage::disk('public')->delete($employee->signature);
+            }
+            $data['signature'] = null;
+        } elseif ($request->hasFile('signature')) {
+            if ($employee->signature) {
+                Storage::disk('public')->delete($employee->signature);
+            }
+            $data['signature'] = $request->file('signature')->store('employees/signatures', 'public');
         }
 
         $employee->update($data);

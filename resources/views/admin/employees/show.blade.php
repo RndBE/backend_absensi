@@ -42,6 +42,14 @@
                             {{ substr($employee->full_name, 0, 1) }}</div>
                     @endif
                 </div>
+                @if($employee->signature)
+                <div class="shrink-0 ml-1">
+                    <div class="text-[10px] font-bold text-gray-400 uppercase text-center mb-1">Tanda Tangan</div>
+                    <div class="w-24 h-12 rounded-lg border border-gray-200 bg-white overflow-hidden flex items-center justify-center">
+                        <img src="{{ asset('storage/' . $employee->signature) }}" alt="Signature" class="max-w-full max-h-full object-contain">
+                    </div>
+                </div>
+                @endif
                 {{-- Name & Role --}}
                 <div class="pb-1 flex-1 min-w-0">
                     <h2 class="text-[18px] font-bold text-gray-900 truncate">{{ $employee->full_name }}</h2>
@@ -245,7 +253,7 @@
                     </h3>
                 </div>
                 <div class="p-5 space-y-4">
-                    @foreach(['leave' => 'Cuti', 'overtime' => 'Lembur', 'attendance' => 'Presensi'] as $type => $label)
+                    @foreach(['leave' => 'Cuti', 'overtime' => 'Lembur', 'attendance' => 'Presensi', 'budget' => 'Anggaran', 'travel_report' => 'LHP'] as $type => $label)
                         <div>
                             <div class="text-[12px] font-bold text-gray-500 uppercase tracking-wider mb-2">{{ $label }}</div>
                             @php $chain = $approvalChains[$type] ?? collect(); @endphp

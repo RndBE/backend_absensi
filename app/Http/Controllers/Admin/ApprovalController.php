@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalLog;
 use App\Models\AttendanceRequest;
+use App\Models\BudgetRequest;
+use App\Models\TravelReport;
 use App\Models\DataChangeRequest;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
@@ -35,6 +37,16 @@ class ApprovalController extends Controller
             ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name'])
             ->orderBy('created_at', 'desc')->get();
 
+        // Budget requests
+        $budget = $this->getMyPendingRequests(BudgetRequest::class, $admin)
+            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'items'])
+            ->orderBy('created_at', 'desc')->get();
+
+        // Travel Reports (LHP)
+        $travelReport = $this->getMyPendingRequests(TravelReport::class, $admin)
+            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name'])
+            ->orderBy('created_at', 'desc')->get();
+
         // Data change requests: only visible to superadmin
         if ($admin->role === 'superadmin') {
             $dataChange = DataChangeRequest::whereIn('status', ['pending', 'in_review'])
@@ -44,7 +56,7 @@ class ApprovalController extends Controller
             $dataChange = collect();
         }
 
-        return view('admin.approvals.index', compact('leave', 'overtime', 'attendance', 'dataChange', 'tab', 'admin'));
+        return view('admin.approvals.index', compact('leave', 'overtime', 'attendance', 'budget', 'travelReport', 'dataChange', 'tab', 'admin'));
     }
 
     public function approve(Request $request, $type, $id)
@@ -231,6 +243,7 @@ class ApprovalController extends Controller
             LeaveRequest::class => 'leave',
             OvertimeRequest::class => 'overtime',
             AttendanceRequest::class => 'attendance',
+            BudgetRequest::class => 'budget',
             default => 'leave',
         };
     }
@@ -307,6 +320,8 @@ class ApprovalController extends Controller
             'overtime' => OvertimeRequest::class,
             'attendance' => AttendanceRequest::class,
             'data-change' => DataChangeRequest::class,
+            'budget' => BudgetRequest::class,
+            'travel_report' => TravelReport::class,
             default => abort(404),
         };
     }
@@ -318,6 +333,8 @@ class ApprovalController extends Controller
             'overtime' => 'Lembur',
             'attendance' => 'Presensi',
             'data-change' => 'Perubahan Data',
+            'budget' => 'Anggaran',
+            'travel_report' => 'LHP',
             default => 'Pengajuan',
         };
     }

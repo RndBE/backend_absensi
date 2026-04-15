@@ -38,6 +38,33 @@
                 </div>
             </div>
 
+            {{-- Signature Upload --}}
+            <div class="mb-5 flex items-center gap-5 pb-5 border-b border-gray-100">
+                <div class="relative group">
+                    <div id="signaturePreview" class="w-32 h-16 rounded-lg border-2 border-dashed border-gray-200 overflow-hidden bg-white flex items-center justify-center shrink-0">
+                        @if($employee->signature)
+                            <img src="{{ asset('storage/' . $employee->signature) }}" alt="Signature" class="max-w-full max-h-full object-contain">
+                        @else
+                            <span class="material-symbols-outlined text-[24px] text-gray-300">draw</span>
+                        @endif
+                    </div>
+                    <label class="absolute inset-0 rounded-lg bg-black/40 opacity-0 group-hover:opacity-100 transition-all cursor-pointer flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-[20px]">edit</span>
+                        <input type="file" name="signature" accept="image/*" class="hidden" onchange="previewSignature(this)">
+                    </label>
+                </div>
+                <div>
+                    <div class="text-[13px] font-semibold text-gray-800">Tanda Tangan</div>
+                    <div class="text-[11px] text-gray-400">Upload tanda tangan digital. Maks 2MB. Latar transparan (PNG) disarankan.</div>
+                    @if($employee->signature)
+                        <label class="inline-flex items-center gap-1 mt-1 text-[11px] text-red-500 cursor-pointer hover:underline">
+                            <input type="checkbox" name="remove_signature" value="1" class="accent-red-500 w-3 h-3"> Hapus tanda tangan
+                        </label>
+                    @endif
+                    @error('signature')<div class="text-red-500 text-xs mt-1">{{ $message }}</div>@enderror
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="mb-2">
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Kode Karyawan *</label>
@@ -242,7 +269,7 @@
     <div class="p-5">
         <form action="{{ route('admin.employees.approvers.store', $employee->id) }}" method="POST" id="approvalForm">
             @csrf
-            @php $types = ['leave' => 'Cuti', 'overtime' => 'Lembur', 'attendance' => 'Presensi']; @endphp
+            @php $types = ['leave' => 'Cuti', 'overtime' => 'Lembur', 'attendance' => 'Presensi', 'budget' => 'Anggaran', 'travel_report' => 'LHP']; @endphp
 
             <div class="flex gap-0 border-b-2 border-gray-200 mb-5">
                 @foreach($types as $tKey => $tLabel)
@@ -375,6 +402,17 @@ function previewPhoto(input) {
         reader.onload = function(e) {
             const preview = document.getElementById('photoPreview');
             preview.innerHTML = '<img src="' + e.target.result + '" alt="Preview" class="w-full h-full object-cover">';
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function previewSignature(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('signaturePreview');
+            preview.innerHTML = '<img src="' + e.target.result + '" alt="Signature" class="max-w-full max-h-full object-contain">';
         };
         reader.readAsDataURL(input.files[0]);
     }

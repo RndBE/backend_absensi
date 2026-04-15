@@ -115,6 +115,35 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::get('/approval-rules', [ApprovalRuleController::class, 'index'])->name('approval-rules.index');
     Route::post('/approval-rules/bulk-assign', [ApprovalRuleController::class, 'bulkAssign'])->name('approval-rules.bulk-assign');
 
+    // Budget Requests
+    Route::get('/budget-requests', [\App\Http\Controllers\Admin\BudgetRequestController::class, 'index'])->name('budget-requests.index');
+    Route::get('/budget-requests/{id}', [\App\Http\Controllers\Admin\BudgetRequestController::class, 'show'])->name('budget-requests.show');
+    Route::delete('/budget-requests/{id}', [\App\Http\Controllers\Admin\BudgetRequestController::class, 'destroy'])->name('budget-requests.destroy');
+
+    // Travel Reports (LHP)
+    Route::get('/travel-reports', [\App\Http\Controllers\Admin\TravelReportController::class, 'index'])->name('travel-reports.index');
+    Route::get('/travel-reports/create', [\App\Http\Controllers\Admin\TravelReportController::class, 'create'])->name('travel-reports.create');
+    Route::post('/travel-reports', [\App\Http\Controllers\Admin\TravelReportController::class, 'store'])->name('travel-reports.store');
+    Route::get('/travel-reports/{id}', [\App\Http\Controllers\Admin\TravelReportController::class, 'show'])->name('travel-reports.show');
+    Route::get('/travel-reports/{id}/print', [\App\Http\Controllers\Admin\TravelReportController::class, 'print'])->name('travel-reports.print');
+    Route::delete('/travel-reports/{id}', [\App\Http\Controllers\Admin\TravelReportController::class, 'destroy'])->name('travel-reports.destroy');
+
+    // Budget Payments
+    Route::post('/budget-requests/{id}/payments', [\App\Http\Controllers\Admin\BudgetPaymentController::class, 'store'])->name('budget-payments.store');
+    Route::delete('/budget-requests/{requestId}/payments/{paymentId}', [\App\Http\Controllers\Admin\BudgetPaymentController::class, 'destroy'])->name('budget-payments.destroy');
+
+    // Policies (Reimbursement Rules)
+    Route::get('/policies', [\App\Http\Controllers\Admin\PolicyController::class, 'index'])->name('policies.index');
+    Route::post('/policies', [\App\Http\Controllers\Admin\PolicyController::class, 'store'])->name('policies.store');
+    Route::put('/policies/{id}', [\App\Http\Controllers\Admin\PolicyController::class, 'update'])->name('policies.update');
+    Route::delete('/policies/{id}', [\App\Http\Controllers\Admin\PolicyController::class, 'destroy'])->name('policies.destroy');
+
+    // Travel Zones
+    Route::get('/travel-zones', [\App\Http\Controllers\Admin\TravelZoneController::class, 'index'])->name('travel-zones.index');
+    Route::post('/travel-zones', [\App\Http\Controllers\Admin\TravelZoneController::class, 'store'])->name('travel-zones.store');
+    Route::put('/travel-zones/{id}', [\App\Http\Controllers\Admin\TravelZoneController::class, 'update'])->name('travel-zones.update');
+    Route::delete('/travel-zones/{id}', [\App\Http\Controllers\Admin\TravelZoneController::class, 'destroy'])->name('travel-zones.destroy');
+
     // Company Settings
     Route::get('/company', [CompanyController::class, 'index'])->name('company.index');
     Route::put('/company', [CompanyController::class, 'update'])->name('company.update');

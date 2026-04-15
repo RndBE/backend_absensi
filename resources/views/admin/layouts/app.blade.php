@@ -72,6 +72,12 @@
                         ['route' => 'admin.leave-policies.index', 'icon' => 'tune', 'label' => 'Kebijakan Cuti', 'match' => 'admin.leave-policies.*'],
                         ['route' => 'admin.leave-balances.index', 'icon' => 'account_balance_wallet', 'label' => 'Saldo Cuti', 'match' => 'admin.leave-balances.*'],
                     ]],
+                    ['label' => 'Anggaran', 'icon' => 'request_quote', 'key' => 'budget', 'items' => [
+                        ['route' => 'admin.budget-requests.index', 'icon' => 'request_quote', 'label' => 'Pengajuan Anggaran', 'match' => 'admin.budget-requests.*'],
+                        ['route' => 'admin.travel-reports.index', 'icon' => 'flight_takeoff', 'label' => 'LHP', 'match' => 'admin.travel-reports.*'],
+                        ['route' => 'admin.policies.index', 'icon' => 'policy', 'label' => 'Kebijakan', 'match' => 'admin.policies.*'],
+                        ['route' => 'admin.travel-zones.index', 'icon' => 'map', 'label' => 'Zona Perjalanan', 'match' => 'admin.travel-zones.*'],
+                    ]],
                     ['label' => 'Jadwal Kerja', 'icon' => 'calendar_month', 'key' => 'schedule', 'items' => [
                         ['route' => 'admin.schedules.index', 'icon' => 'calendar_month', 'label' => 'Jadwal Kerja', 'match' => 'admin.schedules.*'],
                         ['route' => 'admin.holidays.index', 'icon' => 'celebration', 'label' => 'Hari Libur', 'match' => 'admin.holidays.*'],

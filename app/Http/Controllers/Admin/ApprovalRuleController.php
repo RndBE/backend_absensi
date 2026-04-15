@@ -18,6 +18,8 @@ class ApprovalRuleController extends Controller
             'leave' => 'Cuti',
             'overtime' => 'Lembur',
             'attendance' => 'Presensi',
+            'budget' => 'Anggaran',
+            'travel_report' => 'LHP',
         ];
 
         // Get all employees with their approval chains for the active type
@@ -51,7 +53,7 @@ class ApprovalRuleController extends Controller
             'employee_ids' => 'required|array|min:1',
             'employee_ids.*' => 'integer|exists:employees,id',
             'apply_types' => 'required|array|min:1',
-            'apply_types.*' => 'in:leave,overtime,attendance',
+            'apply_types.*' => 'in:leave,overtime,attendance,budget,travel_report',
             'approver_ids' => 'required|array|min:1',
             'approver_ids.*' => 'integer|exists:employees,id',
         ]);
