@@ -25,21 +25,27 @@ class ShiftController extends Controller
         $admin = Employee::find(session('admin_id'));
 
         $request->validate([
-            'name' => 'required|string|max:255',
-            'start_time' => 'nullable|date_format:H:i',
-            'end_time' => 'nullable|date_format:H:i',
-            'color' => 'required|string|max:7',
-            'is_off' => 'sometimes|boolean',
+            'name'          => 'required|string|max:255',
+            'start_time'    => 'nullable|date_format:H:i',
+            'end_time'      => 'nullable|date_format:H:i',
+            'color'         => 'required|string|max:7',
+            'is_off'        => 'sometimes|boolean',
+            'work_hours'    => 'nullable|integer|min:1|max:24',
+            'auto_overtime' => 'sometimes|boolean',
         ]);
 
+        $isOff = $request->boolean('is_off');
+
         Shift::create([
-            'company_id' => $admin->company_id,
-            'name' => $request->name,
-            'start_time' => $request->is_off ? null : $request->start_time,
-            'end_time' => $request->is_off ? null : $request->end_time,
-            'color' => $request->color,
-            'is_off' => $request->boolean('is_off'),
-            'sort_order' => Shift::where('company_id', $admin->company_id)->max('sort_order') + 1,
+            'company_id'    => $admin->company_id,
+            'name'          => $request->name,
+            'start_time'    => $isOff ? null : $request->start_time,
+            'end_time'      => $isOff ? null : $request->end_time,
+            'color'         => $request->color,
+            'is_off'        => $isOff,
+            'sort_order'    => Shift::where('company_id', $admin->company_id)->max('sort_order') + 1,
+            'work_hours'    => (!$isOff && $request->boolean('auto_overtime')) ? $request->work_hours : null,
+            'auto_overtime' => !$isOff && $request->boolean('auto_overtime'),
         ]);
 
         return back()->with('success', 'Shift berhasil ditambahkan.');
@@ -50,19 +56,25 @@ class ShiftController extends Controller
         $shift = Shift::findOrFail($id);
 
         $request->validate([
-            'name' => 'required|string|max:255',
-            'start_time' => 'nullable|date_format:H:i',
-            'end_time' => 'nullable|date_format:H:i',
-            'color' => 'required|string|max:7',
-            'is_off' => 'sometimes|boolean',
+            'name'          => 'required|string|max:255',
+            'start_time'    => 'nullable|date_format:H:i',
+            'end_time'      => 'nullable|date_format:H:i',
+            'color'         => 'required|string|max:7',
+            'is_off'        => 'sometimes|boolean',
+            'work_hours'    => 'nullable|integer|min:1|max:24',
+            'auto_overtime' => 'sometimes|boolean',
         ]);
 
+        $isOff = $request->boolean('is_off');
+
         $shift->update([
-            'name' => $request->name,
-            'start_time' => $request->boolean('is_off') ? null : $request->start_time,
-            'end_time' => $request->boolean('is_off') ? null : $request->end_time,
-            'color' => $request->color,
-            'is_off' => $request->boolean('is_off'),
+            'name'          => $request->name,
+            'start_time'    => $isOff ? null : $request->start_time,
+            'end_time'      => $isOff ? null : $request->end_time,
+            'color'         => $request->color,
+            'is_off'        => $isOff,
+            'work_hours'    => (!$isOff && $request->boolean('auto_overtime')) ? $request->work_hours : null,
+            'auto_overtime' => !$isOff && $request->boolean('auto_overtime'),
         ]);
 
         return back()->with('success', 'Shift berhasil diperbarui.');
