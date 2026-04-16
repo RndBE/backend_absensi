@@ -1,0 +1,150 @@
+@extends('admin.layouts.app')
+@section('title', 'Dashboard')
+
+@section('content')
+{{-- Stat Cards --}}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-7">
+    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-blue animate-fade-in-up delay-1">
+        <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">group</span></div>
+        <div>
+            <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $totalEmployees }}</div>
+            <div class="text-[13px] text-gray-500 font-medium">Total Karyawan</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-green animate-fade-in-up delay-2">
+        <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">check_circle</span></div>
+        <div>
+            <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $presentToday }}</div>
+            <div class="text-[13px] text-gray-500 font-medium">Hadir Hari Ini</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-yellow animate-fade-in-up delay-3">
+        <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">schedule</span></div>
+        <div>
+            <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $lateToday }}</div>
+            <div class="text-[13px] text-gray-500 font-medium">Terlambat</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-red animate-fade-in-up delay-4">
+        <div class="w-12 h-12 rounded-xl bg-red-50 text-red-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">cancel</span></div>
+        <div>
+            <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $absentToday }}</div>
+            <div class="text-[13px] text-gray-500 font-medium">Tidak Hadir</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-purple animate-fade-in-up delay-5">
+        <div class="w-12 h-12 rounded-xl bg-violet-50 text-violet-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">pending_actions</span></div>
+        <div>
+            <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $totalPending }}</div>
+            <div class="text-[13px] text-gray-500 font-medium">Menunggu Persetujuan</div>
+        </div>
+    </div>
+</div>
+
+{{-- Grid 2 --}}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    {{-- Recent Attendance --}}
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm animate-fade-in-up">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">schedule</span> Absensi Hari Ini</h3>
+            <a href="{{ route('admin.attendance.realtime') }}" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">Lihat Semua</a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Karyawan</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Masuk</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Pulang</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($recentAttendance as $att)
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <div class="flex items-center gap-2">
+                                @if($att->employee->photo)
+                                    <img src="{{ asset('storage/' . $att->employee->photo) }}" class="w-7 h-7 rounded-full object-cover shrink-0" alt="">
+                                @else
+                                    <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($att->employee->full_name ?? '?', 0, 1) }}</div>
+                                @endif
+                                <div>
+                                    <div class="text-[13px] font-semibold text-gray-800">{{ $att->employee->full_name ?? '-' }}</div>
+                                    <div class="text-[11px] text-gray-400">{{ $att->employee->department->name ?? '' }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3.5 text-[13.5px] text-gray-700 border-b border-gray-100">{{ $att->clock_in ?? '-' }}</td>
+                        <td class="px-4 py-3.5 text-[13.5px] text-gray-700 border-b border-gray-100">{{ $att->clock_out ?? '-' }}</td>
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            @if($att->is_late)
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Terlambat</span>
+                            @else
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Tepat Waktu</span>
+                            @endif
+                            @if($att->is_remote)
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 ml-1"><span class="material-symbols-outlined text-[10px]">share_location</span></span>
+                            @endif
+                        </td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="4" class="text-center py-12 text-gray-400 text-sm">Belum ada data absensi hari ini</td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {{-- Recent Leaves --}}
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm animate-fade-in-up">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">description</span> Pengajuan Terbaru</h3>
+            <a href="{{ route('admin.approvals.index') }}" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">Kelola</a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Karyawan</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Tipe</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Tanggal</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($recentLeaves as $lr)
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <div class="flex items-center gap-2">
+                                <div class="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($lr->employee->full_name ?? '?', 0, 1) }}</div>
+                                <span class="text-[13px] font-semibold text-gray-800">{{ $lr->employee->full_name ?? '-' }}</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">{{ $lr->leaveType->name ?? 'Cuti' }}</span>
+                        </td>
+                        <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $lr->start_date->format('d/m/Y') }}</td>
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            @if($lr->status === 'pending')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Pending</span>
+                            @elseif($lr->status === 'approved')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Disetujui</span>
+                            @else
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-red-100 text-red-800">Ditolak</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="4" class="text-center py-12 text-gray-400 text-sm">Tidak ada pengajuan terbaru</td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+@endsection
