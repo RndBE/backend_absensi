@@ -59,63 +59,71 @@
                 $navGroups = [
                     ['label' => 'Menu Utama', 'icon' => 'space_dashboard', 'key' => 'main', 'items' => [
                         ['route' => 'admin.dashboard', 'icon' => 'dashboard', 'label' => 'Dashboard', 'match' => 'admin.dashboard'],
-                        ['route' => 'admin.employees.index', 'icon' => 'group', 'label' => 'Karyawan', 'match' => 'admin.employees.*'],
-                        ['route' => 'admin.departments.index', 'icon' => 'apartment', 'label' => 'Departemen', 'match' => 'admin.departments.*'],
+                        ['route' => 'admin.employees.index', 'icon' => 'group', 'label' => 'Karyawan', 'match' => 'admin.employees.*', 'permission' => 'employees.view'],
+                        ['route' => 'admin.departments.index', 'icon' => 'apartment', 'label' => 'Departemen', 'match' => 'admin.departments.*', 'permission' => 'employees.view'],
                     ]],
                     ['label' => 'Presensi', 'icon' => 'fingerprint', 'key' => 'attendance', 'items' => [
-                        ['route' => 'admin.attendance.realtime', 'icon' => 'location_on', 'label' => 'Realtime Hari Ini', 'match' => 'admin.attendance.realtime'],
-                        ['route' => 'admin.attendance.history', 'icon' => 'history', 'label' => 'Riwayat Absensi', 'match' => 'admin.attendance.history'],
-                        ['route' => 'admin.attendance-recap.index', 'icon' => 'summarize', 'label' => 'Rekap Presensi', 'match' => 'admin.attendance-recap.*'],
+                        ['route' => 'admin.attendance.realtime', 'icon' => 'location_on', 'label' => 'Realtime Hari Ini', 'match' => 'admin.attendance.realtime', 'permission' => 'attendance.view'],
+                        ['route' => 'admin.attendance.history', 'icon' => 'history', 'label' => 'Riwayat Absensi', 'match' => 'admin.attendance.history', 'permission' => 'attendance.view'],
+                        ['route' => 'admin.attendance-recap.index', 'icon' => 'summarize', 'label' => 'Rekap Presensi', 'match' => 'admin.attendance-recap.*', 'permission' => 'attendance.view'],
                     ]],
                     ['label' => 'Cuti', 'icon' => 'event_busy', 'key' => 'leave', 'items' => [
-                        ['route' => 'admin.leaves.index', 'icon' => 'event_busy', 'label' => 'Pengajuan Cuti', 'match' => 'admin.leaves.*'],
-                        ['route' => 'admin.leave-policies.index', 'icon' => 'tune', 'label' => 'Kebijakan Cuti', 'match' => 'admin.leave-policies.*'],
-                        ['route' => 'admin.leave-balances.index', 'icon' => 'account_balance_wallet', 'label' => 'Saldo Cuti', 'match' => 'admin.leave-balances.*'],
+                        ['route' => 'admin.leaves.index', 'icon' => 'event_busy', 'label' => 'Pengajuan Cuti', 'match' => 'admin.leaves.*', 'permission' => 'leave.view'],
+                        ['route' => 'admin.leave-policies.index', 'icon' => 'tune', 'label' => 'Kebijakan Cuti', 'match' => 'admin.leave-policies.*', 'permission' => 'leave.view'],
+                        ['route' => 'admin.leave-balances.index', 'icon' => 'account_balance_wallet', 'label' => 'Saldo Cuti', 'match' => 'admin.leave-balances.*', 'permission' => 'leave.view'],
                     ]],
                     ['label' => 'Anggaran', 'icon' => 'request_quote', 'key' => 'budget', 'items' => [
-                        ['route' => 'admin.budget-requests.index', 'icon' => 'request_quote', 'label' => 'Pengajuan Anggaran', 'match' => 'admin.budget-requests.*'],
-                        ['route' => 'admin.travel-reports.index', 'icon' => 'flight_takeoff', 'label' => 'LHP', 'match' => 'admin.travel-reports.*'],
-                        ['route' => 'admin.policies.index', 'icon' => 'policy', 'label' => 'Kebijakan', 'match' => 'admin.policies.*'],
-                        ['route' => 'admin.travel-zones.index', 'icon' => 'map', 'label' => 'Zona Perjalanan', 'match' => 'admin.travel-zones.*'],
+                        ['route' => 'admin.budget-requests.index', 'icon' => 'request_quote', 'label' => 'Pengajuan Anggaran', 'match' => 'admin.budget-requests.*', 'permission' => 'budget.view'],
+                        ['route' => 'admin.travel-reports.index', 'icon' => 'flight_takeoff', 'label' => 'LHP', 'match' => 'admin.travel-reports.*', 'permission' => 'budget.view'],
+                        ['route' => 'admin.policies.index', 'icon' => 'policy', 'label' => 'Kebijakan', 'match' => 'admin.policies.*', 'permission' => 'budget.view'],
+                        ['route' => 'admin.travel-zones.index', 'icon' => 'map', 'label' => 'Zona Perjalanan', 'match' => 'admin.travel-zones.*', 'permission' => 'budget.view'],
                     ]],
                     ['label' => 'Jadwal Kerja', 'icon' => 'calendar_month', 'key' => 'schedule', 'items' => [
-                        ['route' => 'admin.schedules.index', 'icon' => 'calendar_month', 'label' => 'Jadwal Kerja', 'match' => 'admin.schedules.*'],
-                        ['route' => 'admin.holidays.index', 'icon' => 'celebration', 'label' => 'Hari Libur', 'match' => 'admin.holidays.*'],
+                        ['route' => 'admin.schedules.index', 'icon' => 'calendar_month', 'label' => 'Jadwal Kerja', 'match' => 'admin.schedules.*', 'permission' => 'schedule.view'],
+                        ['route' => 'admin.holidays.index', 'icon' => 'celebration', 'label' => 'Hari Libur', 'match' => 'admin.holidays.*', 'permission' => 'schedule.view'],
                     ]],
                     ['label' => 'Payroll', 'icon' => 'payments', 'key' => 'payroll', 'items' => [
-                        ['route' => 'admin.payroll-components.index', 'icon' => 'list_alt', 'label' => 'Komponen Gaji', 'match' => 'admin.payroll-components.*'],
-                        ['route' => 'admin.employee-payrolls.index', 'icon' => 'account_balance', 'label' => 'Master Payroll', 'match' => 'admin.employee-payrolls.*'],
-                        ['route' => 'admin.payroll-runs.index', 'icon' => 'payments', 'label' => 'Run Payroll', 'match' => 'admin.payroll-runs.*'],
-                        ['route' => 'admin.payslips.index', 'icon' => 'receipt', 'label' => 'Payslip', 'match' => 'admin.payslips.*'],
-                        ['route' => 'admin.payroll-adjustments.index', 'icon' => 'tune', 'label' => 'Adjustment', 'match' => 'admin.payroll-adjustments.*'],
+                        ['route' => 'admin.payroll-components.index', 'icon' => 'list_alt', 'label' => 'Komponen Gaji', 'match' => 'admin.payroll-components.*', 'permission' => 'payroll.view'],
+                        ['route' => 'admin.employee-payrolls.index', 'icon' => 'account_balance', 'label' => 'Master Payroll', 'match' => 'admin.employee-payrolls.*', 'permission' => 'payroll.view'],
+                        ['route' => 'admin.payroll-runs.index', 'icon' => 'payments', 'label' => 'Run Payroll', 'match' => 'admin.payroll-runs.*', 'permission' => 'payroll.view'],
+                        ['route' => 'admin.payslips.index', 'icon' => 'receipt', 'label' => 'Payslip', 'match' => 'admin.payslips.*', 'permission' => 'payroll.view'],
+                        ['route' => 'admin.payroll-adjustments.index', 'icon' => 'tune', 'label' => 'Adjustment', 'match' => 'admin.payroll-adjustments.*', 'permission' => 'payroll.view'],
                     ]],
                     ['label' => 'Pajak & BPJS', 'icon' => 'receipt_long', 'key' => 'tax', 'items' => [
-                        ['route' => 'admin.tax.settings', 'icon' => 'settings', 'label' => 'Tax Settings', 'match' => 'admin.tax.settings'],
-                        ['route' => 'admin.tax.simulator', 'icon' => 'calculate', 'label' => 'Kalkulator Pajak', 'match' => 'admin.tax.simulator'],
-                        ['route' => 'admin.tax.bukti-potong', 'icon' => 'description', 'label' => 'Bukti Potong', 'match' => 'admin.tax.bukti-potong*'],
+                        ['route' => 'admin.tax.settings', 'icon' => 'settings', 'label' => 'Tax Settings', 'match' => 'admin.tax.settings', 'permission' => 'tax.view'],
+                        ['route' => 'admin.tax.simulator', 'icon' => 'calculate', 'label' => 'Kalkulator Pajak', 'match' => 'admin.tax.simulator', 'permission' => 'tax.view'],
+                        ['route' => 'admin.tax.bukti-potong', 'icon' => 'description', 'label' => 'Bukti Potong', 'match' => 'admin.tax.bukti-potong*', 'permission' => 'tax.view'],
                     ]],
                     ['label' => 'Persetujuan', 'icon' => 'task_alt', 'key' => 'approval', 'items' => [
-                        ['route' => 'admin.approvals.index', 'icon' => 'task_alt', 'label' => 'Persetujuan', 'match' => 'admin.approvals.*', 'badge' => true],
-                        ['route' => 'admin.approval-rules.index', 'icon' => 'settings', 'label' => 'Pengaturan Approval', 'match' => 'admin.approval-rules.*'],
+                        ['route' => 'admin.approvals.index', 'icon' => 'task_alt', 'label' => 'Persetujuan', 'match' => 'admin.approvals.*', 'badge' => true, 'permission' => 'approval.view'],
+                        ['route' => 'admin.approval-rules.index', 'icon' => 'settings', 'label' => 'Pengaturan Approval', 'match' => 'admin.approval-rules.*', 'permission' => 'approval.view'],
                     ]],
                     ['label' => 'Laporan', 'icon' => 'analytics', 'key' => 'reports', 'items' => [
-                        ['route' => 'admin.reports.index', 'icon' => 'analytics', 'label' => 'Pusat Laporan', 'match' => 'admin.reports.index'],
-                        ['route' => 'admin.reports.overtime', 'icon' => 'more_time', 'label' => 'Rekap Lembur', 'match' => 'admin.reports.overtime*'],
+                        ['route' => 'admin.reports.index', 'icon' => 'analytics', 'label' => 'Pusat Laporan', 'match' => 'admin.reports.index', 'permission' => 'reports.view'],
+                        ['route' => 'admin.reports.overtime', 'icon' => 'more_time', 'label' => 'Rekap Lembur', 'match' => 'admin.reports.overtime*', 'permission' => 'reports.view'],
                     ]],
                     ['label' => 'Pengaturan', 'icon' => 'settings', 'key' => 'settings', 'items' => [
-                        ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*'],
-                        ['route' => 'admin.attendance-settings.index', 'icon' => 'tune', 'label' => 'Pengaturan Presensi', 'match' => 'admin.attendance-settings.*'],
+                        ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*', 'permission' => 'settings.manage'],
+                        ['route' => 'admin.attendance-settings.index', 'icon' => 'tune', 'label' => 'Pengaturan Presensi', 'match' => 'admin.attendance-settings.*', 'permission' => 'settings.manage'],
+                        ['route' => 'admin.role-permissions.index', 'icon' => 'admin_panel_settings', 'label' => 'Role Permission', 'match' => 'admin.role-permissions.*', 'permission' => 'permissions.manage'],
+                        ['route' => 'admin.audit-logs.index', 'icon' => 'manage_search', 'label' => 'Audit Log', 'match' => 'admin.audit-logs.*', 'permission' => 'audit.view'],
                     ]],
                 ];
                 $pendingCount = \App\Models\LeaveRequest::whereIn('status',['pending','in_review'])->count()
                     + \App\Models\OvertimeRequest::whereIn('status',['pending','in_review'])->count()
                     + \App\Models\AttendanceRequest::whereIn('status',['pending','in_review'])->count();
+                $canSeeAdminItem = fn($item) => empty($item['permission']) || ($currentAdmin?->hasAdminPermission($item['permission']) ?? false);
             @endphp
 
             @foreach($navGroups as $group)
                 @php
+                    $visibleItems = collect($group['items'])->filter($canSeeAdminItem);
+                    if ($visibleItems->isEmpty()) {
+                        continue;
+                    }
+
                     $isGroupActive = false;
-                    foreach($group['items'] as $item) {
+                    foreach($visibleItems as $item) {
                         if(request()->routeIs($item['match'])) { $isGroupActive = true; break; }
                     }
                 @endphp
@@ -126,7 +134,7 @@
                         <span class="acc-arrow material-symbols-outlined text-[14px]">expand_more</span>
                     </button>
                     <div class="nav-group-items {{ $isGroupActive ? 'open' : '' }}" id="nav-{{ $group['key'] }}">
-                        @foreach($group['items'] as $item)
+                        @foreach($visibleItems as $item)
                             <a href="{{ route($item['route']) }}"
                                class="flex items-center gap-3 pl-7 pr-3.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 mb-0.5 relative
                                       {{ request()->routeIs($item['match']) ? 'bg-white/12 text-white before:nav-active-bar' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/90' }}">

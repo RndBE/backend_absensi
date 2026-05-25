@@ -17,6 +17,8 @@ use App\Http\Controllers\Admin\LeavePolicyController;
 use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\AttendanceSettingController;
 use App\Http\Controllers\Admin\CompanyController;
+use App\Http\Middleware\AdminAuditLogger;
+use App\Http\Middleware\AdminPermission;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root to admin
@@ -28,7 +30,11 @@ Route::post('/admin/login', [AuthController::class, 'login']);
 Route::post('/admin/logout', [AuthController::class, 'logout'])->name('admin.logout');
 
 // Admin Protected
-Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAuth::class)->group(function () {
+Route::prefix('admin')->name('admin.')->middleware([
+    \App\Http\Middleware\AdminAuth::class,
+    AdminPermission::class,
+    AdminAuditLogger::class,
+])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -152,6 +158,11 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');
     Route::put('/attendance-settings', [AttendanceSettingController::class, 'update'])->name('attendance-settings.update');
 
+    // Role Permissions & Audit Logs
+    Route::get('/role-permissions', [\App\Http\Controllers\Admin\RolePermissionController::class, 'index'])->name('role-permissions.index');
+    Route::put('/role-permissions', [\App\Http\Controllers\Admin\RolePermissionController::class, 'update'])->name('role-permissions.update');
+    Route::get('/audit-logs', [\App\Http\Controllers\Admin\AuditLogController::class, 'index'])->name('audit-logs.index');
+
 
 
     // Payroll Components
@@ -227,4 +238,3 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::get('/reports/payroll', [\App\Http\Controllers\Admin\ReportController::class, 'payroll'])->name('reports.payroll');
     Route::get('/reports/payroll/export', [\App\Http\Controllers\Admin\ReportController::class, 'exportPayroll'])->name('reports.export-payroll');
 });
-

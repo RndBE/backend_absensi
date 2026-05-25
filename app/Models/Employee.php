@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\AdminPermissionService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -128,5 +129,10 @@ class Employee extends Authenticatable
         if (!$this->join_date) return '-';
         $diff = $this->join_date->diff(now());
         return "{$diff->y} Tahun {$diff->m} Bulan {$diff->d} Hari";
+    }
+
+    public function hasAdminPermission(?string $permission): bool
+    {
+        return AdminPermissionService::employeeHas($this, $permission);
     }
 }

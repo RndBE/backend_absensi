@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call(AdminPermissionSeeder::class);
         $this->call(TaxBpjsSeeder::class);
 
         // ═══════════════════════════════════════════════════

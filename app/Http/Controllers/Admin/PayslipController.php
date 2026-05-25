@@ -8,6 +8,7 @@ use App\Models\PayrollRunDetail;
 use App\Models\PayrollRun;
 use App\Models\Company;
 use App\Services\BpjsCalculator;
+use App\Support\DownloadFilename;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -91,7 +92,7 @@ class PayslipController extends Controller
         $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail', 'company', 'logoBase64', 'bpjsData'));
         $pdf->setPaper('A4', 'portrait');
 
-        $filename = 'Payslip_' . $detail->employee->employee_code . '_' . $detail->payrollRun->period . '.pdf';
+        $filename = DownloadFilename::sanitize('Payslip_' . $detail->employee->employee_code . '_' . $detail->payrollRun->period . '.pdf');
 
         return $pdf->download($filename);
     }

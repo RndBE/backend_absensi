@@ -236,17 +236,10 @@ class ReportController extends Controller
         $admin = Employee::find(session('admin_id'));
         $period = $request->period ?? date('Y-m');
 
-        $details = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($admin, $period) {
-            $q->where('period', $period)
-              ->whereHas('company', fn($cq) => $cq->where('id', $admin->company_id));
-        })->with(['employee', 'payrollRun'])->get();
-
-        // If no company relation, try via employee
-        if ($details->isEmpty()) {
-            $details = PayrollRunDetail::whereHas('payrollRun', fn($q) => $q->where('period', $period))
-                ->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
-                ->with(['employee', 'payrollRun'])->get();
-        }
+        $details = PayrollRunDetail::whereHas('payrollRun', fn($q) => $q->where('period', $period))
+            ->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+            ->with(['employee', 'payrollRun'])
+            ->get();
 
         $totals = [
             'basic' => $details->sum('basic_salary'),
