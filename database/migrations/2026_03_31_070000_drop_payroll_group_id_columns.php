@@ -11,6 +11,7 @@ return new class extends Migration
         // Drop payroll_group_id from payroll_runs
         Schema::table('payroll_runs', function (Blueprint $table) {
             $table->dropForeign(['payroll_group_id']);
+            $table->dropIndex(['period', 'payroll_group_id']);
             $table->dropColumn('payroll_group_id');
         });
 

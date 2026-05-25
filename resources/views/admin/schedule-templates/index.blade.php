@@ -123,7 +123,7 @@
 
             {{-- Panel Edit Shift (tersembunyi) --}}
             <div id="editPanel-{{ $template->id }}" class="hidden border-t border-gray-100 bg-gray-50 px-4 py-4">
-                <form action="{{ route('admin.schedule-templates.update', $template->id) }}" method="POST">
+                <form id="editTemplateForm-{{ $template->id }}" action="{{ route('admin.schedule-templates.update', $template->id) }}" method="POST">
                     @csrf @method('PUT')
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                         <div>
@@ -159,20 +159,20 @@
                             </div>
                         @endfor
                     </div>
-                    <div class="flex items-center justify-between">
-                        <button type="submit"
-                            class="inline-flex items-center gap-1 px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all cursor-pointer">
-                            <span class="material-symbols-outlined text-[14px] align-text-bottom">save</span> Simpan Perubahan
-                        </button>
-                        <form action="{{ route('admin.schedule-templates.destroy', $template->id) }}" method="POST"
-                              onsubmit="return confirm('Hapus template {{ $template->name }}? Karyawan yang di-assign akan kehilangan jadwal otomatis.')">
-                            @csrf @method('DELETE')
-                            <button class="text-[11px] font-semibold text-red-500 hover:text-red-700 transition-all cursor-pointer bg-transparent border-0 inline-flex items-center gap-1">
-                                <span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span> Hapus Template
-                            </button>
-                        </form>
-                    </div>
                 </form>
+                <div class="flex items-center justify-between">
+                    <button type="submit" form="editTemplateForm-{{ $template->id }}"
+                        class="inline-flex items-center gap-1 px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all cursor-pointer">
+                        <span class="material-symbols-outlined text-[14px] align-text-bottom">save</span> Simpan Perubahan
+                    </button>
+                    <form action="{{ route('admin.schedule-templates.destroy', $template->id) }}" method="POST"
+                          onsubmit="return confirm('Hapus template {{ $template->name }}? Karyawan yang di-assign akan kehilangan jadwal otomatis.')">
+                        @csrf @method('DELETE')
+                        <button class="text-[11px] font-semibold text-red-500 hover:text-red-700 transition-all cursor-pointer bg-transparent border-0 inline-flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span> Hapus Template
+                        </button>
+                    </form>
+                </div>
             </div>
 
             {{-- Panel Assign Karyawan (tersembunyi) --}}

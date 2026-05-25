@@ -188,6 +188,29 @@
         @yield('content')
     </main>
 
+    <div id="admin-confirm-modal" class="fixed inset-0 z-[9999] hidden" aria-hidden="true">
+        <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-[1px]" data-confirm-modal-close></div>
+        <div class="relative min-h-screen flex items-center justify-center p-4">
+            <div class="w-full max-w-md bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+                <div class="p-5">
+                    <div class="flex items-start gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-[22px]">warning</span>
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="text-[15px] font-bold text-gray-900" data-confirm-modal-title>Konfirmasi tindakan</h3>
+                            <p class="mt-1.5 text-[13px] leading-relaxed text-gray-500" data-confirm-modal-message>Yakin ingin melanjutkan tindakan ini?</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+                    <button type="button" class="px-4 py-2 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all cursor-pointer" data-confirm-modal-cancel>Batal</button>
+                    <button type="button" class="px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer" data-confirm-modal-confirm>Ya, lanjutkan</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
     // Sidebar toggle
     function toggleSidebar() {
@@ -267,7 +290,133 @@
                 overlay.classList.remove('show');
             }
         });
+
+        initAdminConfirmModal();
     });
+
+    function initAdminConfirmModal() {
+        const modal = document.getElementById('admin-confirm-modal');
+        if (!modal || modal.dataset.initialized) return;
+        modal.dataset.initialized = '1';
+
+        const titleEl = modal.querySelector('[data-confirm-modal-title]');
+        const messageEl = modal.querySelector('[data-confirm-modal-message]');
+        const cancelBtn = modal.querySelector('[data-confirm-modal-cancel]');
+        const confirmBtn = modal.querySelector('[data-confirm-modal-confirm]');
+        const closeTargets = modal.querySelectorAll('[data-confirm-modal-close], [data-confirm-modal-cancel]');
+        const bypassSubmit = new WeakSet();
+        let pendingConfirm = null;
+
+        function confirmMessageFrom(code) {
+            if (!code) return null;
+            const match = String(code).match(/confirm\((['"`])([\s\S]*?)\1\)/);
+            return match ? match[2] : null;
+        }
+
+        function codeBeforeConfirm(code) {
+            if (!code) return '';
+            const index = String(code).indexOf('confirm(');
+            return index > -1 ? String(code).slice(0, index).replace(/return\s*$/i, '').trim() : '';
+        }
+
+        function openConfirm(message, onConfirm) {
+            pendingConfirm = onConfirm;
+            titleEl.textContent = 'Konfirmasi tindakan';
+            messageEl.textContent = message || 'Yakin ingin melanjutkan tindakan ini?';
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            setTimeout(() => confirmBtn.focus(), 0);
+        }
+
+        function closeConfirm() {
+            pendingConfirm = null;
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        window.showAdminConfirm = function(message, onConfirm) {
+            openConfirm(message, onConfirm);
+        };
+
+        closeTargets.forEach((target) => {
+            target.addEventListener('click', closeConfirm);
+        });
+
+        confirmBtn.addEventListener('click', function() {
+            const action = pendingConfirm;
+            closeConfirm();
+            if (typeof action === 'function') action();
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+                closeConfirm();
+            }
+        });
+
+        document.addEventListener('submit', function(event) {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement)) return;
+            if (bypassSubmit.has(form)) {
+                bypassSubmit.delete(form);
+                return;
+            }
+
+            const message = form.dataset.confirm || confirmMessageFrom(form.getAttribute('onsubmit'));
+            if (!message) return;
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            openConfirm(message, function() {
+                form.removeAttribute('onsubmit');
+                bypassSubmit.add(form);
+                if (typeof form.requestSubmit === 'function' && event.submitter) {
+                    form.requestSubmit(event.submitter);
+                } else {
+                    form.submit();
+                }
+            });
+        }, true);
+
+        document.addEventListener('click', function(event) {
+            const trigger = event.target.closest('[data-confirm], button[onclick*="confirm("], input[onclick*="confirm("], a[onclick*="confirm("]');
+            if (!trigger) return;
+
+            const onclick = trigger.getAttribute('onclick') || '';
+            const message = trigger.dataset.confirm || confirmMessageFrom(onclick);
+            if (!message) return;
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            openConfirm(message, function() {
+                const beforeConfirm = codeBeforeConfirm(onclick);
+                trigger.removeAttribute('onclick');
+
+                if (beforeConfirm) {
+                    Function(beforeConfirm).call(trigger);
+                }
+
+                if (trigger instanceof HTMLAnchorElement) {
+                    trigger.click();
+                    return;
+                }
+
+                if ((trigger instanceof HTMLButtonElement || trigger instanceof HTMLInputElement) && trigger.type === 'submit' && trigger.form) {
+                    bypassSubmit.add(trigger.form);
+                    if (typeof trigger.form.requestSubmit === 'function') {
+                        trigger.form.requestSubmit(trigger);
+                    } else {
+                        trigger.form.submit();
+                    }
+                    return;
+                }
+
+                trigger.click();
+            });
+        }, true);
+    }
     </script>
 
     @include('admin.partials.searchable-select')

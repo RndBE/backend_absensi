@@ -334,9 +334,9 @@ function openAssign(empId, date, shiftId, isOverride, isHoliday) {
 }
 
 function clearAssignment() {
-    if (confirm('Hapus override? Jadwal akan kembali mengikuti template.')) {
+    showAdminConfirm('Hapus override? Jadwal akan kembali mengikuti template.', function() {
         document.getElementById('clearForm').submit();
-    }
+    });
 }
 
 function toggleAllBulk(checked) {

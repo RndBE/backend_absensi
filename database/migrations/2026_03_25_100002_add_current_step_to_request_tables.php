@@ -18,10 +18,11 @@ return new class extends Migration
             });
         }
 
-        // Modify status enum to include 'in_review'
-        // MySQL requires ALTER COLUMN to change enum values
-        foreach ($tables as $tableName) {
-            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `status` ENUM('pending','in_review','approved','rejected') NOT NULL DEFAULT 'pending'");
+        // SQLite stores Laravel enum columns as text, so no schema change is needed there.
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            foreach ($tables as $tableName) {
+                DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `status` ENUM('pending','in_review','approved','rejected') NOT NULL DEFAULT 'pending'");
+            }
         }
     }
 
@@ -32,7 +33,10 @@ return new class extends Migration
         foreach ($tables as $tableName) {
             // Change any 'in_review' back to 'pending' before modifying enum
             DB::table($tableName)->where('status', 'in_review')->update(['status' => 'pending']);
-            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending'");
+
+            if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+                DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending'");
+            }
 
             Schema::table($tableName, function (Blueprint $table) {
                 $table->dropColumn('current_step');

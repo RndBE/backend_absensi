@@ -43,7 +43,7 @@ class BudgetController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $rules = [
             'type' => 'required|in:budget,reimbursement',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -55,7 +55,17 @@ class BudgetController extends Controller
             'surat_tugas_date' => 'nullable|date',
             'participants' => 'nullable|array',
             'participants.*' => 'exists:employees,id',
-        ]);
+            'attachments' => 'nullable|array',
+            'attachments.*' => 'file|mimes:jpg,jpeg,png,pdf|max:10240',
+        ];
+
+        $items = is_string($request->items) ? json_decode($request->items, true) : $request->items;
+        foreach (array_keys(is_array($items) ? $items : []) as $index) {
+            $rules["item_attachments_{$index}"] = 'nullable|array';
+            $rules["item_attachments_{$index}.*"] = 'file|mimes:jpg,jpeg,png,pdf|max:10240';
+        }
+
+        $request->validate($rules);
 
         $employee = $request->user();
 
@@ -74,7 +84,7 @@ class BudgetController extends Controller
             ]);
 
             $total = 0;
-            $itemsData = is_string($request->items) ? json_decode($request->items, true) : $request->items;
+            $itemsData = $items;
 
             foreach ($itemsData as $index => $itemData) {
                 $item = $budgetRequest->items()->create([

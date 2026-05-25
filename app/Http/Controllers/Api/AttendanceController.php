@@ -13,6 +13,7 @@ use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class AttendanceController extends Controller
 {
@@ -230,7 +231,11 @@ class AttendanceController extends Controller
             'latitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'longitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'photo' => 'nullable|image|max:5120',
-            'photo_base64' => 'nullable|string',
+            'photo_base64' => ['nullable', 'string', function ($attribute, $value, $fail) {
+                if ($this->decodeBase64Photo($value) === null) {
+                    $fail('Foto base64 harus berupa gambar yang valid dan maksimal 5MB.');
+                }
+            }],
             'notes' => 'nullable|string|max:500',
         ];
 
@@ -385,7 +390,11 @@ class AttendanceController extends Controller
             'latitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'longitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'photo' => 'nullable|image|max:5120',
-            'photo_base64' => 'nullable|string',
+            'photo_base64' => ['nullable', 'string', function ($attribute, $value, $fail) {
+                if ($this->decodeBase64Photo($value) === null) {
+                    $fail('Foto base64 harus berupa gambar yang valid dan maksimal 5MB.');
+                }
+            }],
         ]);
 
         if ($requirePhoto && !$request->hasFile('photo') && !$request->photo_base64) {
@@ -493,10 +502,33 @@ class AttendanceController extends Controller
      */
     private function storeBase64Photo(string $base64, string $directory): string
     {
-        $imageData = base64_decode($base64);
+        $imageData = $this->decodeBase64Photo($base64);
+        if ($imageData === null) {
+            throw ValidationException::withMessages([
+                'photo_base64' => ['Foto base64 harus berupa gambar yang valid dan maksimal 5MB.'],
+            ]);
+        }
+
         $fileName = $directory . '/' . uniqid() . '.jpg';
         Storage::disk('public')->put($fileName, $imageData);
         return $fileName;
+    }
+
+    private function decodeBase64Photo(string $base64): ?string
+    {
+        if (str_contains($base64, ',')) {
+            if (!preg_match('/^data:image\/(jpeg|jpg|png);base64,/', $base64)) {
+                return null;
+            }
+            $base64 = substr($base64, strpos($base64, ',') + 1);
+        }
+
+        $imageData = base64_decode($base64, true);
+        if ($imageData === false || strlen($imageData) > 5 * 1024 * 1024) {
+            return null;
+        }
+
+        return @getimagesizefromstring($imageData) === false ? null : $imageData;
     }
 
     /**
@@ -749,5 +781,4 @@ class AttendanceController extends Controller
         return null;
     }
 }
-
 

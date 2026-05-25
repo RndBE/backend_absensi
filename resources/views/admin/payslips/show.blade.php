@@ -30,7 +30,7 @@
         <span class="material-symbols-outlined text-[16px]">arrow_back</span> Kembali ke Daftar
     </a>
     <a href="{{ route('admin.payslips.download', $detail->id) }}"
-       class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+        class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
         <span class="material-symbols-outlined text-[15px]">download</span> Download PDF
     </a>
 </div>

@@ -11,6 +11,17 @@
 <div class="mb-4 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[13px] rounded-lg">{{ session('success') }}</div>
 @endif
 
+@if($errors->any())
+<div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-[13px] rounded-lg">
+    <div class="font-semibold mb-1">Data belum bisa disimpan.</div>
+    <ul class="list-disc list-inside space-y-0.5">
+        @foreach($errors->all() as $error)
+        <li>{{ $error }}</li>
+        @endforeach
+    </ul>
+</div>
+@endif
+
 {{-- ==================== PPh 21 ==================== --}}
 
 {{-- Tarif Progresif PPh 21 --}}

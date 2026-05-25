@@ -27,7 +27,12 @@ class AuthController extends Controller
         $employee = Employee::where('email', $request->email)
             ->first();
 
-        if (!$employee || !Hash::check($request->password, $employee->password)) {
+        if (
+            !$employee
+            || !$employee->is_active
+            || !in_array($employee->role, ['admin', 'superadmin'], true)
+            || !Hash::check($request->password, $employee->password)
+        ) {
             return back()->with('error', 'Email atau password salah.')->withInput();
         }
 
