@@ -56,6 +56,7 @@
         <!-- Nav -->
         <nav class="flex-1 px-2.5 py-3 overflow-y-auto sidebar-scroll">
             @php
+                $adminPermission = app(\App\Support\AdminPermission::class);
                 $navGroups = [
                     ['label' => 'Menu Utama', 'icon' => 'space_dashboard', 'key' => 'main', 'items' => [
                         ['route' => 'admin.dashboard', 'icon' => 'dashboard', 'label' => 'Dashboard', 'match' => 'admin.dashboard'],
@@ -105,6 +106,8 @@
                     ['label' => 'Pengaturan', 'icon' => 'settings', 'key' => 'settings', 'items' => [
                         ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*'],
                         ['route' => 'admin.attendance-settings.index', 'icon' => 'tune', 'label' => 'Pengaturan Presensi', 'match' => 'admin.attendance-settings.*'],
+                        ['route' => 'admin.role-permissions.index', 'icon' => 'admin_panel_settings', 'label' => 'Role Permission', 'match' => 'admin.role-permissions.*'],
+                        ['route' => 'admin.audit-logs.index', 'icon' => 'manage_search', 'label' => 'Audit Log', 'match' => 'admin.audit-logs.*'],
                     ]],
                 ];
                 $pendingCount = \App\Models\LeaveRequest::whereIn('status',['pending','in_review'])->count()
@@ -114,11 +117,18 @@
 
             @foreach($navGroups as $group)
                 @php
+                    $visibleItems = array_values(array_filter($group['items'], function ($item) use ($adminPermission, $currentAdmin) {
+                        $permission = $adminPermission->permissionForRoute($item['route']);
+                        return !$permission || ($currentAdmin && $adminPermission->can($currentAdmin, $permission));
+                    }));
                     $isGroupActive = false;
-                    foreach($group['items'] as $item) {
+                    foreach($visibleItems as $item) {
                         if(request()->routeIs($item['match'])) { $isGroupActive = true; break; }
                     }
                 @endphp
+                @if(empty($visibleItems))
+                    @continue
+                @endif
                 <div class="mb-1">
                     <button onclick="toggleAccordion('nav-{{ $group['key'] }}')" class="nav-group-toggle {{ $isGroupActive ? 'open' : '' }} w-full flex items-center gap-3 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[1.5px] transition-all duration-200 cursor-pointer {{ $isGroupActive ? 'text-white/80 bg-white/[0.05]' : 'text-white/35 hover:text-white/50 hover:bg-white/[0.03]' }}" id="toggle-{{ $group['key'] }}">
                         <span class="material-symbols-outlined text-[16px]">{{ $group['icon'] }}</span>
@@ -126,7 +136,7 @@
                         <span class="acc-arrow material-symbols-outlined text-[14px]">expand_more</span>
                     </button>
                     <div class="nav-group-items {{ $isGroupActive ? 'open' : '' }}" id="nav-{{ $group['key'] }}">
-                        @foreach($group['items'] as $item)
+                        @foreach($visibleItems as $item)
                             <a href="{{ route($item['route']) }}"
                                class="flex items-center gap-3 pl-7 pr-3.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 mb-0.5 relative
                                       {{ request()->routeIs($item['match']) ? 'bg-white/12 text-white before:nav-active-bar' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/90' }}">
@@ -188,7 +198,164 @@
         @yield('content')
     </main>
 
+    <div id="confirmActionModal" class="hidden fixed inset-0 z-[80] items-center justify-center px-4" style="z-index: 1000;">
+        <div class="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]" data-confirm-cancel></div>
+        <div class="relative w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-start gap-3">
+                    <div id="confirmActionIconWrap" class="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                        <span id="confirmActionIcon" class="material-symbols-outlined text-[22px]">warning</span>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 id="confirmActionTitle" class="text-[15px] font-bold text-gray-900">Konfirmasi Aksi</h3>
+                        <p id="confirmActionMessage" class="mt-1 text-[13px] leading-5 text-gray-600">Lanjutkan aksi ini?</p>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+                <button type="button" data-confirm-cancel class="px-4 py-2 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition cursor-pointer">Batal</button>
+                <button type="button" id="confirmActionButton" class="px-4 py-2 text-[12px] font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition cursor-pointer">Lanjutkan</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+    let confirmModalCallback = null;
+
+    function openConfirmModal(options = {}) {
+        const modal = document.getElementById('confirmActionModal');
+        const title = document.getElementById('confirmActionTitle');
+        const message = document.getElementById('confirmActionMessage');
+        const button = document.getElementById('confirmActionButton');
+        const icon = document.getElementById('confirmActionIcon');
+        const iconWrap = document.getElementById('confirmActionIconWrap');
+        const variant = options.variant || 'danger';
+
+        title.textContent = options.title || 'Konfirmasi Aksi';
+        message.textContent = options.message || 'Lanjutkan aksi ini?';
+        button.textContent = options.confirmText || 'Lanjutkan';
+        button.className = 'px-4 py-2 text-[12px] font-semibold text-white rounded-lg transition cursor-pointer ' +
+            (variant === 'primary' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-red-600 hover:bg-red-700');
+        icon.textContent = variant === 'primary' ? 'help' : 'warning';
+        iconWrap.className = 'w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ' +
+            (variant === 'primary' ? 'bg-indigo-50 text-indigo-600' : 'bg-red-50 text-red-600');
+
+        confirmModalCallback = typeof options.onConfirm === 'function' ? options.onConfirm : null;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        button.focus();
+    }
+
+    function closeConfirmModal() {
+        const modal = document.getElementById('confirmActionModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        confirmModalCallback = null;
+    }
+
+    function runConfirmBeforeAction(code) {
+        if (!code) return true;
+        try {
+            Function(code)();
+            return true;
+        } catch (error) {
+            console.error('Gagal menjalankan aksi sebelum submit:', error);
+            return false;
+        }
+    }
+
+    function submitConfirmedForm(form, submitter = null) {
+        form.dataset.confirmed = '1';
+        const validSubmitter = submitter
+            && submitter.form === form
+            && submitter.matches('button, input[type="submit"], input[type="image"]')
+            ? submitter
+            : null;
+
+        if (form.requestSubmit) {
+            if (validSubmitter) {
+                form.requestSubmit(validSubmitter);
+            } else {
+                form.requestSubmit();
+            }
+        } else {
+            form.submit();
+        }
+        setTimeout(() => delete form.dataset.confirmed, 500);
+    }
+
+    function resolveConfirmMessage(element) {
+        if (element.dataset.confirmMessageFn && typeof window[element.dataset.confirmMessageFn] === 'function') {
+            return window[element.dataset.confirmMessageFn](element);
+        }
+
+        return element.dataset.confirm || 'Lanjutkan aksi ini?';
+    }
+
+    document.addEventListener('click', function(event) {
+        if (event.target.closest('[data-confirm-cancel]')) {
+            closeConfirmModal();
+            return;
+        }
+
+        if (event.target.closest('#confirmActionButton')) {
+            const callback = confirmModalCallback;
+            closeConfirmModal();
+            if (callback) callback();
+            return;
+        }
+
+        const trigger = event.target.closest('[data-confirm]');
+        if (!trigger) return;
+        if (trigger.matches('form')) return;
+
+        const form = trigger.form || trigger.closest('form');
+        if (!form) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const message = resolveConfirmMessage(trigger);
+        if (message === false) return;
+
+        openConfirmModal({
+            message,
+            confirmText: trigger.dataset.confirmText || 'Lanjutkan',
+            variant: trigger.dataset.confirmVariant || 'danger',
+            onConfirm: () => {
+                if (!runConfirmBeforeAction(trigger.dataset.confirmBefore)) return;
+                submitConfirmedForm(form, trigger);
+            },
+        });
+    }, true);
+
+    document.addEventListener('submit', function(event) {
+        const form = event.target;
+        if (!form.matches('[data-confirm], [data-confirm-message-fn]') || form.dataset.confirmed === '1') return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const message = resolveConfirmMessage(form);
+        if (message === false) return;
+
+        openConfirmModal({
+            message,
+            confirmText: form.dataset.confirmText || 'Lanjutkan',
+            variant: form.dataset.confirmVariant || 'danger',
+            onConfirm: () => {
+                if (!runConfirmBeforeAction(form.dataset.confirmBefore)) return;
+                submitConfirmedForm(form);
+            },
+        });
+    }, true);
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && !document.getElementById('confirmActionModal').classList.contains('hidden')) {
+            closeConfirmModal();
+        }
+    });
+
     // Sidebar toggle
     function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');

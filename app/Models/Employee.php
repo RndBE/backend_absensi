@@ -108,6 +108,16 @@ class Employee extends Authenticatable
         return $this->hasMany(Notification::class);
     }
 
+    public function permissionOverrides(): HasMany
+    {
+        return $this->hasMany(EmployeePermissionOverride::class);
+    }
+
+    public function adminActivityLogs(): HasMany
+    {
+        return $this->hasMany(AdminActivityLog::class);
+    }
+
     public function payroll(): HasMany
     {
         return $this->hasMany(EmployeePayroll::class);

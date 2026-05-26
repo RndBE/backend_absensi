@@ -52,7 +52,7 @@
                                 <button onclick="toggleEdit({{ $g->id }})" class="view-mode p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">edit</span></button>
                                 <button onclick="saveEdit({{ $g->id }})" class="edit-mode hidden p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">check</span></button>
                                 <button onclick="toggleEdit({{ $g->id }})" class="edit-mode hidden p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">close</span></button>
-                                <form action="{{ route('admin.payroll-groups.destroy', $g->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus group ini?')">
+                                <form action="{{ route('admin.payroll-groups.destroy', $g->id) }}" method="POST" class="inline" data-confirm="Hapus group ini?">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="view-mode p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">delete</span></button>
                                 </form>

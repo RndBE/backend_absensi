@@ -39,7 +39,7 @@
                     <td class="px-4 py-3 text-center whitespace-nowrap">
                         <button onclick="editPolicy({{ $policy->id }}, '{{ $policy->key }}', '{{ addslashes($policy->name) }}', {{ $policy->value }}, '{{ addslashes($policy->description ?? '') }}')"
                                 class="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer">Edit</button>
-                        <form method="POST" action="{{ route('admin.policies.destroy', $policy->id) }}" class="inline" onsubmit="return confirm('Hapus kebijakan ini?')">
+                        <form method="POST" action="{{ route('admin.policies.destroy', $policy->id) }}" class="inline" data-confirm="Hapus kebijakan ini?">
                             @csrf @method('DELETE')
                             <button type="submit" class="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all cursor-pointer">Hapus</button>
                         </form>

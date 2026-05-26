@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
+use App\Models\EmployeePayroll;
+use App\Models\EmployeePayrollComponent;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\WorkSchedule;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class EmployeeController extends Controller
@@ -203,6 +206,34 @@ class EmployeeController extends Controller
         $employee->update($data);
 
         return redirect()->route('admin.employees.index')->with('success', 'Data karyawan berhasil diperbarui.');
+    }
+
+    public function destroy($id)
+    {
+        $employee = Employee::findOrFail($id);
+
+        if (!$employee->is_active) {
+            return redirect()->route('admin.employees.index')
+                ->with('error', 'Karyawan ini sudah tidak aktif.');
+        }
+
+        DB::transaction(function () use ($employee, $id) {
+            $employee->update(['is_active' => false]);
+
+            EmployeePayrollComponent::where('employee_id', $id)
+                ->where('is_active', true)
+                ->update([
+                    'is_active' => false,
+                    'end_date' => now()->toDateString(),
+                ]);
+
+            EmployeePayroll::where('employee_id', $id)
+                ->where('is_active', true)
+                ->update(['is_active' => false]);
+        });
+
+        return redirect()->route('admin.employees.index')
+            ->with('success', 'Karyawan berhasil dinonaktifkan.');
     }
 
     public function resign($id)

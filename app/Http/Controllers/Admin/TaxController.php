@@ -142,9 +142,7 @@ class TaxController extends Controller
         $details = PayrollRunDetail::where('employee_id', $empId)
             ->whereHas('payrollRun', function ($q) use ($year) {
                 $q->where('period', 'like', $year . '-%')
-                  ->where('status', 'finalized')
-                  ->orWhere('status', 'published')
-                  ->orWhere('status', 'locked');
+                  ->whereIn('status', ['finalized', 'published', 'locked']);
             })
             ->with('payrollRun')
             ->get();

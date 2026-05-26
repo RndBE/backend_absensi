@@ -81,6 +81,8 @@ class LeaveController extends Controller
             'total_days' => $request->total_days,
             'reason' => $request->reason,
             'delegate_to' => $request->delegate_to,
+            'status' => 'pending',
+            'current_step' => 1,
         ]);
 
         if ($request->hasFile('attachments')) {

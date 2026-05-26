@@ -98,7 +98,7 @@
                             </span>
                         </td>
                         <td class="py-3 px-4 text-center">
-                            <form action="{{ route('admin.leave-policies.destroy', $policy) }}" method="POST" class="inline" onsubmit="return confirm('Hapus kebijakan ini?')">
+                            <form action="{{ route('admin.leave-policies.destroy', $policy) }}" method="POST" class="inline" data-confirm="Hapus kebijakan ini?">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="px-2 py-1 text-[10px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 cursor-pointer transition-all"><span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span></button>
                             </form>

@@ -34,7 +34,7 @@
                         <button onclick="openEditModal({{ $dept->id }}, '{{ addslashes($dept->name) }}', '')" class="px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer inline-flex items-center gap-1">
                             <span class="material-symbols-outlined text-[14px]">edit</span> Edit
                         </button>
-                        <form action="{{ route('admin.departments.destroy', $dept->id) }}" method="POST" onsubmit="return confirm('Hapus divisi {{ $dept->name }}?')">
+                        <form action="{{ route('admin.departments.destroy', $dept->id) }}" method="POST" data-confirm="Hapus divisi {{ $dept->name }}?">
                             @csrf @method('DELETE')
                             <button type="submit" class="px-2 py-1.5 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span></button>
                         </form>
@@ -54,7 +54,7 @@
                             <button onclick="openEditModal({{ $sub->id }}, '{{ addslashes($sub->name) }}', '{{ $dept->id }}')" class="px-2.5 py-1.5 text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer inline-flex items-center gap-1">
                                 <span class="material-symbols-outlined text-[14px]">edit</span> Edit
                             </button>
-                            <form action="{{ route('admin.departments.destroy', $sub->id) }}" method="POST" onsubmit="return confirm('Hapus sub-divisi {{ $sub->name }}?')">
+                            <form action="{{ route('admin.departments.destroy', $sub->id) }}" method="POST" data-confirm="Hapus sub-divisi {{ $sub->name }}?">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="px-2 py-1.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span></button>
                             </form>

@@ -223,7 +223,12 @@
             </div>
             <div class="flex gap-2">
                 <button type="submit" class="flex-1 px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">save</span> Simpan Override</button>
-                <button type="button" id="clearBtn" onclick="clearAssignment()" class="px-4 py-2 text-[12px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span></button>
+                <button type="submit" id="clearBtn" form="clearForm"
+                    data-confirm="Hapus override? Jadwal akan kembali mengikuti template."
+                    data-confirm-text="Hapus Override"
+                    class="px-4 py-2 text-[12px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer inline-flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span> Hapus Override
+                </button>
             </div>
         </form>
         <form id="clearForm" action="{{ route('admin.schedules.clear') }}" method="POST" class="hidden">
@@ -331,12 +336,6 @@ function openAssign(empId, date, shiftId, isOverride, isHoliday) {
     });
 
     document.getElementById('assignModal').classList.remove('hidden');
-}
-
-function clearAssignment() {
-    if (confirm('Hapus override? Jadwal akan kembali mengikuti template.')) {
-        document.getElementById('clearForm').submit();
-    }
 }
 
 function toggleAllBulk(checked) {

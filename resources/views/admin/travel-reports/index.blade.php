@@ -72,7 +72,7 @@
                             <div class="flex items-center justify-center gap-1.5">
                                 <a href="{{ route('admin.travel-reports.show', $report) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
                                 <a href="{{ route('admin.travel-reports.print', $report) }}" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">🖨️</a>
-                                <form method="POST" action="{{ route('admin.travel-reports.destroy', $report) }}" class="inline" onsubmit="return confirm('Yakin ingin menghapus LHP ini?')">
+                                <form method="POST" action="{{ route('admin.travel-reports.destroy', $report) }}" class="inline" data-confirm="Yakin ingin menghapus LHP ini?">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all cursor-pointer">Hapus</button>
                                 </form>

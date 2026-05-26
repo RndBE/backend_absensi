@@ -8,7 +8,7 @@
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">account_balance_wallet</span> Saldo Cuti Karyawan</h3>
         <div class="flex items-center gap-2">
             <a href="{{ route('admin.leave-policies.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all"><span class="material-symbols-outlined text-[14px] align-text-bottom">list_alt</span> Kebijakan Cuti</a>
-            <form action="{{ route('admin.leave-balances.generate') }}" method="POST" onsubmit="return confirm('Generate saldo cuti untuk semua karyawan yang memenuhi syarat?')" class="inline">
+            <form action="{{ route('admin.leave-balances.generate') }}" method="POST" data-confirm="Generate saldo cuti untuk semua karyawan yang memenuhi syarat?" class="inline">
                 @csrf
                 <input type="hidden" name="year" value="{{ $year }}">
                 <button type="submit" class="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">sync</span> Generate Saldo {{ $year }}</button>

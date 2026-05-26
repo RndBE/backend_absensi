@@ -79,7 +79,7 @@
                                     <span>{{ $c->employee_components_count }}</span>
                                 </a>
                                 <button onclick="openEdit({{ $c->id }}, '{{ addslashes($c->name) }}', '{{ $c->type }}', '{{ $c->category }}', {{ $c->default_amount }}, {{ $c->is_taxable ? 1 : 0 }})" class="p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">edit</span></button>
-                                <form action="{{ route('admin.payroll-components.destroy', $c->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus komponen ini?')">
+                                <form action="{{ route('admin.payroll-components.destroy', $c->id) }}" method="POST" class="inline" data-confirm="Hapus komponen ini?">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">delete</span></button>
                                 </form>

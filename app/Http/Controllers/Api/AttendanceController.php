@@ -249,7 +249,7 @@ class AttendanceController extends Controller
 
         // Check if already clocked in
         $existing = Attendance::where('employee_id', $employee->id)
-            ->where('date', $today)
+            ->where('date', $today->toDateString())
             ->first();
 
         if ($existing && $existing->clock_in) {
@@ -328,13 +328,14 @@ class AttendanceController extends Controller
 
         // Check if late
         $isLate = false;
-        if ($employee->workSchedule) {
-            $scheduleStart = Carbon::parse($employee->workSchedule->start_time);
-            $isLate = now()->gt($today->copy()->setTimeFrom($scheduleStart));
+        $shiftStartTime = $this->getShiftStartTime($employee, $today);
+        if ($shiftStartTime) {
+            $scheduleStart = Carbon::parse($today->toDateString() . ' ' . $shiftStartTime);
+            $isLate = now()->gt($scheduleStart);
         }
 
         $attendance = Attendance::updateOrCreate(
-            ['employee_id' => $employee->id, 'date' => $today],
+            ['employee_id' => $employee->id, 'date' => $today->toDateString()],
             [
                 'clock_in' => now()->format('H:i:s'),
                 'clock_in_lat' => $request->latitude,
@@ -749,5 +750,4 @@ class AttendanceController extends Controller
         return null;
     }
 }
-
 

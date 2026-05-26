@@ -85,11 +85,11 @@
                             <div class="flex gap-2">
                                 <form action="{{ route('admin.approvals.approve', ['type' => 'leave', 'id' => $lr->id]) }}" method="POST">
                                     @csrf
-                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Setujui cuti ini?')"><span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Setujui</button>
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Setujui cuti ini?"><span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Setujui</button>
                                 </form>
                                 <form action="{{ route('admin.approvals.reject', ['type' => 'leave', 'id' => $lr->id]) }}" method="POST">
                                     @csrf
-                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Tolak cuti ini?')"><span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Tolak</button>
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Tolak cuti ini?"><span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Tolak</button>
                                 </form>
                             </div>
                         </td>
@@ -162,13 +162,13 @@
                                         @csrf
                                         <input type="hidden" name="adjusted_duration" id="ot-adj-dur-{{ $ot->id }}">
                                         <input type="hidden" name="adjusted_break" id="ot-adj-brk-{{ $ot->id }}">
-                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="syncAdjust({{ $ot->id }}); return confirm('Setujui lembur ini?')">
+                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Setujui lembur ini?" data-confirm-before="syncAdjust({{ $ot->id }})">
                                             <span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Setujui
                                         </button>
                                     </form>
                                     <form action="{{ route('admin.approvals.reject', ['type' => 'overtime', 'id' => $ot->id]) }}" method="POST">
                                         @csrf
-                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Tolak lembur ini?')">
+                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Tolak lembur ini?">
                                             <span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Tolak
                                         </button>
                                     </form>
@@ -260,8 +260,8 @@
                         <td class="px-4 py-3.5 text-[13px] text-gray-600 border-b border-gray-100 max-w-[200px]">{{ Str::limit($ar->reason, 60) }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex gap-2">
-                                <form action="{{ route('admin.approvals.approve', ['type' => 'attendance', 'id' => $ar->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Setujui?')">check_circle</button></form>
-                                <form action="{{ route('admin.approvals.reject', ['type' => 'attendance', 'id' => $ar->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Tolak?')">cancel</button></form>
+                                <form action="{{ route('admin.approvals.approve', ['type' => 'attendance', 'id' => $ar->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Setujui?">check_circle</button></form>
+                                <form action="{{ route('admin.approvals.reject', ['type' => 'attendance', 'id' => $ar->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Tolak?">cancel</button></form>
                             </div>
                         </td>
                     </tr>
@@ -312,11 +312,11 @@
                             <div class="flex gap-2">
                                 <form action="{{ route('admin.approvals.approve', ['type' => 'budget', 'id' => $br->id]) }}" method="POST">
                                     @csrf
-                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Setujui pengajuan anggaran ini?')"><span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Setujui</button>
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Setujui pengajuan anggaran ini?"><span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Setujui</button>
                                 </form>
                                 <form action="{{ route('admin.approvals.reject', ['type' => 'budget', 'id' => $br->id]) }}" method="POST">
                                     @csrf
-                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Tolak pengajuan anggaran ini?')"><span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Tolak</button>
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Tolak pengajuan anggaran ini?"><span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Tolak</button>
                                 </form>
                                 <a href="{{ route('admin.budget-requests.show', $br->id) }}" class="inline-flex items-center px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
                             </div>
@@ -420,8 +420,8 @@
                         <td class="px-4 py-3.5 text-[13px] font-semibold text-gray-800 border-b border-gray-100">{{ Str::limit($dc->new_value, 40) }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex gap-2">
-                                <form action="{{ route('admin.approvals.approve', ['type' => 'data-change', 'id' => $dc->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Setujui?')">check_circle</button></form>
-                                <form action="{{ route('admin.approvals.reject', ['type' => 'data-change', 'id' => $dc->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" onclick="return confirm('Tolak?')">cancel</button></form>
+                                <form action="{{ route('admin.approvals.approve', ['type' => 'data-change', 'id' => $dc->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Setujui?">check_circle</button></form>
+                                <form action="{{ route('admin.approvals.reject', ['type' => 'data-change', 'id' => $dc->id]) }}" method="POST">@csrf<button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Tolak?">cancel</button></form>
                             </div>
                         </td>
                     </tr>

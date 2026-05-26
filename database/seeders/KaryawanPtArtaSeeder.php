@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use App\Models\LeaveBalance;
+use App\Models\LeavePolicy;
 use App\Models\LeaveType;
 use App\Models\Employee;
 
@@ -41,7 +42,95 @@ class KaryawanPtArtaSeeder extends Seeder
         ]);
         $this->command->info('✓ Company seeded.');
 
+        $leaveTypes = [
+            'Cuti Tahunan' => 12,
+            'Cuti Sakit' => 14,
+            'Izin Datang Terlambat' => 365,
+            'Cuti Melahirkan' => 90,
+        ];
+
+        foreach ($leaveTypes as $name => $maxDays) {
+            LeaveType::updateOrCreate(
+                ['name' => $name],
+                ['max_days' => $maxDays]
+            );
+        }
+
+        $cutiTahunan = LeaveType::where('name', 'Cuti Tahunan')->first();
+        if ($cutiTahunan) {
+            LeavePolicy::updateOrCreate(
+                [
+                    'company_id' => 1,
+                    'leave_type_id' => $cutiTahunan->id,
+                ],
+                [
+                    'days_per_year' => 12,
+                    'min_tenure_months' => 12,
+                    'max_carry_over' => 0,
+                    'is_prorated' => true,
+                    'is_active' => true,
+                ]
+            );
+        }
+        $this->command->info('✓ Leave types & annual leave policy seeded.');
+
         // ── 3. DEPARTMENTS ──
+        $now = now()->toDateTimeString();
+
+        DB::table('shifts')->updateOrInsert(['company_id' => 1, 'name' => 'Pagi'], [
+            'company_id' => 1,
+            'name' => 'Pagi',
+            'start_time' => '08:00',
+            'end_time' => '16:00',
+            'work_hours' => 8,
+            'auto_overtime' => false,
+            'color' => '#3B82F6',
+            'is_off' => false,
+            'sort_order' => 1,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        DB::table('shifts')->updateOrInsert(['company_id' => 1, 'name' => 'Off'], [
+            'company_id' => 1,
+            'name' => 'Off',
+            'start_time' => null,
+            'end_time' => null,
+            'work_hours' => null,
+            'auto_overtime' => false,
+            'color' => '#6B7280',
+            'is_off' => true,
+            'sort_order' => 2,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        $pagiShiftId = DB::table('shifts')->where('company_id', 1)->where('name', 'Pagi')->value('id');
+        $offShiftId = DB::table('shifts')->where('company_id', 1)->where('name', 'Off')->value('id');
+
+        DB::table('schedule_templates')->updateOrInsert(['id' => 1], [
+            'company_id' => 1,
+            'name' => '5 Hari Kerja (Pagi)',
+            'description' => 'Senin-Jumat shift pagi, Sabtu-Minggu off',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        DB::table('schedule_templates')->updateOrInsert(['id' => 2], [
+            'company_id' => 1,
+            'name' => '6 Hari Kerja (Pagi)',
+            'description' => 'Senin-Sabtu shift pagi, Minggu off',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        foreach ([1 => [$pagiShiftId, $pagiShiftId, $pagiShiftId, $pagiShiftId, $pagiShiftId, $offShiftId, $offShiftId], 2 => [$pagiShiftId, $pagiShiftId, $pagiShiftId, $pagiShiftId, $pagiShiftId, $pagiShiftId, $offShiftId]] as $templateId => $shiftIds) {
+            foreach ($shiftIds as $index => $shiftId) {
+                DB::table('schedule_template_days')->updateOrInsert(
+                    ['template_id' => $templateId, 'day_of_week' => $index + 1],
+                    ['shift_id' => $shiftId, 'created_at' => $now, 'updated_at' => $now]
+                );
+            }
+        }
+        $this->command->info('Shift & template jadwal seeded.');
+
         $this->command->info('Seeding departments...');
         $deptRows = [
             ['id'=>5, 'name'=>'HRD & CORPORATE SERVICE', 'parent_id'=>null],
@@ -77,7 +166,6 @@ class KaryawanPtArtaSeeder extends Seeder
         // ── 4. KARYAWAN ──
         $this->command->info('Seeding karyawan...');
         $pwd = Hash::make('password');
-        $now = now()->toDateTimeString();
         $employees = [
             // Raden Tarjadi — Commissioner
             ['orig_id'=>1,'employee_code'=>'001/COM/IV/2022','company_id'=>1,'department_id'=>18,

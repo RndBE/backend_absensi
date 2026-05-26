@@ -52,7 +52,7 @@
                             class="px-2 py-1.5 text-[10px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all cursor-pointer">
                             <span class="material-symbols-outlined text-[14px] align-text-bottom">edit</span>
                         </button>
-                        <form action="{{ route('admin.shifts.destroy', $shift->id) }}" method="POST" onsubmit="return confirm('Hapus shift {{ $shift->name }}?')">
+                        <form action="{{ route('admin.shifts.destroy', $shift->id) }}" method="POST" data-confirm="Hapus shift {{ $shift->name }}?">
                             @csrf @method('DELETE')
                             <button class="px-2 py-1.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span></button>
                         </form>

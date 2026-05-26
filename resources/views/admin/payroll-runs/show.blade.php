@@ -43,13 +43,13 @@
 {{-- Action Buttons --}}
 <div class="flex flex-wrap gap-2 mb-5">
     @if($run->status === 'draft')
-    <form action="{{ route('admin.payroll-runs.finalize', $run->id) }}" method="POST" onsubmit="return confirm('Finalize payroll ini?')">
+    <form action="{{ route('admin.payroll-runs.finalize', $run->id) }}" method="POST" data-confirm="Finalize payroll ini?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">check_circle</span> Finalize
         </button>
     </form>
-    <form action="{{ route('admin.payroll-runs.regenerate', $run->id) }}" method="POST" onsubmit="return confirm('Regenerate semua data?')">
+    <form action="{{ route('admin.payroll-runs.regenerate', $run->id) }}" method="POST" data-confirm="Regenerate semua data?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">refresh</span> Regenerate
@@ -58,19 +58,19 @@
     @endif
 
     @if($run->status === 'finalized')
-    <form action="{{ route('admin.payroll-runs.publish', $run->id) }}" method="POST" onsubmit="return confirm('Publish payslip ke karyawan?')">
+    <form action="{{ route('admin.payroll-runs.publish', $run->id) }}" method="POST" data-confirm="Publish payslip ke karyawan?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-blue-600 to-blue-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">publish</span> Publish Payslip
         </button>
     </form>
-    <form action="{{ route('admin.payroll-runs.lock', $run->id) }}" method="POST" onsubmit="return confirm('Lock payroll? Data tidak bisa diubah.')">
+    <form action="{{ route('admin.payroll-runs.lock', $run->id) }}" method="POST" data-confirm="Lock payroll? Data tidak bisa diubah.">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-gray-700 to-gray-600 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">lock</span> Lock Payroll
         </button>
     </form>
-    <form action="{{ route('admin.payroll-runs.reopen', $run->id) }}" method="POST" onsubmit="return confirm('Reopen ke draft?')">
+    <form action="{{ route('admin.payroll-runs.reopen', $run->id) }}" method="POST" data-confirm="Reopen ke draft?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">undo</span> Reopen
@@ -79,13 +79,13 @@
     @endif
 
     @if($run->status === 'published')
-    <form action="{{ route('admin.payroll-runs.unpublish', $run->id) }}" method="POST" onsubmit="return confirm('Unpublish payslip?')">
+    <form action="{{ route('admin.payroll-runs.unpublish', $run->id) }}" method="POST" data-confirm="Unpublish payslip?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">unpublished</span> Unpublish
         </button>
     </form>
-    <form action="{{ route('admin.payroll-runs.lock', $run->id) }}" method="POST" onsubmit="return confirm('Lock payroll?')">
+    <form action="{{ route('admin.payroll-runs.lock', $run->id) }}" method="POST" data-confirm="Lock payroll?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-gray-700 to-gray-600 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">lock</span> Lock
@@ -94,7 +94,7 @@
     @endif
 
     @if($run->status === 'locked')
-    <form action="{{ route('admin.payroll-runs.unlock', $run->id) }}" method="POST" onsubmit="return confirm('Unlock payroll?')">
+    <form action="{{ route('admin.payroll-runs.unlock', $run->id) }}" method="POST" data-confirm="Unlock payroll?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">lock_open</span> Unlock
@@ -110,7 +110,7 @@
         });
     @endphp
     @if(!$hasBpjs || $run->status === 'draft')
-    <form action="{{ route('admin.payroll-runs.inject-bpjs', $run->id) }}" method="POST" onsubmit="return confirm('Inject komponen BPJS ke semua karyawan dalam payroll ini?')">
+    <form action="{{ route('admin.payroll-runs.inject-bpjs', $run->id) }}" method="POST" data-confirm="Inject komponen BPJS ke semua karyawan dalam payroll ini?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-blue-600 to-cyan-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">health_and_safety</span> Inject BPJS

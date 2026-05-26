@@ -16,7 +16,12 @@ use App\Http\Controllers\Admin\AttendanceRecapController;
 use App\Http\Controllers\Admin\LeavePolicyController;
 use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\AttendanceSettingController;
+use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\CompanyController;
+use App\Http\Controllers\Admin\RolePermissionController;
+use App\Http\Middleware\AdminActivityLogger;
+use App\Http\Middleware\AdminAuth;
+use App\Http\Middleware\AdminPermissionMiddleware;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root to admin
@@ -28,7 +33,11 @@ Route::post('/admin/login', [AuthController::class, 'login']);
 Route::post('/admin/logout', [AuthController::class, 'logout'])->name('admin.logout');
 
 // Admin Protected
-Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAuth::class)->group(function () {
+Route::prefix('admin')->name('admin.')->middleware([
+    AdminAuth::class,
+    AdminPermissionMiddleware::class,
+    AdminActivityLogger::class,
+])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -152,6 +161,12 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');
     Route::put('/attendance-settings', [AttendanceSettingController::class, 'update'])->name('attendance-settings.update');
 
+    // Security
+    Route::get('/role-permissions', [RolePermissionController::class, 'index'])->name('role-permissions.index');
+    Route::put('/role-permissions/roles/{role}', [RolePermissionController::class, 'updateRole'])->name('role-permissions.roles.update');
+    Route::put('/role-permissions/employees/{employee}', [RolePermissionController::class, 'updateEmployee'])->name('role-permissions.employees.update');
+    Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
+
 
 
     // Payroll Components
@@ -227,4 +242,3 @@ Route::prefix('admin')->name('admin.')->middleware(\App\Http\Middleware\AdminAut
     Route::get('/reports/payroll', [\App\Http\Controllers\Admin\ReportController::class, 'payroll'])->name('reports.payroll');
     Route::get('/reports/payroll/export', [\App\Http\Controllers\Admin\ReportController::class, 'exportPayroll'])->name('reports.export-payroll');
 });
-

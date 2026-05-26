@@ -215,7 +215,7 @@
 
                         {{-- Remove --}}
                         <form action="{{ route('admin.payroll-components.remove-assignment', [$component->id, $assign->id]) }}"
-                              method="POST" onsubmit="return confirm('Hapus karyawan ini dari komponen?')">
+                              method="POST" data-confirm="Hapus karyawan ini dari komponen?">
                             @csrf @method('DELETE')
                             <button type="submit"
                                 class="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer">

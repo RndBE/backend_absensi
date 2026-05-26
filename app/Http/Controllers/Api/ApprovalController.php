@@ -9,6 +9,7 @@ use App\Models\BudgetRequest;
 use App\Models\TravelReport;
 use App\Models\DataChangeRequest;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\Notification;
@@ -62,15 +63,43 @@ class ApprovalController extends Controller
      */
     private function getMyPendingItems(string $modelClass, Employee $me, array $relations): \Illuminate\Support\Collection
     {
+        if ($modelClass === DataChangeRequest::class) {
+            if ($me->role !== 'superadmin') {
+                return collect([]);
+            }
+
+            return $modelClass::whereIn('status', ['pending', 'in_review'])
+                ->with($relations)
+                ->orderBy('created_at', 'desc')
+                ->get();
+        }
+
+        if ($me->role === 'superadmin') {
+            return $modelClass::whereIn('status', ['pending', 'in_review'])
+                ->with($relations)
+                ->orderBy('created_at', 'desc')
+                ->get();
+        }
+
+        $requestType = $this->modelToRequestType($modelClass);
+        $employeeSteps = EmployeeApprover::where('approver_id', $me->id)
+            ->where('request_type', $requestType)
+            ->get()
+            ->groupBy('employee_id');
+
         $items = $modelClass::whereIn('status', ['pending', 'in_review'])
-            ->with('employee:id,full_name,approver_id')
             ->get();
 
         $myIds = [];
         foreach ($items as $item) {
-            $approver = $this->getApproverAtStep($item->employee, $item->current_step ?? 1);
-            if ($approver && $approver->id === $me->id) {
-                $myIds[] = $item->id;
+            if (isset($employeeSteps[$item->employee_id])) {
+                $steps = $employeeSteps[$item->employee_id];
+                foreach ($steps as $stepRecord) {
+                    if ((int) $stepRecord->step_order === (int) ($item->current_step ?? 1)) {
+                        $myIds[] = $item->id;
+                        break;
+                    }
+                }
             }
         }
 
@@ -84,20 +113,6 @@ class ApprovalController extends Controller
             ->get();
     }
 
-    /**
-     * Walk approver_id chain: step 1 = employee->approver, step 2 = that approver's approver, etc.
-     */
-    private function getApproverAtStep(Employee $employee, int $step): ?Employee
-    {
-        $current = $employee;
-        for ($i = 0; $i < $step; $i++) {
-            if (!$current->approver_id) return null;
-            $current = Employee::find($current->approver_id);
-            if (!$current) return null;
-        }
-        return $current;
-    }
-
     public function show(Request $request, $type, $id)
     {
         $modelClass = $this->typeMap[$type] ?? null;
@@ -106,6 +121,9 @@ class ApprovalController extends Controller
         }
 
         $relations = ['employee', 'attachments', 'approvalLogs.approver'];
+        if ($modelClass === LeaveRequest::class) {
+            $relations[] = 'leaveType';
+        }
         if ($modelClass === BudgetRequest::class) {
             $relations[] = 'items';
             $relations[] = 'participants';
@@ -142,6 +160,14 @@ class ApprovalController extends Controller
         }
 
         $currentStep = $item->current_step ?? 1;
+        $requestType = $this->modelToRequestType($modelClass);
+
+        if ($modelClass !== DataChangeRequest::class && $request->user()->role !== 'superadmin') {
+            $expectedApprover = EmployeeApprover::getApproverAt($item->employee_id, $requestType, $currentStep);
+            if (!$expectedApprover || $expectedApprover->id !== $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'Anda bukan approver untuk step ini.'], 403);
+            }
+        }
 
         // Log this approval step
         ApprovalLog::create([
@@ -161,8 +187,10 @@ class ApprovalController extends Controller
             ]);
         }
 
-        // Check if there's a next approver in the chain
-        $nextApprover = $request->user()->approver; // the approver of the current approver
+        // Check if there's a next approver in the configured employee_approvers chain.
+        $nextApprover = $modelClass === DataChangeRequest::class
+            ? null
+            : EmployeeApprover::getApproverAt($item->employee_id, $requestType, $currentStep + 1);
 
         if ($nextApprover) {
             // There's a next level — forward to next step
@@ -251,6 +279,14 @@ class ApprovalController extends Controller
         }
 
         $currentStep = $item->current_step ?? 1;
+        $requestType = $this->modelToRequestType($modelClass);
+
+        if ($modelClass !== DataChangeRequest::class && $request->user()->role !== 'superadmin') {
+            $expectedApprover = EmployeeApprover::getApproverAt($item->employee_id, $requestType, $currentStep);
+            if (!$expectedApprover || $expectedApprover->id !== $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'Anda bukan approver untuk step ini.'], 403);
+            }
+        }
 
         $item->update(['status' => 'rejected']);
 
@@ -275,5 +311,18 @@ class ApprovalController extends Controller
         FcmService::sendToEmployee($item->employee, $notification->title, $notification->message);
 
         return response()->json(['success' => true, 'message' => 'Pengajuan ditolak']);
+    }
+
+    private function modelToRequestType(string $modelClass): string
+    {
+        return match ($modelClass) {
+            LeaveRequest::class => 'leave',
+            OvertimeRequest::class => 'overtime',
+            AttendanceRequest::class => 'attendance',
+            BudgetRequest::class => 'budget',
+            TravelReport::class => 'travel_report',
+            DataChangeRequest::class => 'data-change',
+            default => 'leave',
+        };
     }
 }

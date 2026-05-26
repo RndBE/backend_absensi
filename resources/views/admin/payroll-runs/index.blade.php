@@ -51,7 +51,7 @@
                             <div class="flex items-center justify-center gap-1.5">
                                 <a href="{{ route('admin.payroll-runs.show', $run->id) }}" class="p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors" title="Detail"><span class="material-symbols-outlined text-[16px]">visibility</span></a>
                                 @if($run->status === 'draft')
-                                <form action="{{ route('admin.payroll-runs.destroy', $run->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus payroll run ini?')">
+                                <form action="{{ route('admin.payroll-runs.destroy', $run->id) }}" method="POST" class="inline" data-confirm="Hapus payroll run ini?">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">delete</span></button>
                                 </form>

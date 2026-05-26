@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminActivityLog;
 use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class AuthController extends Controller
 {
+    private const ADMIN_ROLES = ['superadmin', 'admin', 'manager'];
+
     public function showLogin()
     {
         if (session('admin_id')) {
@@ -31,13 +35,44 @@ class AuthController extends Controller
             return back()->with('error', 'Email atau password salah.')->withInput();
         }
 
+        if (!in_array($employee->role, self::ADMIN_ROLES, true)) {
+            return back()->with('error', 'Akses admin ditolak.')->withInput();
+        }
+
         session(['admin_id' => $employee->id]);
+        $this->logAuthActivity($employee, 'login', $request);
+
         return redirect()->route('admin.dashboard');
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
+        $employee = Employee::find(session('admin_id'));
+        if ($employee) {
+            $this->logAuthActivity($employee, 'logout', $request);
+        }
+
         session()->forget('admin_id');
         return redirect()->route('admin.login');
+    }
+
+    private function logAuthActivity(Employee $employee, string $action, Request $request): void
+    {
+        if (!Schema::hasTable('admin_activity_logs')) {
+            return;
+        }
+
+        AdminActivityLog::create([
+            'employee_id' => $employee->id,
+            'company_id' => $employee->company_id,
+            'module' => 'auth',
+            'action' => $action,
+            'route_name' => $request->route()?->getName(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'ip_address' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 1000),
+            'metadata' => null,
+        ]);
     }
 }

@@ -41,6 +41,84 @@
     </div>
 </div>
 
+{{-- Monthly HR & Attendance Summary --}}
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-7">
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+        <div class="w-10 h-10 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">running_with_errors</span></div>
+        <div>
+            <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $lateThisMonth }}</div>
+            <div class="text-[12.5px] text-gray-500 font-medium">Terlambat Bulan Ini</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+        <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">event_busy</span></div>
+        <div>
+            <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $pendingLeave }}</div>
+            <div class="text-[12.5px] text-gray-500 font-medium">Cuti Pending</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+        <div class="w-10 h-10 rounded-lg bg-violet-50 text-violet-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">more_time</span></div>
+        <div>
+            <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $pendingOvertime }}</div>
+            <div class="text-[12.5px] text-gray-500 font-medium">Lembur Pending</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+        <div class="w-10 h-10 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">fact_check</span></div>
+        <div>
+            <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $pendingAttendance }}</div>
+            <div class="text-[12.5px] text-gray-500 font-medium">Presensi Pending</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+        <div class="w-10 h-10 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">person_remove</span></div>
+        <div>
+            <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $resignedThisMonth }}</div>
+            <div class="text-[12.5px] text-gray-500 font-medium">Resign Bulan Ini</div>
+        </div>
+    </div>
+</div>
+
+{{-- Contract Watch --}}
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-7 animate-fade-in-up">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">contract</span> Kontrak Hampir Habis</h3>
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">{{ $contractsEndingSoonCount }} karyawan</span>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr>
+                    <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Karyawan</th>
+                    <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Status</th>
+                    <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Akhir Kontrak</th>
+                    <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Sisa Hari</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($contractsEndingSoon as $employee)
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <div class="text-[13px] font-semibold text-gray-800">{{ $employee->full_name }}</div>
+                            <div class="text-[11px] text-gray-400">{{ $employee->employee_code }} - {{ $employee->position ?? '-' }}</div>
+                        </td>
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-gray-100 text-gray-700">{{ ucfirst($employee->employment_status) }}</span>
+                        </td>
+                        <td class="px-4 py-3.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $employee->contract_end_date?->format('d/m/Y') }}</td>
+                        <td class="px-4 py-3.5 border-b border-gray-100 text-right text-[13px] font-bold text-amber-700">{{ now()->startOfDay()->diffInDays($employee->contract_end_date, false) }} hari</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="4" class="text-center py-8 text-gray-400 text-sm">Tidak ada kontrak yang habis dalam 30 hari ke depan</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+</div>
+
 {{-- Grid 2 --}}
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     {{-- Recent Attendance --}}
@@ -64,7 +142,7 @@
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex items-center gap-2">
-                                @if($att->employee->photo)
+                                @if($att->employee?->photo)
                                     <img src="{{ asset('storage/' . $att->employee->photo) }}" class="w-7 h-7 rounded-full object-cover shrink-0" alt="">
                                 @else
                                     <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($att->employee->full_name ?? '?', 0, 1) }}</div>
@@ -130,10 +208,14 @@
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             @if($lr->status === 'pending')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Pending</span>
+                            @elseif($lr->status === 'in_review')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">Diproses</span>
                             @elseif($lr->status === 'approved')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Disetujui</span>
-                            @else
+                            @elseif($lr->status === 'rejected')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-red-100 text-red-800">Ditolak</span>
+                            @else
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-gray-100 text-gray-800">{{ ucfirst($lr->status) }}</span>
                             @endif
                         </td>
                     </tr>

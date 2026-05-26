@@ -115,7 +115,7 @@
         <span class="material-symbols-outlined text-gray-400">expand_more</span>
     </div>
     <div class="p-5 hidden" id="bulkPanel">
-        <form action="{{ route('admin.approval-rules.bulk-assign') }}" method="POST" onsubmit="return validateBulk()">
+        <form action="{{ route('admin.approval-rules.bulk-assign') }}" method="POST" data-confirm-message-fn="getBulkApprovalConfirmMessage">
             @csrf
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -249,14 +249,14 @@ function updateSelectedCount() {
 
 document.querySelectorAll('.emp-checkbox').forEach(b => b.addEventListener('change', updateSelectedCount));
 
-function validateBulk() {
+function getBulkApprovalConfirmMessage() {
     const emps = document.querySelectorAll('.emp-checkbox:checked').length;
     const steps = document.querySelectorAll('#bulkChain select').length;
     const types = document.querySelectorAll('input[name="apply_types[]"]:checked').length;
     if (!emps) { alert('Pilih minimal 1 karyawan'); return false; }
     if (!steps) { alert('Tambahkan minimal 1 step approval'); return false; }
     if (!types) { alert('Pilih minimal 1 tipe pengajuan'); return false; }
-    return confirm(`Terapkan approval chain ke ${emps} karyawan × ${types} tipe? Ini akan menimpa pengaturan lama.`);
+    return `Terapkan approval chain ke ${emps} karyawan × ${types} tipe? Ini akan menimpa pengaturan lama.`;
 }
 
 // Auto-add first step

@@ -78,10 +78,7 @@
                             <div class="flex gap-1.5">
                                 <a href="{{ route('admin.employees.show', $emp->id) }}" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all duration-200" title="Detail"><span class="material-symbols-outlined text-[16px]">visibility</span></a>
                                 <a href="{{ route('admin.employees.edit', $emp->id) }}" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all duration-200" title="Edit"><span class="material-symbols-outlined text-[16px]">edit</span></a>
-                                <form action="{{ route('admin.employees.destroy', $emp->id) }}" method="POST" onsubmit="return confirm('Nonaktifkan karyawan ini?')">
-                                    @csrf @method('DELETE')
-                                    <button type="submit" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 cursor-pointer" title="Nonaktifkan"><span class="material-symbols-outlined text-[16px]">delete</span></button>
-                                </form>
+                                <a href="{{ route('admin.employees.resign', $emp->id) }}" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200" title="Proses Resign"><span class="material-symbols-outlined text-[16px]">person_remove</span></a>
                             </div>
                         </td>
                     </tr>

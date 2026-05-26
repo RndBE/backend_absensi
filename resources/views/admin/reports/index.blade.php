@@ -8,8 +8,8 @@
 </div>
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-    <a href="{{ route('admin.reports.attendance') }}" class="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-        <div class="p-5">
+    <a href="{{ route('admin.reports.attendance') }}" class="group flex h-full flex-col bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+        <div class="p-5 flex-1">
             <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <span class="material-symbols-outlined text-white text-[24px]">fingerprint</span>
             </div>
@@ -22,8 +22,8 @@
         </div>
     </a>
 
-    <a href="{{ route('admin.reports.leave') }}" class="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-        <div class="p-5">
+    <a href="{{ route('admin.reports.leave') }}" class="group flex h-full flex-col bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+        <div class="p-5 flex-1">
             <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <span class="material-symbols-outlined text-white text-[24px]">event_busy</span>
             </div>
@@ -36,8 +36,8 @@
         </div>
     </a>
 
-    <a href="{{ route('admin.reports.overtime') }}" class="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-        <div class="p-5">
+    <a href="{{ route('admin.reports.overtime') }}" class="group flex h-full flex-col bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+        <div class="p-5 flex-1">
             <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <span class="material-symbols-outlined text-white text-[24px]">schedule</span>
             </div>
@@ -50,8 +50,8 @@
         </div>
     </a>
 
-    <a href="{{ route('admin.reports.payroll') }}" class="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-        <div class="p-5">
+    <a href="{{ route('admin.reports.payroll') }}" class="group flex h-full flex-col bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+        <div class="p-5 flex-1">
             <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <span class="material-symbols-outlined text-white text-[24px]">payments</span>
             </div>
