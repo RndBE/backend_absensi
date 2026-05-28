@@ -1,149 +1,59 @@
-# Backend Absensi
+<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
-Backend Absensi adalah aplikasi Laravel untuk manajemen absensi, cuti, lembur,
-approval, payroll, pajak/BPJS, perjalanan dinas, dan reimbursement.
+<p align="center">
+<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+</p>
 
-## Kebutuhan
+## About Laravel
 
-- PHP 8.2 atau lebih baru
-- Composer
-- Node.js 20.19+ atau 22.12+
-- MySQL atau MariaDB
+Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
 
-> Catatan: build masih bisa berjalan di Node 20.17 pada mesin ini, tetapi Vite
-> memberi warning dan merekomendasikan Node 20.19+.
+- [Simple, fast routing engine](https://laravel.com/docs/routing).
+- [Powerful dependency injection container](https://laravel.com/docs/container).
+- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
+- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
+- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
+- [Robust background job processing](https://laravel.com/docs/queues).
+- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
 
-## Setup Lokal
+Laravel is accessible, powerful, and provides tools required for large, robust applications.
 
-1. Install dependency PHP.
+## Learning Laravel
 
-```bash
-composer install
-```
+Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
 
-2. Install dependency frontend.
+If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
 
-```bash
-npm install
-```
+## Laravel Sponsors
 
-3. Buat file environment.
+We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
 
-```bash
-cp .env.example .env
-```
+### Premium Partners
 
-Di Windows PowerShell:
+- **[Vehikl](https://vehikl.com)**
+- **[Tighten Co.](https://tighten.co)**
+- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
+- **[64 Robots](https://64robots.com)**
+- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
+- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
+- **[Redberry](https://redberry.international/laravel-development)**
+- **[Active Logic](https://activelogic.com)**
 
-```powershell
-Copy-Item .env.example .env
-```
+## Contributing
 
-4. Sesuaikan koneksi database di `.env`.
+Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
 
-```env
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=be_inventory
-DB_USERNAME=root
-DB_PASSWORD=Password*123
-```
+## Code of Conduct
 
-5. Buat database MySQL.
+In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
 
-```sql
-CREATE DATABASE be_inventory CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
+## Security Vulnerabilities
 
-6. Generate application key.
+If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
 
-```bash
-php artisan key:generate
-```
+## License
 
-7. Jalankan migrasi dan seeder.
-
-```bash
-php artisan migrate --seed
-```
-
-Untuk reset database lokal:
-
-```bash
-php artisan migrate:fresh --seed
-```
-
-8. Buat symbolic link storage publik.
-
-```bash
-php artisan storage:link
-```
-
-9. Build asset frontend.
-
-```bash
-npm run build
-```
-
-10. Jalankan server lokal.
-
-```bash
-php artisan serve
-```
-
-Aplikasi tersedia di:
-
-```text
-http://127.0.0.1:8000
-```
-
-## Akun Dummy
-
-Seeder default membuat akun superadmin:
-
-```text
-email: nofiyanto@artasolusindo.com
-password: password
-role: superadmin
-```
-
-## Command Harian
-
-Jalankan server Laravel:
-
-```bash
-php artisan serve
-```
-
-Jalankan Vite dev server:
-
-```bash
-npm run dev
-```
-
-Jalankan semua service development dari Composer:
-
-```bash
-composer run dev
-```
-
-Jalankan test:
-
-```bash
-php artisan test
-```
-
-Build asset:
-
-```bash
-npm run build
-```
-
-## Catatan Penting
-
-- Login admin memakai tabel `employees`, bukan tabel `users`.
-- Hanya employee aktif dengan role `admin` atau `superadmin` yang boleh masuk dashboard admin.
-- File upload publik disimpan ke `storage/app/public` dan diakses melalui `public/storage`.
-- Jika gambar/foto tidak muncul, jalankan ulang `php artisan storage:link`.
-- Jangan jalankan `php artisan migrate:fresh --seed` pada database berisi data penting karena semua tabel akan di-drop.
+The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).

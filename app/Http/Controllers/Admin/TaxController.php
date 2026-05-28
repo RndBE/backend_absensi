@@ -63,16 +63,6 @@ class TaxController extends Controller
 
     public function updateBpjsAll(Request $request)
     {
-        $request->validate([
-            'npp' => 'nullable|string|max:255',
-            'bpjs' => 'required|array|min:1',
-            'bpjs.*.id' => 'required|integer|exists:bpjs_settings,id',
-            'bpjs.*.company' => 'required|numeric|min:0|max:100',
-            'bpjs.*.employee' => 'required|numeric|min:0|max:100',
-            'bpjs.*.cap_id' => 'nullable|integer|exists:bpjs_settings,id',
-            'bpjs.*.salary_cap' => 'nullable|numeric|min:0',
-        ]);
-
         foreach ($request->bpjs as $key => $data) {
             // Update rate
             $setting = BpjsSetting::find($data['id']);

@@ -8,7 +8,6 @@ use App\Models\PayrollRunDetail;
 use App\Models\PayrollRun;
 use App\Models\Company;
 use App\Services\BpjsCalculator;
-use App\Support\DownloadFilename;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -29,20 +28,13 @@ class PayslipController extends Controller
             $q->where('company_id', $admin->company_id);
         });
 
-        if ($request->search) {
-            $query->whereHas('employee', function ($q) use ($request) {
-                $q->where('full_name', 'like', "%{$request->search}%")
-                  ->orWhere('employee_code', 'like', "%{$request->search}%");
-            });
-        }
-
         if ($request->period) {
             $query->whereHas('payrollRun', function ($q) use ($request) {
                 $q->where('period', $request->period);
             });
         }
 
-        $payslips = $query->orderByDesc('id')->paginate(20)->withQueryString();
+        $payslips = $query->orderByDesc('id')->get();
 
         $periods = PayrollRun::whereIn('status', ['published', 'locked'])
             ->distinct()
@@ -92,7 +84,7 @@ class PayslipController extends Controller
         $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail', 'company', 'logoBase64', 'bpjsData'));
         $pdf->setPaper('A4', 'portrait');
 
-        $filename = DownloadFilename::sanitize('Payslip_' . $detail->employee->employee_code . '_' . $detail->payrollRun->period . '.pdf');
+        $filename = 'Payslip_' . $detail->employee->employee_code . '_' . $detail->payrollRun->period . '.pdf';
 
         return $pdf->download($filename);
     }

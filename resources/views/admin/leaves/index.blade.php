@@ -2,10 +2,17 @@
 @section('title', 'Pengajuan Cuti')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canCreateLeave = $adminPermission->can($currentAdmin, 'leaves.create');
+    $canDeleteLeave = $adminPermission->can($currentAdmin, 'leaves.delete');
+@endphp
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">event_busy</span> Pengajuan Cuti</h3>
+        @if($canCreateLeave)
         <a href="{{ route('admin.leaves.create') }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">＋ Ajukan Cuti</a>
+        @endif
     </div>
 
     {{-- Status Tabs --}}
@@ -81,8 +88,8 @@
                         <td class="py-3 px-3 text-center">
                             <div class="flex items-center justify-center gap-1.5">
                                 <a href="{{ route('admin.leaves.show', $leave->id) }}" class="inline-flex items-center px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">👁️ Detail</a>
-                                @if($leave->status === 'pending')
-                                <form action="{{ route('admin.leaves.destroy', $leave->id) }}" method="POST" onsubmit="return confirm('Hapus pengajuan ini?')">
+                                @if($leave->status === 'pending' && $canDeleteLeave)
+                                <form action="{{ route('admin.leaves.destroy', $leave->id) }}" method="POST" data-confirm="Hapus pengajuan ini?">
                                     @csrf @method('DELETE')
                                     <button class="inline-flex items-center px-2 py-1.5 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span></button>
                                 </form>

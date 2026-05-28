@@ -2,6 +2,10 @@
 @section('title', 'Karyawan — ' . $component->name)
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canManagePayrollMaster = $adminPermission->can($currentAdmin, 'payroll.master.manage');
+@endphp
 
 {{-- ── BREADCRUMB + HEADER ── --}}
 <div class="mb-5 flex items-center justify-between flex-wrap gap-3">
@@ -40,6 +44,7 @@
     {{-- ══════════════════════════════════════════ --}}
     {{-- PANEL KIRI: Form assign karyawan baru      --}}
     {{-- ══════════════════════════════════════════ --}}
+    @if($canManagePayrollMaster)
     <div class="xl:col-span-1">
         <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-100">
@@ -119,11 +124,12 @@
             </div>
         </div>
     </div>
+    @endif
 
     {{-- ══════════════════════════════════════════ --}}
     {{-- PANEL KANAN: Daftar karyawan ter-assign   --}}
     {{-- ══════════════════════════════════════════ --}}
-    <div class="xl:col-span-2">
+    <div class="{{ $canManagePayrollMaster ? 'xl:col-span-2' : 'xl:col-span-3' }}">
         <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
                 <div>
@@ -166,6 +172,7 @@
 
                     {{-- Amount + actions --}}
                     <div class="flex items-center gap-2 shrink-0">
+                        @if($canManagePayrollMaster)
                         {{-- Inline edit form --}}
                         <form action="{{ route('admin.payroll-components.update-assignment', [$component->id, $assign->id]) }}"
                               method="POST" class="flex items-center gap-1.5 edit-form hidden" id="edit-{{ $assign->id }}">
@@ -215,13 +222,18 @@
 
                         {{-- Remove --}}
                         <form action="{{ route('admin.payroll-components.remove-assignment', [$component->id, $assign->id]) }}"
-                              method="POST" onsubmit="return confirm('Hapus karyawan ini dari komponen?')">
+                              method="POST" data-confirm="Hapus karyawan ini dari komponen?">
                             @csrf @method('DELETE')
                             <button type="submit"
                                 class="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer">
                                 <span class="material-symbols-outlined text-[15px]">delete</span>
                             </button>
                         </form>
+                        @else
+                        <span class="text-[13px] font-bold {{ $component->type === 'earning' ? 'text-emerald-600' : 'text-red-500' }}">
+                            Rp {{ number_format($assign->amount, 0, ',', '.') }}
+                        </span>
+                        @endif
                     </div>
                 </div>
                 @empty
@@ -243,7 +255,7 @@ function rawNum(str)    { return parseInt(str.replace(/\./g, '').replace(/[^\d]/
 function fmtNum(n)      { return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
 
 // Assign form — big amount input
-document.getElementById('amountDisplay').addEventListener('input', function () {
+document.getElementById('amountDisplay')?.addEventListener('input', function () {
     const raw = rawNum(this.value);
     this.value = fmtNum(raw);
     document.getElementById('amountRaw').value = raw;
@@ -259,7 +271,7 @@ document.querySelectorAll('.inline-fmt').forEach(function (el) {
 });
 
 // ── Search filter dalam list karyawan ──
-document.getElementById('empSearch').addEventListener('input', function () {
+document.getElementById('empSearch')?.addEventListener('input', function () {
     const q = this.value.toLowerCase();
     document.querySelectorAll('.emp-item').forEach(item => {
         item.style.display = item.dataset.name.includes(q) ? '' : 'none';
@@ -267,7 +279,7 @@ document.getElementById('empSearch').addEventListener('input', function () {
 });
 
 // ── Select All ──
-document.getElementById('selectAll').addEventListener('change', function () {
+document.getElementById('selectAll')?.addEventListener('change', function () {
     document.querySelectorAll('.emp-check').forEach(cb => {
         if (cb.closest('.emp-item').style.display !== 'none') cb.checked = this.checked;
     });
@@ -277,8 +289,10 @@ document.getElementById('selectAll').addEventListener('change', function () {
 // ── Count selected ──
 function updateCount() {
     const n = document.querySelectorAll('.emp-check:checked').length;
-    document.getElementById('selectedCount').textContent = n + ' karyawan dipilih';
-    document.getElementById('assignBtn').disabled = n === 0;
+    const selectedCount = document.getElementById('selectedCount');
+    const assignBtn = document.getElementById('assignBtn');
+    if (selectedCount) selectedCount.textContent = n + ' karyawan dipilih';
+    if (assignBtn) assignBtn.disabled = n === 0;
 }
 document.querySelectorAll('.emp-check').forEach(cb => cb.addEventListener('change', updateCount));
 

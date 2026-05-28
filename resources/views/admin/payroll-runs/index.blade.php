@@ -2,12 +2,20 @@
 @section('title', 'Run Payroll')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canCreatePayrollRun = $adminPermission->can($currentAdmin, 'payroll.runs.create');
+    $canDeletePayrollRun = $adminPermission->can($currentAdmin, 'payroll.runs.delete');
+@endphp
+
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">payments</span> Run Payroll</h3>
+        @if($canCreatePayrollRun)
         <button onclick="document.getElementById('createModal').classList.remove('hidden')" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">add</span> Buat Payroll Run
         </button>
+        @endif
     </div>
     <div class="p-5">
         <div class="overflow-x-auto">
@@ -50,8 +58,8 @@
                         <td class="px-4 py-3.5 border-b border-gray-100 text-center">
                             <div class="flex items-center justify-center gap-1.5">
                                 <a href="{{ route('admin.payroll-runs.show', $run->id) }}" class="p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors" title="Detail"><span class="material-symbols-outlined text-[16px]">visibility</span></a>
-                                @if($run->status === 'draft')
-                                <form action="{{ route('admin.payroll-runs.destroy', $run->id) }}" method="POST" class="inline" onsubmit="return confirm('Hapus payroll run ini?')">
+                                @if($run->status === 'draft' && $canDeletePayrollRun)
+                                <form action="{{ route('admin.payroll-runs.destroy', $run->id) }}" method="POST" class="inline" data-confirm="Hapus payroll run ini?">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">delete</span></button>
                                 </form>
@@ -71,6 +79,7 @@
 </div>
 
 {{-- Create Modal with Employee Picker --}}
+@if($canCreatePayrollRun)
 <div id="createModal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
@@ -142,6 +151,7 @@
         </form>
     </div>
 </div>
+@endif
 
 @push('scripts')
 <script>

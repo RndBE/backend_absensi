@@ -94,7 +94,7 @@
                     </td>
                     <td class="px-4 py-3 border-b border-gray-100 text-center">
                         @if($adj->status === 'pending')
-                        <form action="{{ route('admin.payroll-adjustments.cancel', $adj->id) }}" method="POST" class="inline" onsubmit="return confirm('Batalkan adjustment ini?')">
+                        <form action="{{ route('admin.payroll-adjustments.cancel', $adj->id) }}" method="POST" class="inline" data-confirm="Batalkan adjustment ini?">
                             @csrf
                             <button type="submit" class="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors cursor-pointer" title="Batalkan"><span class="material-symbols-outlined text-[14px]">close</span></button>
                         </form>

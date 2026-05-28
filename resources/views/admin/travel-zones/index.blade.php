@@ -2,23 +2,24 @@
 @section('title', 'Zona Perjalanan')
 
 @section('content')
-<div class="max-w-4xl mx-auto space-y-5">
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm">
 
-    <div class="flex items-center justify-between">
-        <h2 class="text-lg font-bold text-gray-900">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h3 class="text-[15px] font-bold text-gray-900">
             <span class="material-symbols-outlined text-[20px] align-text-bottom">flight_takeoff</span> Zona Perjalanan
-        </h2>
+        </h3>
         <button onclick="document.getElementById('createModal').classList.remove('hidden')"
                 class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-teal-600 to-teal-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[14px]">add</span> Tambah Zona
         </button>
     </div>
 
+    <div class="p-5">
     @if(session('success'))
     <div class="px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[13px] font-medium">{{ session('success') }}</div>
     @endif
 
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
         <table class="w-full">
             <thead>
                 <tr>
@@ -39,7 +40,7 @@
                     <td class="px-4 py-3 text-center whitespace-nowrap">
                         <button onclick="editZone({{ $zone->id }}, {{ $zone->zone }}, '{{ addslashes($zone->name) }}', {{ $zone->meal_allowance }})"
                                 class="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer">Edit</button>
-                        <form method="POST" action="{{ route('admin.travel-zones.destroy', $zone->id) }}" class="inline" onsubmit="return confirm('Hapus zona ini?')">
+                        <form method="POST" action="{{ route('admin.travel-zones.destroy', $zone->id) }}" class="inline" data-confirm="Hapus zona ini?">
                             @csrf @method('DELETE')
                             <button type="submit" class="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all cursor-pointer">Hapus</button>
                         </form>
@@ -50,6 +51,7 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
     </div>
 </div>
 

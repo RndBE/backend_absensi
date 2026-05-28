@@ -8,18 +8,17 @@
     </div>
     <div class="p-5">
         {{-- Filters --}}
-        <form method="GET" class="flex flex-wrap gap-3 mb-5">
-            <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari nama / kode karyawan..."
-                   class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg w-64 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-            <select name="period" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+        <form method="GET" id="payslipFilterForm" class="flex items-center gap-3 mb-5 flex-wrap">
+            <input type="search" id="payslipSearch" placeholder="Cari nama / kode karyawan..."
+                   class="w-full max-w-[280px] h-[42px] px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            <select name="period" onchange="document.getElementById('payslipFilterForm').submit()" class="w-full max-w-[280px] h-[42px] px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                 <option value="">Semua Periode</option>
                 @foreach($periods as $p)
                     <option value="{{ $p }}" {{ request('period') === $p ? 'selected' : '' }}>{{ \Carbon\Carbon::parse($p . '-01')->translatedFormat('F Y') }}</option>
                 @endforeach
             </select>
-            <button type="submit" class="px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">Filter</button>
-            @if(request('search') || request('period'))
-                <a href="{{ route('admin.payslips.index') }}" class="px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Reset</a>
+            @if(request('period'))
+                <a href="{{ route('admin.payslips.index') }}" class="inline-flex items-center px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Reset</a>
             @endif
         </form>
 
@@ -38,7 +37,7 @@
                 </thead>
                 <tbody>
                     @forelse($payslips as $ps)
-                    <tr class="hover:bg-gray-50 transition-colors">
+                    <tr class="hover:bg-gray-50 transition-colors" data-fuse-row="payslip" data-search="{{ e(($ps->employee->full_name ?? '') . ' ' . ($ps->employee->employee_code ?? '') . ' ' . ($ps->employee->department->name ?? '') . ' ' . ($ps->employee->position ?? '') . ' ' . ($ps->payrollRun->period ?? '') . ' ' . \Carbon\Carbon::parse($ps->payrollRun->period . '-01')->translatedFormat('F Y')) }}">
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex items-center gap-2">
                                 <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($ps->employee->full_name ?? '?', 0, 1) }}</div>
@@ -65,11 +64,55 @@
                     @empty
                     <tr><td colspan="7" class="text-center py-12 text-gray-400 text-sm">Belum ada payslip yang di-publish</td></tr>
                     @endforelse
+                    <tr id="payslipFuseEmpty" class="hidden">
+                        <td colspan="7" class="text-center py-12 text-gray-400 text-sm">Tidak ada payslip yang cocok dengan pencarian</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
-
-        <div class="mt-4">{{ $payslips->links() }}</div>
     </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
+<script>
+const payslipSearch = document.getElementById('payslipSearch');
+const payslipEmpty = document.getElementById('payslipFuseEmpty');
+const payslipItems = Array.from(document.querySelectorAll('[data-fuse-row="payslip"]')).map((row, index) => ({
+    index,
+    row,
+    text: row.dataset.search || '',
+}));
+const payslipFuse = window.Fuse ? new Fuse(payslipItems, {
+    keys: ['text'],
+    threshold: 0.45,
+    ignoreLocation: true,
+}) : null;
+
+function applyPayslipSearch() {
+    if (!payslipSearch) return;
+
+    const keyword = payslipSearch.value.trim();
+    const matched = keyword && payslipFuse
+        ? new Set(payslipFuse.search(keyword).map((result) => result.item.index))
+        : new Set(payslipItems.map((item) => item.index));
+    let visibleCount = 0;
+
+    payslipItems.forEach((item) => {
+        const isVisible = matched.has(item.index);
+        item.row.classList.toggle('hidden', !isVisible);
+        if (isVisible) visibleCount++;
+    });
+
+    if (payslipEmpty) {
+        payslipEmpty.classList.toggle('hidden', !keyword || visibleCount > 0);
+    }
+}
+
+if (payslipSearch) {
+    payslipSearch.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') event.preventDefault();
+    });
+    payslipSearch.addEventListener('input', applyPayslipSearch);
+    applyPayslipSearch();
+}
+</script>
 @endsection

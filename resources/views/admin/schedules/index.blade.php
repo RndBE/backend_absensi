@@ -2,14 +2,23 @@
 @section('title', 'Jadwal Kerja')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canManageSchedule = $adminPermission->can($currentAdmin, 'schedule.manage');
+    $canManageScheduleMaster = $adminPermission->can($currentAdmin, 'schedule.master.manage');
+@endphp
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     {{-- Header --}}
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">calendar_month</span> Jadwal Kerja</h3>
         <div class="flex items-center gap-2">
+            @if($canManageScheduleMaster)
             <a href="{{ route('admin.schedule-templates.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all"><span class="material-symbols-outlined text-[18px] align-text-bottom">content_paste</span> Template</a>
             <a href="{{ route('admin.shifts.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all"><span class="material-symbols-outlined text-[18px] align-text-bottom">settings</span> Kelola Shift</a>
+            @endif
+            @if($canManageSchedule)
             <button onclick="document.getElementById('bulkModal').classList.remove('hidden')" class="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">content_paste</span> Bulk Assign</button>
+            @endif
         </div>
     </div>
 
@@ -144,31 +153,48 @@
                                     <div class="text-[7px] font-normal opacity-80 leading-tight">{{ Str::limit($holiday->name, 15) }}</div>
                                     @endif
                                 </div>
+                                @if($canManageSchedule)
                                 <button onclick="openAssign({{ $emp->id }}, '{{ $date->format('Y-m-d') }}', '', false, true)"
                                     title="Assign shift meski hari libur"
                                     class="mt-0.5 w-full text-[{{ $viewMode === 'month' ? '9' : '10' }}px] text-red-400 border border-dashed border-red-300 rounded px-0.5 py-0.5 hover:bg-red-100 hover:text-red-600 hover:border-red-400 transition-all bg-transparent cursor-pointer">
                                     + shift
                                 </button>
+                                @endif
                             @elseif($holiday && $shift)
                                 {{-- Hari libur ADA assignment (misal satpam jaga): tampilkan shift dengan badge libur --}}
                                 <div class="relative">
+                                    @if($canManageSchedule)
                                     <button onclick="openAssign({{ $emp->id }}, '{{ $date->format('Y-m-d') }}', {{ $shift->id }}, true, true)"
                                         class="w-full px-0.5 py-1 rounded-md text-[{{ $viewMode === 'month' ? '8' : '10' }}px] font-bold text-white cursor-pointer transition-all hover:opacity-80 hover:scale-105 border-2 border-orange-400"
                                         style="background-color: {{ $shift->color }}">
+                                    @else
+                                    <div class="w-full px-0.5 py-1 rounded-md text-[{{ $viewMode === 'month' ? '8' : '10' }}px] font-bold text-white border-2 border-orange-400"
+                                         style="background-color: {{ $shift->color }}">
+                                    @endif
                                         {{ $viewMode === 'month' ? Str::limit($shift->name, 4, '') : $shift->name }}
                                         @if(!$shift->is_off && $viewMode !== 'month')
                                         <div class="text-[8px] font-normal opacity-80">{{ substr($shift->start_time, 0, 5) }}</div>
                                         @endif
+                                    @if($canManageSchedule)
                                     </button>
+                                    @else
+                                    </div>
+                                    @endif
                                     <span class="absolute -top-1 -left-1 w-3 h-3 rounded-full bg-red-500 text-white text-[6px] flex items-center justify-center font-bold" title="Jaga di hari libur">!</span>
                                     <span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-orange-500 text-white text-[6px] flex items-center justify-center font-bold">✎</span>
                                 </div>
                             @elseif($shift)
                                 {{-- Hari biasa dengan shift (dari template atau override) --}}
+                                @if($canManageSchedule)
                                 <button onclick="openAssign({{ $emp->id }}, '{{ $date->format('Y-m-d') }}', {{ $shift->id }}, {{ $isOverride ? 'true' : 'false' }}, false)"
                                     class="w-full px-0.5 py-1 rounded-md text-[{{ $viewMode === 'month' ? '8' : '10' }}px] font-bold text-white cursor-pointer transition-all hover:opacity-80 hover:scale-105 relative
                                            {{ $isOverride ? 'border-2 border-orange-400' : 'border-0' }}"
                                     style="background-color: {{ $shift->color }}">
+                                @else
+                                <div class="w-full px-0.5 py-1 rounded-md text-[{{ $viewMode === 'month' ? '8' : '10' }}px] font-bold text-white relative
+                                           {{ $isOverride ? 'border-2 border-orange-400' : 'border-0' }}"
+                                     style="background-color: {{ $shift->color }}">
+                                @endif
                                     {{ $viewMode === 'month' ? Str::limit($shift->name, 4, '') : $shift->name }}
                                     @if(!$shift->is_off && $viewMode !== 'month')
                                     <div class="text-[8px] font-normal opacity-80">{{ substr($shift->start_time, 0, 5) }}</div>
@@ -176,12 +202,20 @@
                                     @if($isOverride)
                                     <span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-orange-500 text-white text-[6px] flex items-center justify-center font-bold">✎</span>
                                     @endif
+                                @if($canManageSchedule)
                                 </button>
+                                @else
+                                </div>
+                                @endif
                             @else
+                                @if($canManageSchedule)
                                 <button onclick="openAssign({{ $emp->id }}, '{{ $date->format('Y-m-d') }}', '', false, false)"
                                     class="w-full px-0.5 py-{{ $viewMode === 'month' ? '1.5' : '3' }} rounded-md text-[{{ $viewMode === 'month' ? '14' : '18' }}px] text-gray-300 cursor-pointer border border-dashed border-gray-200 hover:border-indigo-300 hover:text-indigo-400 hover:bg-indigo-50/50 transition-all bg-transparent">
                                     +
                                 </button>
+                                @else
+                                <span class="text-[10px] text-gray-300">-</span>
+                                @endif
                             @endif
                         </td>
                     @endforeach
@@ -197,6 +231,7 @@
 </div>
 
 {{-- Single Assign Modal --}}
+@if($canManageSchedule)
 <div id="assignModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40" onclick="if(event.target===this) this.classList.add('hidden')">
     <div class="bg-white rounded-xl shadow-2xl w-[340px] p-5">
         <h4 class="text-[14px] font-bold text-gray-900 mb-1">🔧 Assign Shift (Override)</h4>
@@ -223,7 +258,12 @@
             </div>
             <div class="flex gap-2">
                 <button type="submit" class="flex-1 px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">save</span> Simpan Override</button>
-                <button type="button" id="clearBtn" onclick="clearAssignment()" class="px-4 py-2 text-[12px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span></button>
+                <button type="submit" id="clearBtn" form="clearForm"
+                    data-confirm="Hapus override? Jadwal akan kembali mengikuti template."
+                    data-confirm-text="Hapus Override"
+                    class="px-4 py-2 text-[12px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer inline-flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span> Hapus Override
+                </button>
             </div>
         </form>
         <form id="clearForm" action="{{ route('admin.schedules.clear') }}" method="POST" class="hidden">
@@ -313,8 +353,10 @@
         </form>
     </div>
 </div>
+@endif
 
 <script>
+@if($canManageSchedule)
 function openAssign(empId, date, shiftId, isOverride, isHoliday) {
     document.getElementById('assignEmpId').value = empId;
     document.getElementById('assignDate').value = date;
@@ -331,12 +373,6 @@ function openAssign(empId, date, shiftId, isOverride, isHoliday) {
     });
 
     document.getElementById('assignModal').classList.remove('hidden');
-}
-
-function clearAssignment() {
-    showAdminConfirm('Hapus override? Jadwal akan kembali mengikuti template.', function() {
-        document.getElementById('clearForm').submit();
-    });
 }
 
 function toggleAllBulk(checked) {
@@ -366,5 +402,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.bulk-check').forEach(c => c.addEventListener('change', updateBulkCount));
     updateBulkCount();
 });
+@endif
 </script>
 @endsection

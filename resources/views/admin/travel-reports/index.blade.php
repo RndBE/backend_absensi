@@ -2,10 +2,16 @@
 @section('title', 'Laporan Hasil Perjalanan')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canManageTravelReports = $adminPermission->can($currentAdmin, 'travel.reports.manage');
+@endphp
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">flight_takeoff</span> Laporan Hasil Perjalanan (LHP)</h3>
+        @if($canManageTravelReports)
         <a href="{{ route('admin.travel-reports.create') }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">＋ Buat LHP</a>
+        @endif
     </div>
 
     {{-- Status Tabs --}}
@@ -72,10 +78,12 @@
                             <div class="flex items-center justify-center gap-1.5">
                                 <a href="{{ route('admin.travel-reports.show', $report) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
                                 <a href="{{ route('admin.travel-reports.print', $report) }}" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">🖨️</a>
-                                <form method="POST" action="{{ route('admin.travel-reports.destroy', $report) }}" class="inline" onsubmit="return confirm('Yakin ingin menghapus LHP ini?')">
+                                @if($canManageTravelReports)
+                                <form method="POST" action="{{ route('admin.travel-reports.destroy', $report) }}" class="inline" data-confirm="Yakin ingin menghapus LHP ini?">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all cursor-pointer">Hapus</button>
                                 </form>
+                                @endif
                             </div>
                         </td>
                     </tr>

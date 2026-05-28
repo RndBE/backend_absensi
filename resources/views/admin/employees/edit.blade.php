@@ -97,11 +97,13 @@
                 </div>
                 <div class="mb-2">
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Role *</label>
+                    @php
+                        $selectedRole = old('role', $employee->roles->first()?->slug ?? ($employee->role === 'admin' ? 'hr_admin' : $employee->role));
+                    @endphp
                     <select name="role" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10" required>
-                        <option value="employee" {{ old('role', $employee->role) === 'employee' ? 'selected' : '' }}>Employee</option>
-                        <option value="manager" {{ old('role', $employee->role) === 'manager' ? 'selected' : '' }}>Manager</option>
-                        <option value="admin" {{ old('role', $employee->role) === 'admin' ? 'selected' : '' }}>Admin</option>
-                        <option value="superadmin" {{ old('role', $employee->role) === 'superadmin' ? 'selected' : '' }}>Super Admin</option>
+                        @foreach($adminRoles as $roleSlug => $roleLabel)
+                            <option value="{{ $roleSlug }}" {{ $selectedRole === $roleSlug ? 'selected' : '' }}>{{ $roleLabel }}</option>
+                        @endforeach
                     </select>
                 </div>
             </div>

@@ -56,77 +56,80 @@
         <!-- Nav -->
         <nav class="flex-1 px-2.5 py-3 overflow-y-auto sidebar-scroll">
             @php
+                $adminPermission = app(\App\Support\AdminPermission::class);
                 $navGroups = [
                     ['label' => 'Menu Utama', 'icon' => 'space_dashboard', 'key' => 'main', 'items' => [
                         ['route' => 'admin.dashboard', 'icon' => 'dashboard', 'label' => 'Dashboard', 'match' => 'admin.dashboard'],
-                        ['route' => 'admin.employees.index', 'icon' => 'group', 'label' => 'Karyawan', 'match' => 'admin.employees.*', 'permission' => 'employees.view'],
-                        ['route' => 'admin.departments.index', 'icon' => 'apartment', 'label' => 'Departemen', 'match' => 'admin.departments.*', 'permission' => 'employees.view'],
+                        ['route' => 'admin.employees.index', 'icon' => 'group', 'label' => 'Karyawan', 'match' => 'admin.employees.*'],
+                        ['route' => 'admin.departments.index', 'icon' => 'apartment', 'label' => 'Departemen', 'match' => 'admin.departments.*'],
                     ]],
                     ['label' => 'Presensi', 'icon' => 'fingerprint', 'key' => 'attendance', 'items' => [
-                        ['route' => 'admin.attendance.realtime', 'icon' => 'location_on', 'label' => 'Realtime Hari Ini', 'match' => 'admin.attendance.realtime', 'permission' => 'attendance.view'],
-                        ['route' => 'admin.attendance.history', 'icon' => 'history', 'label' => 'Riwayat Absensi', 'match' => 'admin.attendance.history', 'permission' => 'attendance.view'],
-                        ['route' => 'admin.attendance-recap.index', 'icon' => 'summarize', 'label' => 'Rekap Presensi', 'match' => 'admin.attendance-recap.*', 'permission' => 'attendance.view'],
+                        ['route' => 'admin.attendance.realtime', 'icon' => 'location_on', 'label' => 'Realtime Hari Ini', 'match' => 'admin.attendance.realtime'],
+                        ['route' => 'admin.attendance.history', 'icon' => 'history', 'label' => 'Riwayat Absensi', 'match' => 'admin.attendance.history'],
+                        ['route' => 'admin.attendance-recap.index', 'icon' => 'summarize', 'label' => 'Rekap Presensi', 'match' => 'admin.attendance-recap.*'],
                     ]],
                     ['label' => 'Cuti', 'icon' => 'event_busy', 'key' => 'leave', 'items' => [
-                        ['route' => 'admin.leaves.index', 'icon' => 'event_busy', 'label' => 'Pengajuan Cuti', 'match' => 'admin.leaves.*', 'permission' => 'leave.view'],
-                        ['route' => 'admin.leave-policies.index', 'icon' => 'tune', 'label' => 'Kebijakan Cuti', 'match' => 'admin.leave-policies.*', 'permission' => 'leave.view'],
-                        ['route' => 'admin.leave-balances.index', 'icon' => 'account_balance_wallet', 'label' => 'Saldo Cuti', 'match' => 'admin.leave-balances.*', 'permission' => 'leave.view'],
+                        ['route' => 'admin.leaves.index', 'icon' => 'event_busy', 'label' => 'Pengajuan Cuti', 'match' => 'admin.leaves.*'],
+                        ['route' => 'admin.leave-policies.index', 'icon' => 'tune', 'label' => 'Kebijakan Cuti', 'match' => 'admin.leave-policies.*'],
+                        ['route' => 'admin.leave-balances.index', 'icon' => 'account_balance_wallet', 'label' => 'Saldo Cuti', 'match' => 'admin.leave-balances.*'],
                     ]],
                     ['label' => 'Anggaran', 'icon' => 'request_quote', 'key' => 'budget', 'items' => [
-                        ['route' => 'admin.budget-requests.index', 'icon' => 'request_quote', 'label' => 'Pengajuan Anggaran', 'match' => 'admin.budget-requests.*', 'permission' => 'budget.view'],
-                        ['route' => 'admin.travel-reports.index', 'icon' => 'flight_takeoff', 'label' => 'LHP', 'match' => 'admin.travel-reports.*', 'permission' => 'budget.view'],
-                        ['route' => 'admin.policies.index', 'icon' => 'policy', 'label' => 'Kebijakan', 'match' => 'admin.policies.*', 'permission' => 'budget.view'],
-                        ['route' => 'admin.travel-zones.index', 'icon' => 'map', 'label' => 'Zona Perjalanan', 'match' => 'admin.travel-zones.*', 'permission' => 'budget.view'],
+                        ['route' => 'admin.budget-requests.index', 'icon' => 'request_quote', 'label' => 'Pengajuan Anggaran', 'match' => 'admin.budget-requests.*'],
+                        ['route' => 'admin.travel-reports.index', 'icon' => 'flight_takeoff', 'label' => 'LHP', 'match' => 'admin.travel-reports.*'],
+                        ['route' => 'admin.policies.index', 'icon' => 'policy', 'label' => 'Kebijakan', 'match' => 'admin.policies.*'],
+                        ['route' => 'admin.travel-zones.index', 'icon' => 'map', 'label' => 'Zona Perjalanan', 'match' => 'admin.travel-zones.*'],
                     ]],
                     ['label' => 'Jadwal Kerja', 'icon' => 'calendar_month', 'key' => 'schedule', 'items' => [
-                        ['route' => 'admin.schedules.index', 'icon' => 'calendar_month', 'label' => 'Jadwal Kerja', 'match' => 'admin.schedules.*', 'permission' => 'schedule.view'],
-                        ['route' => 'admin.holidays.index', 'icon' => 'celebration', 'label' => 'Hari Libur', 'match' => 'admin.holidays.*', 'permission' => 'schedule.view'],
+                        ['route' => 'admin.schedules.index', 'icon' => 'calendar_month', 'label' => 'Jadwal Kerja', 'match' => 'admin.schedules.*'],
+                        ['route' => 'admin.holidays.index', 'icon' => 'celebration', 'label' => 'Hari Libur', 'match' => 'admin.holidays.*'],
                     ]],
                     ['label' => 'Payroll', 'icon' => 'payments', 'key' => 'payroll', 'items' => [
-                        ['route' => 'admin.payroll-components.index', 'icon' => 'list_alt', 'label' => 'Komponen Gaji', 'match' => 'admin.payroll-components.*', 'permission' => 'payroll.view'],
-                        ['route' => 'admin.employee-payrolls.index', 'icon' => 'account_balance', 'label' => 'Master Payroll', 'match' => 'admin.employee-payrolls.*', 'permission' => 'payroll.view'],
-                        ['route' => 'admin.payroll-runs.index', 'icon' => 'payments', 'label' => 'Run Payroll', 'match' => 'admin.payroll-runs.*', 'permission' => 'payroll.view'],
-                        ['route' => 'admin.payslips.index', 'icon' => 'receipt', 'label' => 'Payslip', 'match' => 'admin.payslips.*', 'permission' => 'payroll.view'],
-                        ['route' => 'admin.payroll-adjustments.index', 'icon' => 'tune', 'label' => 'Adjustment', 'match' => 'admin.payroll-adjustments.*', 'permission' => 'payroll.view'],
+                        ['route' => 'admin.payroll-components.index', 'icon' => 'list_alt', 'label' => 'Komponen Gaji', 'match' => 'admin.payroll-components.*'],
+                        ['route' => 'admin.employee-payrolls.index', 'icon' => 'account_balance', 'label' => 'Master Payroll', 'match' => 'admin.employee-payrolls.*'],
+                        ['route' => 'admin.payroll-runs.index', 'icon' => 'payments', 'label' => 'Run Payroll', 'match' => 'admin.payroll-runs.*'],
+                        ['route' => 'admin.payslips.index', 'icon' => 'receipt', 'label' => 'Payslip', 'match' => 'admin.payslips.*'],
+                        ['route' => 'admin.payroll-adjustments.index', 'icon' => 'tune', 'label' => 'Adjustment', 'match' => 'admin.payroll-adjustments.*'],
                     ]],
                     ['label' => 'Pajak & BPJS', 'icon' => 'receipt_long', 'key' => 'tax', 'items' => [
-                        ['route' => 'admin.tax.settings', 'icon' => 'settings', 'label' => 'Tax Settings', 'match' => 'admin.tax.settings', 'permission' => 'tax.view'],
-                        ['route' => 'admin.tax.simulator', 'icon' => 'calculate', 'label' => 'Kalkulator Pajak', 'match' => 'admin.tax.simulator', 'permission' => 'tax.view'],
-                        ['route' => 'admin.tax.bukti-potong', 'icon' => 'description', 'label' => 'Bukti Potong', 'match' => 'admin.tax.bukti-potong*', 'permission' => 'tax.view'],
+                        ['route' => 'admin.tax.settings', 'icon' => 'settings', 'label' => 'Tax Settings', 'match' => 'admin.tax.settings'],
+                        ['route' => 'admin.tax.simulator', 'icon' => 'calculate', 'label' => 'Kalkulator Pajak', 'match' => 'admin.tax.simulator'],
+                        ['route' => 'admin.tax.bukti-potong', 'icon' => 'description', 'label' => 'Bukti Potong', 'match' => 'admin.tax.bukti-potong*'],
                     ]],
                     ['label' => 'Persetujuan', 'icon' => 'task_alt', 'key' => 'approval', 'items' => [
-                        ['route' => 'admin.approvals.index', 'icon' => 'task_alt', 'label' => 'Persetujuan', 'match' => 'admin.approvals.*', 'badge' => true, 'permission' => 'approval.view'],
-                        ['route' => 'admin.approval-rules.index', 'icon' => 'settings', 'label' => 'Pengaturan Approval', 'match' => 'admin.approval-rules.*', 'permission' => 'approval.view'],
+                        ['route' => 'admin.approvals.index', 'icon' => 'task_alt', 'label' => 'Persetujuan', 'match' => 'admin.approvals.*', 'badge' => true],
+                        ['route' => 'admin.approval-rules.index', 'icon' => 'settings', 'label' => 'Pengaturan Approval', 'match' => 'admin.approval-rules.*'],
                     ]],
                     ['label' => 'Laporan', 'icon' => 'analytics', 'key' => 'reports', 'items' => [
-                        ['route' => 'admin.reports.index', 'icon' => 'analytics', 'label' => 'Pusat Laporan', 'match' => 'admin.reports.index', 'permission' => 'reports.view'],
-                        ['route' => 'admin.reports.overtime', 'icon' => 'more_time', 'label' => 'Rekap Lembur', 'match' => 'admin.reports.overtime*', 'permission' => 'reports.view'],
+                        ['route' => 'admin.reports.index', 'icon' => 'analytics', 'label' => 'Pusat Laporan', 'match' => 'admin.reports.index'],
+                        ['route' => 'admin.reports.overtime', 'icon' => 'more_time', 'label' => 'Rekap Lembur', 'match' => 'admin.reports.overtime*'],
                     ]],
                     ['label' => 'Pengaturan', 'icon' => 'settings', 'key' => 'settings', 'items' => [
-                        ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*', 'permission' => 'settings.manage'],
-                        ['route' => 'admin.attendance-settings.index', 'icon' => 'tune', 'label' => 'Pengaturan Presensi', 'match' => 'admin.attendance-settings.*', 'permission' => 'settings.manage'],
-                        ['route' => 'admin.role-permissions.index', 'icon' => 'admin_panel_settings', 'label' => 'Role Permission', 'match' => 'admin.role-permissions.*', 'permission' => 'permissions.manage'],
-                        ['route' => 'admin.audit-logs.index', 'icon' => 'manage_search', 'label' => 'Audit Log', 'match' => 'admin.audit-logs.*', 'permission' => 'audit.view'],
+                        ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*'],
+                        ['route' => 'admin.attendance-settings.index', 'icon' => 'tune', 'label' => 'Pengaturan Presensi', 'match' => 'admin.attendance-settings.*'],
+                        ['route' => 'admin.roles.index', 'icon' => 'badge', 'label' => 'Role', 'match' => 'admin.roles.*'],
+                        ['route' => 'admin.role-permissions.index', 'icon' => 'admin_panel_settings', 'label' => 'Role Permission', 'match' => 'admin.role-permissions.*'],
+                        ['route' => 'admin.audit-logs.index', 'icon' => 'manage_search', 'label' => 'Audit Log', 'match' => 'admin.audit-logs.*'],
                     ]],
                 ];
                 $pendingCount = \App\Models\LeaveRequest::whereIn('status',['pending','in_review'])->count()
                     + \App\Models\OvertimeRequest::whereIn('status',['pending','in_review'])->count()
                     + \App\Models\AttendanceRequest::whereIn('status',['pending','in_review'])->count();
-                $canSeeAdminItem = fn($item) => empty($item['permission']) || ($currentAdmin?->hasAdminPermission($item['permission']) ?? false);
             @endphp
 
             @foreach($navGroups as $group)
                 @php
-                    $visibleItems = collect($group['items'])->filter($canSeeAdminItem);
-                    if ($visibleItems->isEmpty()) {
-                        continue;
-                    }
-
+                    $visibleItems = array_values(array_filter($group['items'], function ($item) use ($adminPermission, $currentAdmin) {
+                        $permission = $adminPermission->permissionForRoute($item['route']);
+                        return !$permission || ($currentAdmin && $adminPermission->can($currentAdmin, $permission));
+                    }));
                     $isGroupActive = false;
                     foreach($visibleItems as $item) {
                         if(request()->routeIs($item['match'])) { $isGroupActive = true; break; }
                     }
                 @endphp
+                @if(empty($visibleItems))
+                    @continue
+                @endif
                 <div class="mb-1">
                     <button onclick="toggleAccordion('nav-{{ $group['key'] }}')" class="nav-group-toggle {{ $isGroupActive ? 'open' : '' }} w-full flex items-center gap-3 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[1.5px] transition-all duration-200 cursor-pointer {{ $isGroupActive ? 'text-white/80 bg-white/[0.05]' : 'text-white/35 hover:text-white/50 hover:bg-white/[0.03]' }}" id="toggle-{{ $group['key'] }}">
                         <span class="material-symbols-outlined text-[16px]">{{ $group['icon'] }}</span>
@@ -196,30 +199,164 @@
         @yield('content')
     </main>
 
-    <div id="admin-confirm-modal" class="fixed inset-0 z-[9999] hidden" aria-hidden="true">
-        <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-[1px]" data-confirm-modal-close></div>
-        <div class="relative min-h-screen flex items-center justify-center p-4">
-            <div class="w-full max-w-md bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
-                <div class="p-5">
-                    <div class="flex items-start gap-3">
-                        <div class="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                            <span class="material-symbols-outlined text-[22px]">warning</span>
-                        </div>
-                        <div class="min-w-0">
-                            <h3 class="text-[15px] font-bold text-gray-900" data-confirm-modal-title>Konfirmasi tindakan</h3>
-                            <p class="mt-1.5 text-[13px] leading-relaxed text-gray-500" data-confirm-modal-message>Yakin ingin melanjutkan tindakan ini?</p>
-                        </div>
+    <div id="confirmActionModal" class="hidden fixed inset-0 z-[80] items-center justify-center px-4" style="z-index: 1000;">
+        <div class="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]" data-confirm-cancel></div>
+        <div class="relative w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-start gap-3">
+                    <div id="confirmActionIconWrap" class="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                        <span id="confirmActionIcon" class="material-symbols-outlined text-[22px]">warning</span>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 id="confirmActionTitle" class="text-[15px] font-bold text-gray-900">Konfirmasi Aksi</h3>
+                        <p id="confirmActionMessage" class="mt-1 text-[13px] leading-5 text-gray-600">Lanjutkan aksi ini?</p>
                     </div>
                 </div>
-                <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
-                    <button type="button" class="px-4 py-2 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all cursor-pointer" data-confirm-modal-cancel>Batal</button>
-                    <button type="button" class="px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer" data-confirm-modal-confirm>Ya, lanjutkan</button>
-                </div>
+            </div>
+            <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+                <button type="button" data-confirm-cancel class="px-4 py-2 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition cursor-pointer">Batal</button>
+                <button type="button" id="confirmActionButton" class="px-4 py-2 text-[12px] font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition cursor-pointer">Lanjutkan</button>
             </div>
         </div>
     </div>
 
     <script>
+    let confirmModalCallback = null;
+
+    function openConfirmModal(options = {}) {
+        const modal = document.getElementById('confirmActionModal');
+        const title = document.getElementById('confirmActionTitle');
+        const message = document.getElementById('confirmActionMessage');
+        const button = document.getElementById('confirmActionButton');
+        const icon = document.getElementById('confirmActionIcon');
+        const iconWrap = document.getElementById('confirmActionIconWrap');
+        const variant = options.variant || 'danger';
+
+        title.textContent = options.title || 'Konfirmasi Aksi';
+        message.textContent = options.message || 'Lanjutkan aksi ini?';
+        button.textContent = options.confirmText || 'Lanjutkan';
+        button.className = 'px-4 py-2 text-[12px] font-semibold text-white rounded-lg transition cursor-pointer ' +
+            (variant === 'primary' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-red-600 hover:bg-red-700');
+        icon.textContent = variant === 'primary' ? 'help' : 'warning';
+        iconWrap.className = 'w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ' +
+            (variant === 'primary' ? 'bg-indigo-50 text-indigo-600' : 'bg-red-50 text-red-600');
+
+        confirmModalCallback = typeof options.onConfirm === 'function' ? options.onConfirm : null;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        button.focus();
+    }
+
+    function closeConfirmModal() {
+        const modal = document.getElementById('confirmActionModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        confirmModalCallback = null;
+    }
+
+    function runConfirmBeforeAction(code) {
+        if (!code) return true;
+        try {
+            Function(code)();
+            return true;
+        } catch (error) {
+            console.error('Gagal menjalankan aksi sebelum submit:', error);
+            return false;
+        }
+    }
+
+    function submitConfirmedForm(form, submitter = null) {
+        form.dataset.confirmed = '1';
+        const validSubmitter = submitter
+            && submitter.form === form
+            && submitter.matches('button, input[type="submit"], input[type="image"]')
+            ? submitter
+            : null;
+
+        if (form.requestSubmit) {
+            if (validSubmitter) {
+                form.requestSubmit(validSubmitter);
+            } else {
+                form.requestSubmit();
+            }
+        } else {
+            form.submit();
+        }
+        setTimeout(() => delete form.dataset.confirmed, 500);
+    }
+
+    function resolveConfirmMessage(element) {
+        if (element.dataset.confirmMessageFn && typeof window[element.dataset.confirmMessageFn] === 'function') {
+            return window[element.dataset.confirmMessageFn](element);
+        }
+
+        return element.dataset.confirm || 'Lanjutkan aksi ini?';
+    }
+
+    document.addEventListener('click', function(event) {
+        if (event.target.closest('[data-confirm-cancel]')) {
+            closeConfirmModal();
+            return;
+        }
+
+        if (event.target.closest('#confirmActionButton')) {
+            const callback = confirmModalCallback;
+            closeConfirmModal();
+            if (callback) callback();
+            return;
+        }
+
+        const trigger = event.target.closest('[data-confirm]');
+        if (!trigger) return;
+        if (trigger.matches('form')) return;
+
+        const form = trigger.form || trigger.closest('form');
+        if (!form) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const message = resolveConfirmMessage(trigger);
+        if (message === false) return;
+
+        openConfirmModal({
+            message,
+            confirmText: trigger.dataset.confirmText || 'Lanjutkan',
+            variant: trigger.dataset.confirmVariant || 'danger',
+            onConfirm: () => {
+                if (!runConfirmBeforeAction(trigger.dataset.confirmBefore)) return;
+                submitConfirmedForm(form, trigger);
+            },
+        });
+    }, true);
+
+    document.addEventListener('submit', function(event) {
+        const form = event.target;
+        if (!form.matches('[data-confirm], [data-confirm-message-fn]') || form.dataset.confirmed === '1') return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const message = resolveConfirmMessage(form);
+        if (message === false) return;
+
+        openConfirmModal({
+            message,
+            confirmText: form.dataset.confirmText || 'Lanjutkan',
+            variant: form.dataset.confirmVariant || 'danger',
+            onConfirm: () => {
+                if (!runConfirmBeforeAction(form.dataset.confirmBefore)) return;
+                submitConfirmedForm(form);
+            },
+        });
+    }, true);
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && !document.getElementById('confirmActionModal').classList.contains('hidden')) {
+            closeConfirmModal();
+        }
+    });
+
     // Sidebar toggle
     function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
@@ -298,133 +435,7 @@
                 overlay.classList.remove('show');
             }
         });
-
-        initAdminConfirmModal();
     });
-
-    function initAdminConfirmModal() {
-        const modal = document.getElementById('admin-confirm-modal');
-        if (!modal || modal.dataset.initialized) return;
-        modal.dataset.initialized = '1';
-
-        const titleEl = modal.querySelector('[data-confirm-modal-title]');
-        const messageEl = modal.querySelector('[data-confirm-modal-message]');
-        const cancelBtn = modal.querySelector('[data-confirm-modal-cancel]');
-        const confirmBtn = modal.querySelector('[data-confirm-modal-confirm]');
-        const closeTargets = modal.querySelectorAll('[data-confirm-modal-close], [data-confirm-modal-cancel]');
-        const bypassSubmit = new WeakSet();
-        let pendingConfirm = null;
-
-        function confirmMessageFrom(code) {
-            if (!code) return null;
-            const match = String(code).match(/confirm\((['"`])([\s\S]*?)\1\)/);
-            return match ? match[2] : null;
-        }
-
-        function codeBeforeConfirm(code) {
-            if (!code) return '';
-            const index = String(code).indexOf('confirm(');
-            return index > -1 ? String(code).slice(0, index).replace(/return\s*$/i, '').trim() : '';
-        }
-
-        function openConfirm(message, onConfirm) {
-            pendingConfirm = onConfirm;
-            titleEl.textContent = 'Konfirmasi tindakan';
-            messageEl.textContent = message || 'Yakin ingin melanjutkan tindakan ini?';
-            modal.classList.remove('hidden');
-            modal.setAttribute('aria-hidden', 'false');
-            setTimeout(() => confirmBtn.focus(), 0);
-        }
-
-        function closeConfirm() {
-            pendingConfirm = null;
-            modal.classList.add('hidden');
-            modal.setAttribute('aria-hidden', 'true');
-        }
-
-        window.showAdminConfirm = function(message, onConfirm) {
-            openConfirm(message, onConfirm);
-        };
-
-        closeTargets.forEach((target) => {
-            target.addEventListener('click', closeConfirm);
-        });
-
-        confirmBtn.addEventListener('click', function() {
-            const action = pendingConfirm;
-            closeConfirm();
-            if (typeof action === 'function') action();
-        });
-
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
-                closeConfirm();
-            }
-        });
-
-        document.addEventListener('submit', function(event) {
-            const form = event.target;
-            if (!(form instanceof HTMLFormElement)) return;
-            if (bypassSubmit.has(form)) {
-                bypassSubmit.delete(form);
-                return;
-            }
-
-            const message = form.dataset.confirm || confirmMessageFrom(form.getAttribute('onsubmit'));
-            if (!message) return;
-
-            event.preventDefault();
-            event.stopImmediatePropagation();
-
-            openConfirm(message, function() {
-                form.removeAttribute('onsubmit');
-                bypassSubmit.add(form);
-                if (typeof form.requestSubmit === 'function' && event.submitter) {
-                    form.requestSubmit(event.submitter);
-                } else {
-                    form.submit();
-                }
-            });
-        }, true);
-
-        document.addEventListener('click', function(event) {
-            const trigger = event.target.closest('[data-confirm], button[onclick*="confirm("], input[onclick*="confirm("], a[onclick*="confirm("]');
-            if (!trigger) return;
-
-            const onclick = trigger.getAttribute('onclick') || '';
-            const message = trigger.dataset.confirm || confirmMessageFrom(onclick);
-            if (!message) return;
-
-            event.preventDefault();
-            event.stopImmediatePropagation();
-
-            openConfirm(message, function() {
-                const beforeConfirm = codeBeforeConfirm(onclick);
-                trigger.removeAttribute('onclick');
-
-                if (beforeConfirm) {
-                    Function(beforeConfirm).call(trigger);
-                }
-
-                if (trigger instanceof HTMLAnchorElement) {
-                    trigger.click();
-                    return;
-                }
-
-                if ((trigger instanceof HTMLButtonElement || trigger instanceof HTMLInputElement) && trigger.type === 'submit' && trigger.form) {
-                    bypassSubmit.add(trigger.form);
-                    if (typeof trigger.form.requestSubmit === 'function') {
-                        trigger.form.requestSubmit(trigger);
-                    } else {
-                        trigger.form.submit();
-                    }
-                    return;
-                }
-
-                trigger.click();
-            });
-        }, true);
-    }
     </script>
 
     @include('admin.partials.searchable-select')

@@ -20,9 +20,6 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $this->call(AdminPermissionSeeder::class);
-        $this->call(TaxBpjsSeeder::class);
-
         // ═══════════════════════════════════════════════════
         // COMPANY
         // ═══════════════════════════════════════════════════
@@ -98,7 +95,7 @@ class DatabaseSeeder extends Seeder
             'position' => 'DIREKTUR',
             'job_level' => 1,
             'join_date' => '2015-01-05',
-            'role' => 'superadmin',
+            'role' => 'admin',
         ]));
 
         // ═══════════════════════════════════════════════════

@@ -2,7 +2,11 @@
 @section('title', 'Payroll — ' . $employee->full_name)
 
 @section('content')
-@php $p = $employee->activePayroll; @endphp
+@php
+    $p = $employee->activePayroll;
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canManagePayrollMaster = $adminPermission->can($currentAdmin, 'payroll.master.manage');
+@endphp
 
 {{-- Back --}}
 <div class="mb-4">
@@ -104,10 +108,12 @@
                 <div class="border-t border-gray-100 pt-4 mb-5">
                     <div class="flex items-center justify-between mb-3">
                         <div class="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Data Bank & Pajak</div>
+                        @if($canManagePayrollMaster)
                         <button type="button" onclick="syncFromEmployee()"
                                 class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition cursor-pointer">
                             <span class="material-symbols-outlined text-[13px]">sync</span> Sinkron dari Data Karyawan
                         </button>
+                        @endif
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
@@ -238,12 +244,14 @@
                 </div>
 
                 {{-- Submit --}}
+                @if($canManagePayrollMaster)
                 <div class="flex justify-end border-t border-gray-100 pt-4">
                     <button type="submit"
                             class="inline-flex items-center gap-2 px-5 py-2.5 text-[13px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer">
                         <span class="material-symbols-outlined text-[16px]">save</span> Simpan Payroll
                     </button>
                 </div>
+                @endif
             </form>
         </div>
 
@@ -310,10 +318,12 @@
             <div class="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50/60">
                 <span class="material-symbols-outlined text-[17px] text-emerald-500">list_alt</span>
                 <h3 class="text-[13.5px] font-bold text-gray-800">Komponen Terpasang</h3>
+                @if($canManagePayrollMaster)
                 <button onclick="document.getElementById('assignModal').classList.remove('hidden')"
                         class="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-[11.5px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
                     <span class="material-symbols-outlined text-[14px]">add</span> Assign
                 </button>
+                @endif
             </div>
             <div class="p-4">
                 @if($earnings->count() > 0)
@@ -334,6 +344,7 @@
                             </div>
                             <div class="flex items-center gap-2 shrink-0 ml-2">
                                 <span class="text-[13px] font-bold text-emerald-700">Rp {{ number_format($ec->amount, 0, ',', '.') }}</span>
+                                @if($canManagePayrollMaster)
                                 <form action="{{ route('admin.employee-payrolls.toggle-component', [$employee->id, $ec->id]) }}" method="POST">
                                     @csrf
                                     <button type="submit" title="Nonaktifkan"
@@ -341,6 +352,7 @@
                                         <span class="material-symbols-outlined text-[15px]">remove_circle</span>
                                     </button>
                                 </form>
+                                @endif
                             </div>
                         </div>
                         @endforeach
@@ -366,6 +378,7 @@
                             </div>
                             <div class="flex items-center gap-2 shrink-0 ml-2">
                                 <span class="text-[13px] font-bold text-red-700">Rp {{ number_format($ec->amount, 0, ',', '.') }}</span>
+                                @if($canManagePayrollMaster)
                                 <form action="{{ route('admin.employee-payrolls.toggle-component', [$employee->id, $ec->id]) }}" method="POST">
                                     @csrf
                                     <button type="submit" title="Nonaktifkan"
@@ -373,6 +386,7 @@
                                         <span class="material-symbols-outlined text-[15px]">remove_circle</span>
                                     </button>
                                 </form>
+                                @endif
                             </div>
                         </div>
                         @endforeach
@@ -404,6 +418,7 @@
 </div>
 
 {{-- Assign Component Modal --}}
+@if($canManagePayrollMaster)
 <div id="assignModal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -462,6 +477,7 @@
         </form>
     </div>
 </div>
+@endif
 
 {{-- Toast --}}
 <div id="syncToast" class="hidden fixed bottom-6 right-6 z-[999] bg-gray-900 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2">

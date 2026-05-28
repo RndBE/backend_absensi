@@ -2,6 +2,10 @@
 @section('title', 'Rekap Presensi')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canManageAttendance = $adminPermission->can($currentAdmin, 'attendance.manage');
+@endphp
 {{-- Stat Cards --}}
 <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
     @php
@@ -32,18 +36,25 @@
     </div>
 
     {{-- Date + Filters --}}
+    @php
+        $recapFilterParams = array_filter([
+            'department_id' => $departmentId,
+            'status' => $filterStatus,
+        ], fn($value) => filled($value));
+    @endphp
     <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
         <div class="flex items-center gap-2">
-            <a href="{{ route('admin.attendance-recap.index', ['date' => $date->copy()->subDay()->format('Y-m-d'), 'department_id' => $departmentId]) }}"
+            <a href="{{ route('admin.attendance-recap.index', array_merge($recapFilterParams, ['date' => $date->copy()->subDay()->format('Y-m-d')])) }}"
                class="px-2.5 py-1.5 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">←</a>
             <form method="GET" action="{{ route('admin.attendance-recap.index') }}" class="flex items-center gap-2" id="dateForm">
                 <input type="hidden" name="department_id" value="{{ $departmentId }}">
+                <input type="hidden" name="status" value="{{ $filterStatus }}">
                 <input type="date" name="date" value="{{ $date->format('Y-m-d') }}" onchange="this.form.submit()"
                     class="px-3 py-1.5 text-[13px] font-bold text-gray-800 border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
             </form>
-            <a href="{{ route('admin.attendance-recap.index', ['date' => $date->copy()->addDay()->format('Y-m-d'), 'department_id' => $departmentId]) }}"
+            <a href="{{ route('admin.attendance-recap.index', array_merge($recapFilterParams, ['date' => $date->copy()->addDay()->format('Y-m-d')])) }}"
                class="px-2.5 py-1.5 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">→</a>
-            <a href="{{ route('admin.attendance-recap.index', ['department_id' => $departmentId]) }}"
+            <a href="{{ route('admin.attendance-recap.index', $recapFilterParams) }}"
                class="px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Hari Ini</a>
 
             @php
@@ -72,7 +83,10 @@
                 <option value="off" {{ $filterStatus === 'off' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">bedtime</span> Off</option>
                 <option value="scheduled" {{ $filterStatus === 'scheduled' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">event</span> Terjadwal</option>
             </select>
-            <input type="text" name="search" value="{{ $search }}" placeholder="Cari nama..." class="px-3 py-1.5 text-[12px] border border-gray-300 rounded-lg outline-none w-[140px] focus:border-indigo-500">
+            <input type="search" id="attendanceRecapSearch" value="{{ $search }}" placeholder="Cari nama..." autocomplete="off" class="px-3 py-1.5 text-[12px] border border-gray-300 rounded-lg outline-none w-[160px] focus:border-indigo-500">
+            @if(request()->filled('department_id') || request()->filled('status'))
+                <a href="{{ route('admin.attendance-recap.index', ['date' => $date->format('Y-m-d')]) }}" class="px-3 py-1.5 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">Reset</a>
+            @endif
         </form>
     </div>
 
@@ -105,7 +119,7 @@
                         default => 'bg-gray-50 text-gray-400 border-gray-200',
                     };
                 @endphp
-                <tr class="border-b border-gray-50 hover:bg-gray-50/30 transition-all {{ $row['status'] === 'absent' ? 'bg-red-50/30' : '' }} {{ $row['attendance'] ? 'cursor-pointer' : '' }}" {{ $row['attendance'] ? 'onclick=openDetail(' . $row['attendance']->id . ')' : '' }}>
+                <tr class="border-b border-gray-50 hover:bg-gray-50/30 transition-all {{ $row['status'] === 'absent' ? 'bg-red-50/30' : '' }} {{ $row['attendance'] ? 'cursor-pointer' : '' }}" data-fuse-row="attendance-recap" data-search="{{ e($row['employee']->full_name . ' ' . ($row['employee']->position ?? '') . ' ' . ($row['employee']->employee_code ?? '') . ' ' . ($row['employee']->department->name ?? '') . ' ' . $row['status_label']) }}" {{ $row['attendance'] ? 'onclick=openDetail(' . $row['attendance']->id . ')' : '' }}>
                     <td class="py-2.5 px-4 text-[12px] text-gray-400">{{ $i + 1 }}</td>
                     <td class="py-2.5 px-4">
                         <div class="flex items-center gap-2.5">
@@ -165,10 +179,12 @@
                                     <span class="material-symbols-outlined text-[14px] align-text-bottom">visibility</span>
                                 </button>
                             @endif
+                            @if($canManageAttendance)
                             <button onclick="event.stopPropagation(); openEdit({{ $row['employee']->id }}, '{{ $row['employee']->full_name }}', '{{ $row['clock_in'] ? substr($row['clock_in'], 0, 5) : '' }}', '{{ $row['clock_out'] ? substr($row['clock_out'], 0, 5) : '' }}', '{{ $row['attendance']?->status ?? 'present' }}')"
                                 class="px-2 py-1.5 text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer">
                                 <span class="material-symbols-outlined text-[14px] align-text-bottom">edit</span>
                             </button>
+                            @endif
                         </div>
                     </td>
                 </tr>
@@ -177,12 +193,16 @@
                     <td colspan="8" class="py-10 text-center text-gray-400 text-sm">Tidak ada data presensi.</td>
                 </tr>
                 @endforelse
+                <tr id="attendanceRecapFuseEmpty" class="hidden">
+                    <td colspan="8" class="py-10 text-center text-gray-400 text-sm">Tidak ada data yang cocok dengan pencarian.</td>
+                </tr>
             </tbody>
         </table>
     </div>
 </div>
 
 {{-- Edit Offcanvas --}}
+@if($canManageAttendance)
 <div id="editOffcanvas" class="fixed inset-0 z-50 hidden">
     {{-- Backdrop --}}
     <div class="absolute inset-0 bg-black/40 transition-opacity" onclick="closeEdit()"></div>
@@ -238,8 +258,10 @@
         </form>
     </div>
 </div>
+@endif
 
 <script>
+@if($canManageAttendance)
 function openEdit(empId, name, clockIn, clockOut, status) {
     document.getElementById('editEmpId').value = empId;
     document.getElementById('editEmpName').textContent = name;
@@ -264,6 +286,7 @@ function closeEdit() {
         document.getElementById('editOffcanvas').classList.add('hidden');
     }, 300);
 }
+@endif
 </script>
 
 {{-- Detail Offcanvas --}}
@@ -302,7 +325,51 @@ function closeEdit() {
         ]];
     });
 @endphp
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 <script>
+const attendanceRecapSearch = document.getElementById('attendanceRecapSearch');
+const attendanceRecapEmpty = document.getElementById('attendanceRecapFuseEmpty');
+const attendanceRecapItems = Array.from(document.querySelectorAll('[data-fuse-row="attendance-recap"]')).map((row, index) => ({
+    index,
+    row,
+    text: row.dataset.search || '',
+}));
+const attendanceRecapFuse = window.Fuse ? new Fuse(attendanceRecapItems, {
+    keys: ['text'],
+    threshold: 0.45,
+    ignoreLocation: true,
+}) : null;
+
+function applyAttendanceRecapSearch() {
+    if (!attendanceRecapSearch) return;
+
+    const query = attendanceRecapSearch.value.trim();
+    let visibleIndexes = null;
+
+    if (query) {
+        const matches = attendanceRecapFuse
+            ? attendanceRecapFuse.search(query).map(result => result.item.index)
+            : attendanceRecapItems.filter(item => item.text.toLowerCase().includes(query.toLowerCase())).map(item => item.index);
+        visibleIndexes = new Set(matches);
+    }
+
+    let visibleCount = 0;
+    attendanceRecapItems.forEach(item => {
+        const visible = !visibleIndexes || visibleIndexes.has(item.index);
+        item.row.classList.toggle('hidden', !visible);
+        if (visible) visibleCount++;
+    });
+
+    if (attendanceRecapEmpty) {
+        attendanceRecapEmpty.classList.toggle('hidden', !query || visibleCount > 0);
+    }
+}
+
+if (attendanceRecapSearch) {
+    attendanceRecapSearch.addEventListener('input', applyAttendanceRecapSearch);
+    applyAttendanceRecapSearch();
+}
+
 const recapData = @json($attData);
 let detailMap = null;
 

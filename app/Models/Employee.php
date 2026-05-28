@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use App\Services\AdminPermissionService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
@@ -109,6 +109,21 @@ class Employee extends Authenticatable
         return $this->hasMany(Notification::class);
     }
 
+    public function permissionOverrides(): HasMany
+    {
+        return $this->hasMany(EmployeePermissionOverride::class);
+    }
+
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'employee_roles')->withTimestamps();
+    }
+
+    public function adminActivityLogs(): HasMany
+    {
+        return $this->hasMany(AdminActivityLog::class);
+    }
+
     public function payroll(): HasMany
     {
         return $this->hasMany(EmployeePayroll::class);
@@ -129,10 +144,5 @@ class Employee extends Authenticatable
         if (!$this->join_date) return '-';
         $diff = $this->join_date->diff(now());
         return "{$diff->y} Tahun {$diff->m} Bulan {$diff->d} Hari";
-    }
-
-    public function hasAdminPermission(?string $permission): bool
-    {
-        return AdminPermissionService::employeeHas($this, $permission);
     }
 }

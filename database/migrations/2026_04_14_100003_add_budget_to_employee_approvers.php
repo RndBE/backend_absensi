@@ -9,16 +9,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // SQLite stores Laravel enum columns as text, so no schema change is needed there.
-        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
-            DB::statement("ALTER TABLE employee_approvers MODIFY COLUMN request_type ENUM('leave','overtime','attendance','budget')");
-        }
+        // Add 'budget' to the request_type enum
+        DB::statement("ALTER TABLE employee_approvers MODIFY COLUMN request_type ENUM('leave','overtime','attendance','budget')");
     }
 
     public function down(): void
     {
-        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
-            DB::statement("ALTER TABLE employee_approvers MODIFY COLUMN request_type ENUM('leave','overtime','attendance')");
-        }
+        DB::statement("ALTER TABLE employee_approvers MODIFY COLUMN request_type ENUM('leave','overtime','attendance')");
     }
 };

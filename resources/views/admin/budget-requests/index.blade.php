@@ -2,6 +2,10 @@
 @section('title', 'Pengajuan Anggaran')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canManageBudget = $adminPermission->can($currentAdmin, 'budget.manage');
+@endphp
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">request_quote</span> Pengajuan Anggaran</h3>
@@ -105,8 +109,8 @@
                         <td class="py-3 px-3 text-center">
                             <div class="flex items-center justify-center gap-1.5">
                                 <a href="{{ route('admin.budget-requests.show', $req->id) }}" class="inline-flex items-center px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">👁️ Detail</a>
-                                @if(in_array($req->status, ['pending', 'rejected']))
-                                <form action="{{ route('admin.budget-requests.destroy', $req->id) }}" method="POST" onsubmit="return confirm('Hapus pengajuan ini?')">
+                                @if(in_array($req->status, ['pending', 'rejected']) && $canManageBudget)
+                                <form action="{{ route('admin.budget-requests.destroy', $req->id) }}" method="POST" data-confirm="Hapus pengajuan ini?">
                                     @csrf @method('DELETE')
                                     <button class="inline-flex items-center px-2 py-1.5 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span></button>
                                 </form>

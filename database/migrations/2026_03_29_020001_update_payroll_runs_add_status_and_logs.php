@@ -9,10 +9,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // SQLite stores Laravel enum columns as text, so no schema change is needed there.
-        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
-            DB::statement("ALTER TABLE payroll_runs MODIFY COLUMN status ENUM('draft','finalized','published','locked') DEFAULT 'draft'");
-        }
+        // Alter status enum to support new statuses
+        DB::statement("ALTER TABLE payroll_runs MODIFY COLUMN status ENUM('draft','finalized','published','locked') DEFAULT 'draft'");
 
         Schema::table('payroll_runs', function (Blueprint $table) {
             $table->timestamp('published_at')->nullable()->after('finalized_at');
@@ -40,8 +38,6 @@ return new class extends Migration
             $table->dropColumn(['published_at', 'locked_at']);
         });
 
-        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
-            DB::statement("ALTER TABLE payroll_runs MODIFY COLUMN status ENUM('draft','finalized') DEFAULT 'draft'");
-        }
+        DB::statement("ALTER TABLE payroll_runs MODIFY COLUMN status ENUM('draft','finalized') DEFAULT 'draft'");
     }
 };

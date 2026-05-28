@@ -8,54 +8,37 @@ use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
 use App\Models\AttendanceRequest;
+use App\Support\AdminDashboardSummary;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(AdminDashboardSummary $dashboardSummary)
     {
         $today = Carbon::today();
-        $startOfMonth = $today->copy()->startOfMonth();
-        $endOfMonth = $today->copy()->endOfMonth();
-        $contractWarningEnd = $today->copy()->addDays(30);
         $admin = Employee::find(session('admin_id'));
+        $summary = $dashboardSummary->forAdmin($admin);
 
-        // Stats
-        $totalEmployees = Employee::where('company_id', $admin->company_id)->where('is_active', true)->count();
-        $presentToday = Attendance::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
-            ->where('date', $today)->whereNotNull('clock_in')->count();
-        $lateToday = Attendance::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
-            ->where('date', $today)->where('is_late', true)->count();
-        $absentToday = $totalEmployees - $presentToday;
-        $lateThisMonth = Attendance::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
-            ->whereBetween('date', [$startOfMonth, $endOfMonth])
-            ->where('is_late', true)
-            ->count();
+        $totalEmployees = $summary['attendance']['total_employees'];
+        $presentToday = $summary['attendance']['present_today'];
+        $lateToday = $summary['attendance']['late_today'];
+        $absentToday = $summary['attendance']['absent_today'];
+        $pendingLeave = $summary['approvals']['leave_pending'];
+        $pendingOvertime = $summary['approvals']['overtime_pending'];
+        $pendingAttendance = $summary['approvals']['attendance_pending'];
+        $totalPending = $summary['approvals']['total_pending'];
+        $lateThisMonth = $summary['attendance']['late_this_month'];
+        $resignedThisMonth = $summary['hr']['resigned_this_month'];
+        $contractsEndingSoonCount = $summary['hr']['contracts_expiring_soon'];
+        $contractWindowEnd = $today->copy()->addDays($summary['hr']['contract_window_days']);
 
-        // Pending approvals
-        $pendingStatuses = ['pending', 'in_review'];
-        $pendingLeave = LeaveRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
-            ->whereIn('status', $pendingStatuses)
-            ->count();
-        $pendingOvertime = OvertimeRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
-            ->whereIn('status', $pendingStatuses)
-            ->count();
-        $pendingAttendance = AttendanceRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
-            ->whereIn('status', $pendingStatuses)
-            ->count();
-        $totalPending = $pendingLeave + $pendingOvertime + $pendingAttendance;
-        $resignedThisMonth = Employee::where('company_id', $admin->company_id)
-            ->whereBetween('resign_date', [$startOfMonth, $endOfMonth])
-            ->count();
         $contractsEndingSoon = Employee::where('company_id', $admin->company_id)
             ->where('is_active', true)
-            ->whereIn('employment_status', ['contract', 'intern', 'probation'])
-            ->whereBetween('contract_end_date', [$today, $contractWarningEnd])
+            ->whereBetween('contract_end_date', [$today->toDateString(), $contractWindowEnd->toDateString()])
             ->orderBy('contract_end_date')
-            ->limit(6)
-            ->get(['id', 'full_name', 'employee_code', 'position', 'employment_status', 'contract_end_date']);
-        $contractsEndingSoonCount = $contractsEndingSoon->count();
+            ->limit(5)
+            ->get(['id', 'employee_code', 'full_name', 'position', 'employment_status', 'contract_end_date']);
 
         // Recent attendance
         $recentAttendance = Attendance::with('employee:id,full_name,photo,department_id', 'employee.department:id,name')
@@ -75,8 +58,8 @@ class DashboardController extends Controller
         return view('admin.dashboard', compact(
             'totalEmployees', 'presentToday', 'lateToday', 'absentToday',
             'totalPending', 'pendingLeave', 'pendingOvertime', 'pendingAttendance',
-            'lateThisMonth', 'resignedThisMonth', 'contractsEndingSoon',
-            'contractsEndingSoonCount', 'recentAttendance', 'recentLeaves'
+            'lateThisMonth', 'resignedThisMonth', 'contractsEndingSoonCount',
+            'contractsEndingSoon', 'recentAttendance', 'recentLeaves', 'summary'
         ));
     }
 }

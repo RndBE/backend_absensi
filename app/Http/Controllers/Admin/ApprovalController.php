@@ -71,7 +71,7 @@ class ApprovalController extends Controller
             if ($admin->role !== 'superadmin') {
                 return back()->with('error', 'Hanya superadmin yang dapat menyetujui perubahan data.');
             }
-        } else {
+        } elseif ($admin->role !== 'superadmin') {
             // Other types: follow approver chain from employee_approvers
             $requestType = $this->modelToRequestType($modelClass);
             $expectedApprover = $this->getApproverAtStep($item->employee, $item->current_step, $requestType);
@@ -191,7 +191,7 @@ class ApprovalController extends Controller
             if ($admin->role !== 'superadmin') {
                 return back()->with('error', 'Hanya superadmin yang dapat menolak perubahan data.');
             }
-        } else {
+        } elseif ($admin->role !== 'superadmin') {
             $requestType = $this->modelToRequestType($modelClass);
             $expectedApprover = $this->getApproverAtStep($item->employee, $item->current_step, $requestType);
             if (!$expectedApprover || $expectedApprover->id !== $admin->id) {
@@ -244,12 +244,17 @@ class ApprovalController extends Controller
             OvertimeRequest::class => 'overtime',
             AttendanceRequest::class => 'attendance',
             BudgetRequest::class => 'budget',
+            TravelReport::class => 'travel_report',
             default => 'leave',
         };
     }
 
     private function getMyPendingRequests(string $modelClass, Employee $admin)
     {
+        if ($admin->role === 'superadmin') {
+            return $modelClass::whereIn('status', ['pending', 'in_review']);
+        }
+
         $requestType = $this->modelToRequestType($modelClass);
 
         // Find all employees where this admin is an approver for this request type

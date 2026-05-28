@@ -13,7 +13,6 @@ use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\ValidationException;
 
 class AttendanceController extends Controller
 {
@@ -231,11 +230,7 @@ class AttendanceController extends Controller
             'latitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'longitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'photo' => 'nullable|image|max:5120',
-            'photo_base64' => ['nullable', 'string', function ($attribute, $value, $fail) {
-                if ($this->decodeBase64Photo($value) === null) {
-                    $fail('Foto base64 harus berupa gambar yang valid dan maksimal 5MB.');
-                }
-            }],
+            'photo_base64' => 'nullable|string',
             'notes' => 'nullable|string|max:500',
         ];
 
@@ -254,7 +249,7 @@ class AttendanceController extends Controller
 
         // Check if already clocked in
         $existing = Attendance::where('employee_id', $employee->id)
-            ->where('date', $today)
+            ->where('date', $today->toDateString())
             ->first();
 
         if ($existing && $existing->clock_in) {
@@ -333,13 +328,14 @@ class AttendanceController extends Controller
 
         // Check if late
         $isLate = false;
-        if ($employee->workSchedule) {
-            $scheduleStart = Carbon::parse($employee->workSchedule->start_time);
-            $isLate = now()->gt($today->copy()->setTimeFrom($scheduleStart));
+        $shiftStartTime = $this->getShiftStartTime($employee, $today);
+        if ($shiftStartTime) {
+            $scheduleStart = Carbon::parse($today->toDateString() . ' ' . $shiftStartTime);
+            $isLate = now()->gt($scheduleStart);
         }
 
         $attendance = Attendance::updateOrCreate(
-            ['employee_id' => $employee->id, 'date' => $today],
+            ['employee_id' => $employee->id, 'date' => $today->toDateString()],
             [
                 'clock_in' => now()->format('H:i:s'),
                 'clock_in_lat' => $request->latitude,
@@ -390,11 +386,7 @@ class AttendanceController extends Controller
             'latitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'longitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'photo' => 'nullable|image|max:5120',
-            'photo_base64' => ['nullable', 'string', function ($attribute, $value, $fail) {
-                if ($this->decodeBase64Photo($value) === null) {
-                    $fail('Foto base64 harus berupa gambar yang valid dan maksimal 5MB.');
-                }
-            }],
+            'photo_base64' => 'nullable|string',
         ]);
 
         if ($requirePhoto && !$request->hasFile('photo') && !$request->photo_base64) {
@@ -502,33 +494,10 @@ class AttendanceController extends Controller
      */
     private function storeBase64Photo(string $base64, string $directory): string
     {
-        $imageData = $this->decodeBase64Photo($base64);
-        if ($imageData === null) {
-            throw ValidationException::withMessages([
-                'photo_base64' => ['Foto base64 harus berupa gambar yang valid dan maksimal 5MB.'],
-            ]);
-        }
-
+        $imageData = base64_decode($base64);
         $fileName = $directory . '/' . uniqid() . '.jpg';
         Storage::disk('public')->put($fileName, $imageData);
         return $fileName;
-    }
-
-    private function decodeBase64Photo(string $base64): ?string
-    {
-        if (str_contains($base64, ',')) {
-            if (!preg_match('/^data:image\/(jpeg|jpg|png);base64,/', $base64)) {
-                return null;
-            }
-            $base64 = substr($base64, strpos($base64, ',') + 1);
-        }
-
-        $imageData = base64_decode($base64, true);
-        if ($imageData === false || strlen($imageData) > 5 * 1024 * 1024) {
-            return null;
-        }
-
-        return @getimagesizefromstring($imageData) === false ? null : $imageData;
     }
 
     /**

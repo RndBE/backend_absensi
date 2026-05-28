@@ -16,9 +16,13 @@ use App\Http\Controllers\Admin\AttendanceRecapController;
 use App\Http\Controllers\Admin\LeavePolicyController;
 use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\AttendanceSettingController;
+use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\CompanyController;
-use App\Http\Middleware\AdminAuditLogger;
-use App\Http\Middleware\AdminPermission;
+use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\RolePermissionController;
+use App\Http\Middleware\AdminActivityLogger;
+use App\Http\Middleware\AdminAuth;
+use App\Http\Middleware\AdminPermissionMiddleware;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root to admin
@@ -31,9 +35,9 @@ Route::post('/admin/logout', [AuthController::class, 'logout'])->name('admin.log
 
 // Admin Protected
 Route::prefix('admin')->name('admin.')->middleware([
-    \App\Http\Middleware\AdminAuth::class,
-    AdminPermission::class,
-    AdminAuditLogger::class,
+    AdminAuth::class,
+    AdminPermissionMiddleware::class,
+    AdminActivityLogger::class,
 ])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -158,10 +162,13 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');
     Route::put('/attendance-settings', [AttendanceSettingController::class, 'update'])->name('attendance-settings.update');
 
-    // Role Permissions & Audit Logs
-    Route::get('/role-permissions', [\App\Http\Controllers\Admin\RolePermissionController::class, 'index'])->name('role-permissions.index');
-    Route::put('/role-permissions', [\App\Http\Controllers\Admin\RolePermissionController::class, 'update'])->name('role-permissions.update');
-    Route::get('/audit-logs', [\App\Http\Controllers\Admin\AuditLogController::class, 'index'])->name('audit-logs.index');
+    // Security
+    Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');
+    Route::put('/roles/employees/{employee}', [RoleController::class, 'updateEmployee'])->name('roles.employees.update');
+    Route::get('/role-permissions', [RolePermissionController::class, 'index'])->name('role-permissions.index');
+    Route::put('/role-permissions/roles/{role}', [RolePermissionController::class, 'updateRole'])->name('role-permissions.roles.update');
+    Route::put('/role-permissions/employees/{employee}', [RolePermissionController::class, 'updateEmployee'])->name('role-permissions.employees.update');
+    Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
 
 
 

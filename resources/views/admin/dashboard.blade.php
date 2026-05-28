@@ -101,7 +101,7 @@
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="text-[13px] font-semibold text-gray-800">{{ $employee->full_name }}</div>
-                            <div class="text-[11px] text-gray-400">{{ $employee->employee_code }} · {{ $employee->position ?? '-' }}</div>
+                            <div class="text-[11px] text-gray-400">{{ $employee->employee_code }} - {{ $employee->position ?? '-' }}</div>
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-gray-100 text-gray-700">{{ ucfirst($employee->employment_status) }}</span>
@@ -142,7 +142,7 @@
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex items-center gap-2">
-                                @if($att->employee->photo)
+                                @if($att->employee?->photo)
                                     <img src="{{ asset('storage/' . $att->employee->photo) }}" class="w-7 h-7 rounded-full object-cover shrink-0" alt="">
                                 @else
                                     <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($att->employee->full_name ?? '?', 0, 1) }}</div>
@@ -208,10 +208,14 @@
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             @if($lr->status === 'pending')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Pending</span>
+                            @elseif($lr->status === 'in_review')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">Diproses</span>
                             @elseif($lr->status === 'approved')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Disetujui</span>
-                            @else
+                            @elseif($lr->status === 'rejected')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-red-100 text-red-800">Ditolak</span>
+                            @else
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-gray-100 text-gray-800">{{ ucfirst($lr->status) }}</span>
                             @endif
                         </td>
                     </tr>

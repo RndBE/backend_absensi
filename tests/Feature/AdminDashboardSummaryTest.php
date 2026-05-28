@@ -2,87 +2,110 @@
 
 namespace Tests\Feature;
 
-use App\Models\Attendance;
-use App\Models\AttendanceRequest;
-use App\Models\Company;
 use App\Models\Employee;
-use App\Models\LeaveRequest;
-use App\Models\LeaveType;
-use App\Models\OvertimeRequest;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Support\AdminDashboardSummary;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminDashboardSummaryTest extends TestCase
 {
-    use RefreshDatabase;
-
-    public function test_dashboard_shows_monthly_hr_and_attendance_summaries(): void
+    protected function setUp(): void
     {
-        Carbon::setTestNow('2026-05-25 09:00:00');
+        parent::setUp();
 
-        $company = Company::create(['name' => 'Dashboard Company']);
-        $admin = $this->employee($company, 'ADM-001', 'Admin User', 'admin-dashboard@example.test', 'superadmin');
-        $employee = $this->employee($company, 'EMP-001', 'Employee One', 'employee-dashboard@example.test');
-        $contractEmployee = $this->employee($company, 'EMP-002', 'Contract Ending Soon', 'contract-dashboard@example.test', 'employee', [
-            'employment_status' => 'contract',
-            'contract_end_date' => '2026-06-10',
-        ]);
-        $this->employee($company, 'EMP-003', 'Resigned This Month', 'resign-dashboard@example.test', 'employee', [
-            'is_active' => false,
-            'resign_date' => '2026-05-12',
-        ]);
+        Carbon::setTestNow('2026-05-26 09:00:00');
 
-        $otherCompany = Company::create(['name' => 'Other Company']);
-        $otherEmployee = $this->employee($otherCompany, 'OTH-001', 'Other Employee', 'other-dashboard@example.test');
+        Schema::dropIfExists('attendance_requests');
+        Schema::dropIfExists('overtime_requests');
+        Schema::dropIfExists('leave_requests');
+        Schema::dropIfExists('attendances');
+        Schema::dropIfExists('employees');
 
-        Attendance::create(['employee_id' => $employee->id, 'date' => '2026-05-02', 'clock_in' => '09:30', 'status' => 'present', 'is_late' => true]);
-        Attendance::create(['employee_id' => $employee->id, 'date' => '2026-05-03', 'clock_in' => '09:40', 'status' => 'present', 'is_late' => true]);
-        Attendance::create(['employee_id' => $employee->id, 'date' => '2026-04-28', 'clock_in' => '09:50', 'status' => 'present', 'is_late' => true]);
-        Attendance::create(['employee_id' => $otherEmployee->id, 'date' => '2026-05-04', 'clock_in' => '09:50', 'status' => 'present', 'is_late' => true]);
+        Schema::create('employees', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id');
+            $table->string('email')->unique();
+            $table->string('password');
+            $table->string('full_name');
+            $table->string('role')->default('employee');
+            $table->boolean('is_active')->default(true);
+            $table->date('resign_date')->nullable();
+            $table->date('contract_end_date')->nullable();
+            $table->timestamps();
+        });
 
-        $leaveType = LeaveType::create(['name' => 'Tahunan', 'default_days' => 12]);
-        LeaveRequest::create(['employee_id' => $employee->id, 'leave_type_id' => $leaveType->id, 'start_date' => '2026-05-27', 'end_date' => '2026-05-27', 'total_days' => 1, 'reason' => 'Family', 'status' => 'pending']);
-        LeaveRequest::create(['employee_id' => $employee->id, 'leave_type_id' => $leaveType->id, 'start_date' => '2026-05-28', 'end_date' => '2026-05-28', 'total_days' => 1, 'reason' => 'Family', 'status' => 'pending']);
+        Schema::create('attendances', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('employee_id')->constrained('employees')->cascadeOnDelete();
+            $table->date('date');
+            $table->time('clock_in')->nullable();
+            $table->time('clock_out')->nullable();
+            $table->string('status')->default('present');
+            $table->boolean('is_late')->default(false);
+            $table->timestamps();
+        });
 
-        OvertimeRequest::create(['employee_id' => $employee->id, 'date' => '2026-05-26', 'planned_start' => '18:00', 'planned_end' => '20:00', 'total_duration' => 120, 'reason' => 'Deploy', 'status' => 'pending']);
-        AttendanceRequest::create(['employee_id' => $employee->id, 'date' => '2026-05-24', 'clock_in' => '09:00', 'reason' => 'Forgot', 'status' => 'pending']);
+        foreach (['leave_requests', 'overtime_requests', 'attendance_requests'] as $tableName) {
+            Schema::create($tableName, function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('employee_id')->constrained('employees')->cascadeOnDelete();
+                $table->string('status')->default('pending');
+                $table->timestamps();
+            });
+        }
 
-        $response = $this->withSession(['admin_id' => $admin->id])
-            ->get(route('admin.dashboard'));
-
-        $response->assertOk();
-        $response->assertSee('Terlambat Bulan Ini');
-        $response->assertSee('Cuti Pending');
-        $response->assertSee('Lembur Pending');
-        $response->assertSee('Presensi Pending');
-        $response->assertSee('Resign Bulan Ini');
-        $response->assertSee('Kontrak Hampir Habis');
-        $response->assertSee('Contract Ending Soon');
-        $response->assertSee('10/06/2026');
-
-        $response->assertSee('>2</div>', false);
-        $response->assertSee('>1</div>', false);
-        $response->assertDontSee('Other Employee');
     }
 
-    private function employee(
-        Company $company,
-        string $code,
-        string $name,
-        string $email,
-        string $role = 'employee',
-        array $overrides = []
-    ): Employee {
-        return Employee::create(array_merge([
-            'employee_code' => $code,
-            'company_id' => $company->id,
-            'full_name' => $name,
-            'email' => $email,
-            'password' => 'password',
-            'employment_status' => 'permanent',
-            'is_active' => true,
-            'role' => $role,
-        ], $overrides));
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
+    public function test_dashboard_summary_counts_company_scoped_attendance_approvals_and_hr_alerts(): void
+    {
+        DB::table('employees')->insert([
+            ['id' => 1, 'company_id' => 1, 'email' => 'admin@example.test', 'password' => 'secret', 'full_name' => 'Admin', 'role' => 'admin', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'company_id' => 1, 'email' => 'a@example.test', 'password' => 'secret', 'full_name' => 'Active One', 'role' => 'employee', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => '2026-06-10', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 3, 'company_id' => 1, 'email' => 'b@example.test', 'password' => 'secret', 'full_name' => 'Active Two', 'role' => 'employee', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => '2026-07-30', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 4, 'company_id' => 1, 'email' => 'resigned@example.test', 'password' => 'secret', 'full_name' => 'Resigned', 'role' => 'employee', 'is_active' => false, 'resign_date' => '2026-05-15', 'contract_end_date' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 5, 'company_id' => 2, 'email' => 'other@example.test', 'password' => 'secret', 'full_name' => 'Other Company', 'role' => 'employee', 'is_active' => true, 'resign_date' => '2026-05-20', 'contract_end_date' => '2026-06-05', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        DB::table('attendances')->insert([
+            ['employee_id' => 2, 'date' => '2026-05-26', 'clock_in' => '08:01:00', 'clock_out' => null, 'status' => 'present', 'is_late' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 5, 'date' => '2026-05-26', 'clock_in' => '08:00:00', 'clock_out' => null, 'status' => 'present', 'is_late' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        DB::table('leave_requests')->insert([
+            ['employee_id' => 2, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 5, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::table('overtime_requests')->insert([
+            ['employee_id' => 3, 'status' => 'in_review', 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 5, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::table('attendance_requests')->insert([
+            ['employee_id' => 2, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $summary = app(AdminDashboardSummary::class)->forAdmin(Employee::findOrFail(1));
+
+        $this->assertSame(3, $summary['attendance']['total_employees']);
+        $this->assertSame(0, $summary['attendance']['present_today']);
+        $this->assertSame(1, $summary['attendance']['late_today']);
+        $this->assertSame(2, $summary['attendance']['absent_today']);
+        $this->assertSame(1, $summary['approvals']['leave_pending']);
+        $this->assertSame(1, $summary['approvals']['overtime_pending']);
+        $this->assertSame(1, $summary['approvals']['attendance_pending']);
+        $this->assertSame(3, $summary['approvals']['total_pending']);
+        $this->assertArrayNotHasKey('payroll', $summary);
+        $this->assertSame(1, $summary['hr']['resigned_this_month']);
+        $this->assertSame(1, $summary['hr']['contracts_expiring_soon']);
+        $this->assertSame(1, $summary['hr']['inactive_employees']);
     }
 }

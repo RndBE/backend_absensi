@@ -2,42 +2,54 @@
 
 namespace Tests\Feature;
 
-use App\Models\Company;
-use App\Models\Employee;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AdminConfirmModalTest extends TestCase
 {
-    use RefreshDatabase;
-
-    public function test_admin_layout_includes_reusable_confirmation_modal(): void
+    public function test_admin_layout_provides_shared_confirm_modal(): void
     {
-        $admin = $this->admin();
+        $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
 
-        $response = $this
-            ->withSession(['admin_id' => $admin->id])
-            ->get(route('admin.reports.index'));
-
-        $response->assertOk();
-        $response->assertSee('id="admin-confirm-modal"', false);
-        $response->assertSee('data-confirm-modal-title', false);
-        $response->assertSee('data-confirm-modal-message', false);
+        $this->assertStringContainsString('id="confirmActionModal"', $layout);
+        $this->assertStringContainsString('function openConfirmModal', $layout);
+        $this->assertStringContainsString('data-confirm', $layout);
     }
 
-    private function admin(): Employee
+    public function test_admin_confirm_modal_does_not_pass_form_as_request_submitter(): void
     {
-        $company = Company::create(['name' => 'Test Company']);
+        $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
 
-        return Employee::create([
-            'employee_code' => 'ADM-001',
-            'company_id' => $company->id,
-            'full_name' => 'Admin User',
-            'email' => 'admin-confirm@example.test',
-            'password' => 'password',
-            'employment_status' => 'permanent',
-            'is_active' => true,
-            'role' => 'superadmin',
-        ]);
+        $this->assertStringContainsString('validSubmitter', $layout);
+        $this->assertStringNotContainsString('form.requestSubmit(submitter);', $layout);
+    }
+
+    public function test_admin_confirm_modal_stays_above_nested_modals(): void
+    {
+        $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
+
+        $this->assertStringContainsString('id="confirmActionModal"', $layout);
+        $this->assertStringContainsString('style="z-index: 1000;"', $layout);
+    }
+
+    public function test_form_level_confirm_only_runs_on_submit_not_inner_clicks(): void
+    {
+        $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
+
+        $this->assertStringContainsString("if (trigger.matches('form')) return;", $layout);
+    }
+
+    public function test_admin_views_do_not_use_browser_confirm_dialogs(): void
+    {
+        $views = collect(glob(resource_path('views/admin/**/*.blade.php'), GLOB_BRACE))
+            ->merge(glob(resource_path('views/admin/*.blade.php'), GLOB_BRACE));
+
+        $offenders = $views
+            ->filter(fn ($path) => Str::contains(file_get_contents($path), 'confirm('))
+            ->map(fn ($path) => str_replace(resource_path('views/admin') . DIRECTORY_SEPARATOR, '', $path))
+            ->values()
+            ->all();
+
+        $this->assertSame([], $offenders);
     }
 }

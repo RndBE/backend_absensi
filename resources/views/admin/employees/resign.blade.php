@@ -46,7 +46,7 @@
             </div>
 
             <form action="{{ route('admin.employees.process-resign', $employee->id) }}" method="POST"
-                  onsubmit="return confirm('Yakin ingin memproses resign karyawan ini? Tindakan tidak dapat dibatalkan.')">
+                  data-confirm="Yakin ingin memproses resign karyawan ini? Tindakan tidak dapat dibatalkan.">
                 @csrf
 
                 <div class="p-6 space-y-5">

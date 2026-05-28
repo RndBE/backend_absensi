@@ -66,7 +66,7 @@
         @php
             $assignedIds = $template->employees->pluck('id')->toArray();
         @endphp
-        <div class="border border-gray-200 rounded-xl mb-5 overflow-hidden hover:shadow-sm transition-all" id="tpl-card-{{ $template->id }}">
+        <div class="border border-gray-200 rounded-xl mb-5 overflow-visible hover:shadow-sm transition-all" id="tpl-card-{{ $template->id }}">
 
             {{-- Header template --}}
             <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
@@ -166,9 +166,9 @@
                         <span class="material-symbols-outlined text-[14px] align-text-bottom">save</span> Simpan Perubahan
                     </button>
                     <form action="{{ route('admin.schedule-templates.destroy', $template->id) }}" method="POST"
-                          onsubmit="return confirm('Hapus template {{ $template->name }}? Karyawan yang di-assign akan kehilangan jadwal otomatis.')">
+                          data-confirm="Hapus template {{ $template->name }}? Karyawan yang di-assign akan kehilangan jadwal otomatis.">
                         @csrf @method('DELETE')
-                        <button class="text-[11px] font-semibold text-red-500 hover:text-red-700 transition-all cursor-pointer bg-transparent border-0 inline-flex items-center gap-1">
+                        <button type="submit" class="text-[11px] font-semibold text-red-500 hover:text-red-700 transition-all cursor-pointer bg-transparent border-0 inline-flex items-center gap-1">
                             <span class="material-symbols-outlined text-[14px] align-text-bottom">delete</span> Hapus Template
                         </button>
                     </form>
