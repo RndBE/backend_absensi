@@ -779,14 +779,25 @@ class PayrollRunController extends Controller
     }
 
     /**
-     * Hitung lembur:
-     * - Hari biasa: 1/173 × gaji pokok per jam
-     * - Hari libur/off shift: 2/173 × gaji pokok per jam (×2)
-     * Uses actual_duration if available (from clock out calculation)
+     * Hitung lembur sesuai PP No. 35 Tahun 2021 (turunan UU Cipta Kerja).
+     *
+     * Upah per jam lembur: 1/173 × gaji pokok × multiplier
+     *
+     * Hari kerja biasa:
+     *   jam ke-1      = 1,5 × upah/jam
+     *   jam ke-2 dst  = 2   × upah/jam
+     *
+     * Hari libur/istirahat (pola 5 hari kerja, 8 jam):
+     *   jam 1–8 = 2×  |  jam 9 = 3×  |  jam 10+ = 4×
+     *
+     * Hari libur/istirahat (pola 6 hari kerja, 7 jam):
+     *   jam 1–7 = 2×  |  jam 8 = 3×  |  jam 9+  = 4×
+     *
+     * Tarif progresif diterapkan per hari (per OvertimeRequest), bukan akumulasi.
      */
     private function calculateOvertime(int $empId, $periodStart, $periodEnd, array $holidayDates, float $basicSalary, float $multiplier = 1): array
     {
-        $hourlyRate = round(($basicSalary / 173) * $multiplier, 0); // UU: 1/173
+        $baseRate = ($basicSalary / 173) * $multiplier;
 
         $overtimes = \App\Models\OvertimeRequest::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
@@ -797,7 +808,10 @@ class PayrollRunController extends Controller
             return ['total_amount' => 0, 'detail' => ''];
         }
 
-        // Get off-shift dates in period
+        // Pola hari kerja per minggu dari work schedule karyawan
+        $employee = \App\Models\Employee::with('workSchedule')->find($empId);
+        $workDaysPerWeek = $employee?->workSchedule?->work_days ?? 5;
+
         $offDates = \App\Models\ScheduleAssignment::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->whereHas('shift', fn($q) => $q->where('is_off', true))
@@ -805,45 +819,92 @@ class PayrollRunController extends Controller
             ->map(fn($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
 
-        $totalAmount = 0;
-        $normalHours = 0;
-        $holidayHours = 0;
+        $totalAmount   = 0;
+        $workdayMins   = 0;
+        $holidayMins   = 0;
+        $workdayAmount = 0;
+        $holidayAmount = 0;
 
         foreach ($overtimes as $ot) {
-            // Use actual_duration (from clock out) if available, else approved, else total - break
             $payableMinutes = $ot->getPayableDuration();
             if ($payableMinutes <= 0) continue;
 
-            $hours = round($payableMinutes / 60, 1);
-            $dateStr = Carbon::parse($ot->date)->format('Y-m-d');
-
-            // Check if it's a holiday, off-shift day, or holiday-type overtime
+            $dateStr   = Carbon::parse($ot->date)->format('Y-m-d');
             $isHoliday = $ot->overtime_type === 'holiday'
                 || in_array($dateStr, $holidayDates)
                 || in_array($dateStr, $offDates);
 
+            // Hitung per hari agar tarif progresif ter-reset setiap hari
+            $amount = $this->computeOvertimeAmount($payableMinutes, $baseRate, $isHoliday, $workDaysPerWeek);
+            $totalAmount += $amount;
+
             if ($isHoliday) {
-                $totalAmount += $hours * $hourlyRate * 2;
-                $holidayHours += $hours;
+                $holidayMins   += $payableMinutes;
+                $holidayAmount += $amount;
             } else {
-                $totalAmount += $hours * $hourlyRate;
-                $normalHours += $hours;
+                $workdayMins   += $payableMinutes;
+                $workdayAmount += $amount;
             }
         }
 
-        $detail = '';
-        if ($normalHours > 0) {
-            $detail .= $normalHours . ' jam biasa (× Rp ' . number_format($hourlyRate, 0, ',', '.') . ')';
-        }
-        if ($holidayHours > 0) {
-            if ($detail) $detail .= ', ';
-            $detail .= $holidayHours . ' jam libur (× Rp ' . number_format($hourlyRate * 2, 0, ',', '.') . ')';
-        }
+        $detail = $this->buildOvertimeDetail(
+            $workdayMins, $workdayAmount,
+            $holidayMins, $holidayAmount,
+            $baseRate, $workDaysPerWeek
+        );
 
         return [
             'total_amount' => round($totalAmount, 0),
-            'detail' => $detail,
+            'detail'       => $detail,
         ];
+    }
+
+    /**
+     * Hitung upah lembur untuk satu hari berdasarkan PP No. 35 Tahun 2021.
+     */
+    private function computeOvertimeAmount(int $minutes, float $baseRate, bool $isHoliday, int $workDaysPerWeek = 5): float
+    {
+        $hours = $minutes / 60;
+
+        if (!$isHoliday) {
+            $first = min($hours, 1.0);
+            $rest  = max(0.0, $hours - 1.0);
+            return ($first * 1.5 + $rest * 2.0) * $baseRate;
+        }
+
+        // Ambang batas jam berbeda tergantung pola kerja per minggu
+        $threshold = ($workDaysPerWeek >= 6) ? 7.0 : 8.0;
+        $tier1 = min($hours, $threshold);
+        $tier2 = min(max(0.0, $hours - $threshold), 1.0);
+        $tier3 = max(0.0, $hours - $threshold - 1.0);
+
+        return ($tier1 * 2.0 + $tier2 * 3.0 + $tier3 * 4.0) * $baseRate;
+    }
+
+    /**
+     * Bangun string detail lembur untuk ditampilkan di slip gaji.
+     */
+    private function buildOvertimeDetail(int $workdayMins, float $workdayAmount, int $holidayMins, float $holidayAmount, float $baseRate, int $workDaysPerWeek): string
+    {
+        $perJam = 'Rp ' . number_format(round($baseRate, 0), 0, ',', '.');
+        $parts  = [];
+
+        if ($workdayMins > 0) {
+            $h = round($workdayMins / 60, 1);
+            $parts[] = 'Hari kerja: ' . number_format($h, 1, ',', '.') . ' jam'
+                . ' (1j×1,5 + selebihnya×2, @' . $perJam . '/jam)'
+                . ' = Rp ' . number_format(round($workdayAmount, 0), 0, ',', '.');
+        }
+
+        if ($holidayMins > 0) {
+            $h         = round($holidayMins / 60, 1);
+            $threshold = ($workDaysPerWeek >= 6) ? 7 : 8;
+            $parts[]   = 'Hari libur: ' . number_format($h, 1, ',', '.') . ' jam'
+                . ' (1–' . $threshold . 'j×2, ' . ($threshold + 1) . 'j×3, dst×4, @' . $perJam . '/jam)'
+                . ' = Rp ' . number_format(round($holidayAmount, 0), 0, ',', '.');
+        }
+
+        return implode(' | ', $parts);
     }
 
     /**
