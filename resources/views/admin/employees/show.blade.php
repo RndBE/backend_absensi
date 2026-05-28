@@ -2,6 +2,11 @@
 @section('title', 'Detail Karyawan — ' . $employee->full_name)
 
 @section('content')
+    @php
+        $adminPermission = app(\App\Support\AdminPermission::class);
+        $canUpdateEmployee = $adminPermission->can($currentAdmin, 'employees.update');
+        $canDeleteEmployee = $adminPermission->can($currentAdmin, 'employees.delete');
+    @endphp
     {{-- Header --}}
     <div class="flex items-center justify-between mb-5">
         <a href="{{ route('admin.employees.index') }}"
@@ -9,16 +14,18 @@
             <span class="material-symbols-outlined text-[16px]">arrow_back</span> Kembali ke Daftar
         </a>
         <div class="flex gap-2">
-            @if($employee->is_active)
+            @if($employee->is_active && $canDeleteEmployee)
             <a href="{{ route('admin.employees.resign', $employee->id) }}"
                 class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-red-600 to-red-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
                 <span class="material-symbols-outlined text-[15px]">person_remove</span> Proses Resign
             </a>
             @endif
+            @if($canUpdateEmployee)
             <a href="{{ route('admin.employees.edit', $employee->id) }}"
                 class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
                 <span class="material-symbols-outlined text-[15px]">edit</span> Edit Data
             </a>
+            @endif
         </div>
     </div>
 

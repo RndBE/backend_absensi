@@ -28,20 +28,13 @@ class PayslipController extends Controller
             $q->where('company_id', $admin->company_id);
         });
 
-        if ($request->search) {
-            $query->whereHas('employee', function ($q) use ($request) {
-                $q->where('full_name', 'like', "%{$request->search}%")
-                  ->orWhere('employee_code', 'like', "%{$request->search}%");
-            });
-        }
-
         if ($request->period) {
             $query->whereHas('payrollRun', function ($q) use ($request) {
                 $q->where('period', $request->period);
             });
         }
 
-        $payslips = $query->orderByDesc('id')->paginate(20)->withQueryString();
+        $payslips = $query->orderByDesc('id')->get();
 
         $periods = PayrollRun::whereIn('status', ['published', 'locked'])
             ->distinct()

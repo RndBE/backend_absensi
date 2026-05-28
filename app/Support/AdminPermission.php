@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Employee;
 use App\Models\EmployeePermissionOverride;
+use App\Models\Role;
 use App\Models\RolePermission;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Schema;
@@ -21,9 +22,68 @@ class AdminPermission
         return Arr::flatten(array_map(fn ($items) => array_keys($items), $this->groupedPermissions()));
     }
 
+    public function roles(): array
+    {
+        if (Schema::hasTable('roles')) {
+            $roles = Role::query()
+                ->orderByRaw("case slug when 'superadmin' then 1 when 'hr_admin' then 2 when 'payroll_admin' then 3 when 'finance_admin' then 4 when 'manager' then 5 when 'employee' then 6 else 99 end")
+                ->pluck('name', 'slug')
+                ->all();
+
+            if ($roles) {
+                return $roles;
+            }
+        }
+
+        return config('admin_permissions.roles', [
+            'superadmin' => 'Superadmin',
+            'hr_admin' => 'HR Admin',
+            'payroll_admin' => 'Payroll Admin',
+            'finance_admin' => 'Finance Admin',
+            'manager' => 'Manager',
+            'employee' => 'Employee',
+        ]);
+    }
+
+    public function editableRoles(): array
+    {
+        return array_values(array_diff(array_keys($this->roles()), ['superadmin']));
+    }
+
+    public function roleSlugs(Employee $employee): array
+    {
+        $slugs = [];
+
+        if (Schema::hasTable('roles') && Schema::hasTable('employee_roles')) {
+            $slugs = $employee->roles()
+                ->pluck('roles.slug')
+                ->filter()
+                ->values()
+                ->all();
+        }
+
+        if (!$slugs && $employee->role) {
+            $slugs[] = $this->normalizeLegacyRole($employee->role);
+        }
+
+        return array_values(array_unique($slugs));
+    }
+
+    public function isAdminUser(Employee $employee): bool
+    {
+        if (in_array('superadmin', $this->roleSlugs($employee), true)) {
+            return true;
+        }
+
+        return $this->can($employee, 'dashboard.view')
+            && count(array_diff($this->roleSlugs($employee), ['employee'])) > 0;
+    }
+
     public function can(Employee $employee, string $permission): bool
     {
-        if ($employee->role === 'superadmin') {
+        $roles = $this->roleSlugs($employee);
+
+        if (in_array('superadmin', $roles, true)) {
             return true;
         }
 
@@ -32,13 +92,22 @@ class AdminPermission
             return $override;
         }
 
-        $roleValue = $this->rolePermission($employee->role, $permission);
-        if ($roleValue !== null) {
-            return $roleValue;
+        foreach ($roles as $role) {
+            $roleValue = $this->rolePermission($role, $permission);
+            if ($roleValue === true) {
+                return true;
+            }
+            if ($roleValue === false) {
+                continue;
+            }
+
+            $defaults = config("admin_permissions.defaults.{$role}", []);
+            if (in_array($permission, $defaults, true) || in_array('*', $defaults, true)) {
+                return true;
+            }
         }
 
-        return in_array($permission, config("admin_permissions.defaults.{$employee->role}", []), true)
-            || in_array('*', config("admin_permissions.defaults.{$employee->role}", []), true);
+        return false;
     }
 
     public function canAny(Employee $employee, array $permissions): bool
@@ -78,7 +147,18 @@ class AdminPermission
         }
 
         if (Schema::hasTable('role_permissions')) {
-            RolePermission::where('role', $role)->get()->each(function (RolePermission $item) use (&$permissions) {
+            $query = RolePermission::query();
+
+            if (Schema::hasColumn('role_permissions', 'role_id') && Schema::hasTable('roles')) {
+                $roleId = Role::where('slug', $role)->value('id');
+                $query->where('role_id', $roleId);
+            } elseif (Schema::hasColumn('role_permissions', 'role')) {
+                $query->where('role', $role);
+            } else {
+                return $permissions;
+            }
+
+            $query->get()->each(function (RolePermission $item) use (&$permissions) {
                 $permissions[$item->permission] = $item->allowed;
             });
         }
@@ -89,12 +169,32 @@ class AdminPermission
     public function updateRole(string $role, array $allowedPermissions): void
     {
         $allowed = array_flip($allowedPermissions);
+        $roleId = null;
+
+        if (Schema::hasTable('roles') && Schema::hasColumn('role_permissions', 'role_id')) {
+            $roleId = Role::firstOrCreate(
+                ['slug' => $role],
+                ['name' => $this->roles()[$role] ?? Str::headline(str_replace('_', ' ', $role)), 'is_system' => true]
+            )->id;
+        }
 
         foreach ($this->allPermissions() as $permission) {
-            RolePermission::updateOrCreate(
-                ['role' => $role, 'permission' => $permission],
-                ['allowed' => array_key_exists($permission, $allowed)]
-            );
+            if ($roleId) {
+                $values = ['allowed' => array_key_exists($permission, $allowed)];
+                if (Schema::hasColumn('role_permissions', 'role')) {
+                    $values['role'] = $role;
+                }
+
+                RolePermission::updateOrCreate(
+                    ['role_id' => $roleId, 'permission' => $permission],
+                    $values
+                );
+            } else {
+                RolePermission::updateOrCreate(
+                    ['role' => $role, 'permission' => $permission],
+                    ['allowed' => array_key_exists($permission, $allowed)]
+                );
+            }
         }
     }
 
@@ -147,10 +247,27 @@ class AdminPermission
             return null;
         }
 
-        $rolePermission = RolePermission::where('role', $role)
-            ->where('permission', $permission)
-            ->first();
+        $query = RolePermission::where('permission', $permission);
+
+        if (Schema::hasColumn('role_permissions', 'role_id') && Schema::hasTable('roles')) {
+            $roleId = Role::where('slug', $role)->value('id');
+            if (!$roleId) {
+                return null;
+            }
+            $query->where('role_id', $roleId);
+        } elseif (Schema::hasColumn('role_permissions', 'role')) {
+            $query->where('role', $role);
+        } else {
+            return null;
+        }
+
+        $rolePermission = $query->first();
 
         return $rolePermission?->allowed;
+    }
+
+    private function normalizeLegacyRole(string $role): string
+    {
+        return $role;
     }
 }

@@ -2,6 +2,18 @@
 @section('title', 'Persetujuan')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canActOnApproval = $adminPermission->can($currentAdmin, 'approvals.action');
+@endphp
+@if(!$canActOnApproval)
+<style>
+    form[action*="/admin/approvals/"],
+    button[onclick*="ot-adjust"] {
+        display: none !important;
+    }
+</style>
+@endif
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">task_alt</span> Persetujuan Pengajuan</h3>

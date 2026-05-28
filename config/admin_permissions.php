@@ -1,6 +1,15 @@
 <?php
 
 return [
+    'roles' => [
+        'superadmin' => 'Superadmin',
+        'hr_admin' => 'HR Admin',
+        'payroll_admin' => 'Payroll Admin',
+        'finance_admin' => 'Finance Admin',
+        'manager' => 'Manager',
+        'employee' => 'Employee',
+    ],
+
     'groups' => [
         'Umum' => [
             'dashboard.view' => 'Lihat dashboard',
@@ -65,6 +74,34 @@ return [
 
     'defaults' => [
         'superadmin' => ['*'],
+        'hr_admin' => [
+            'dashboard.view',
+            'employees.view', 'employees.create', 'employees.update', 'employees.delete', 'employees.approvers.manage',
+            'organization.manage',
+            'attendance.view', 'attendance.manage',
+            'schedule.view', 'schedule.manage', 'schedule.master.manage',
+            'leaves.view', 'leaves.create', 'leaves.delete', 'leave.settings.manage',
+            'approvals.view', 'approvals.action', 'approvals.rules.manage',
+            'reports.view', 'reports.attendance.view', 'reports.leave.view', 'reports.overtime.view',
+            'company.manage', 'attendance.settings.manage',
+        ],
+        'payroll_admin' => [
+            'dashboard.view',
+            'employees.view',
+            'attendance.view',
+            'payroll.master.view', 'payroll.master.manage',
+            'payroll.runs.view', 'payroll.runs.create', 'payroll.runs.update', 'payroll.runs.publish', 'payroll.runs.delete',
+            'payslips.view', 'payroll.adjustments.manage',
+            'reports.view', 'reports.payroll.view',
+        ],
+        'finance_admin' => [
+            'dashboard.view',
+            'employees.view',
+            'budget.view', 'budget.manage',
+            'travel.reports.view', 'travel.reports.manage', 'travel.settings.manage',
+            'tax.manage',
+            'reports.view', 'reports.payroll.view',
+        ],
         'admin' => [
             'dashboard.view',
             'employees.view', 'employees.create', 'employees.update', 'employees.delete', 'employees.approvers.manage',
@@ -93,6 +130,7 @@ return [
             'travel.reports.view', 'travel.reports.manage',
             'reports.view', 'reports.attendance.view', 'reports.leave.view', 'reports.overtime.view',
         ],
+        'employee' => [],
     ],
 
     'route_permissions' => [
@@ -153,10 +191,10 @@ return [
         'admin.company.*' => 'company.manage',
 
         'admin.payroll-components.index' => 'payroll.master.view',
-        'admin.payroll-components.employees' => 'payroll.master.view',
+        'admin.payroll-components.employees' => 'payroll.master.manage',
         'admin.payroll-components.*' => 'payroll.master.manage',
         'admin.employee-payrolls.index' => 'payroll.master.view',
-        'admin.employee-payrolls.edit' => 'payroll.master.view',
+        'admin.employee-payrolls.edit' => 'payroll.master.manage',
         'admin.employee-payrolls.*' => 'payroll.master.manage',
         'admin.payroll-runs.index' => 'payroll.runs.view',
         'admin.payroll-runs.show' => 'payroll.runs.view',
@@ -186,6 +224,7 @@ return [
         'admin.reports.export-payroll' => 'reports.payroll.view',
 
         'admin.role-permissions.*' => 'security.permissions.manage',
+        'admin.roles.*' => 'security.permissions.manage',
         'admin.audit-logs.*' => 'security.audit.view',
     ],
 ];

@@ -4,12 +4,11 @@ namespace App\Http\Middleware;
 
 use Closure;
 use App\Models\Employee;
+use App\Support\AdminPermission;
 use Illuminate\Http\Request;
 
 class AdminAuth
 {
-    private const ADMIN_ROLES = ['superadmin', 'admin', 'manager'];
-
     public function handle(Request $request, Closure $next)
     {
         if (!session('admin_id')) {
@@ -17,7 +16,7 @@ class AdminAuth
         }
 
         $admin = Employee::find(session('admin_id'));
-        if (!$admin || !in_array($admin->role, self::ADMIN_ROLES, true)) {
+        if (!$admin || !app(AdminPermission::class)->isAdminUser($admin)) {
             session()->forget('admin_id');
             return redirect()->route('admin.login')->with('error', 'Akses ditolak.');
         }

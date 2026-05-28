@@ -10,6 +10,7 @@ use App\Models\EmployeePayrollComponent;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\WorkSchedule;
+use App\Support\AdminPermission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -21,15 +22,6 @@ class EmployeeController extends Controller
         $admin = Employee::find(session('admin_id'));
         $query = Employee::where('company_id', $admin->company_id)
             ->with(['department:id,name', 'workSchedule:id,name']);
-
-        if ($request->search) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('full_name', 'like', "%{$search}%")
-                    ->orWhere('employee_code', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
-            });
-        }
 
         if ($request->department_id) {
             // Include child departments when filtering by parent
@@ -43,7 +35,7 @@ class EmployeeController extends Controller
             $query->where('employment_status', $request->status);
         }
 
-        $employees = $query->orderBy('full_name')->paginate(15)->withQueryString();
+        $employees = $query->orderBy('full_name')->get();
         $departments = Department::where('company_id', $admin->company_id)->get();
 
         return view('admin.employees.index', compact('employees', 'departments'));
@@ -59,7 +51,9 @@ class EmployeeController extends Controller
             ->orderBy('job_level')->orderBy('full_name')
             ->get();
 
-        return view('admin.employees.create', compact('departments', 'workSchedules', 'managers'));
+        $adminRoles = app(AdminPermission::class)->roles();
+
+        return view('admin.employees.create', compact('departments', 'workSchedules', 'managers', 'adminRoles'));
     }
 
     public function store(Request $request)
@@ -80,7 +74,7 @@ class EmployeeController extends Controller
             'join_date' => 'nullable|date',
             'contract_start_date' => 'nullable|date',
             'contract_end_date' => 'nullable|date',
-            'role' => 'required|in:admin,manager,employee',
+            'role' => 'required|in:superadmin,hr_admin,payroll_admin,finance_admin,manager,employee',
             'manager_id' => 'nullable|exists:employees,id',
             'approver_id' => 'nullable|exists:employees,id',
             'photo' => 'nullable|image|max:2048',
@@ -105,7 +99,8 @@ class EmployeeController extends Controller
             $data['photo'] = $request->file('photo')->store('employees/photos', 'public');
         }
 
-        Employee::create($data);
+        $employee = Employee::create($data);
+        $this->syncPrimaryRole($employee, $request->input('role'));
 
         return redirect()->route('admin.employees.index')->with('success', 'Karyawan berhasil ditambahkan.');
     }
@@ -126,7 +121,7 @@ class EmployeeController extends Controller
     public function edit($id)
     {
         $admin = Employee::find(session('admin_id'));
-        $employee = Employee::findOrFail($id);
+        $employee = Employee::with('roles:id,slug,name')->findOrFail($id);
         $departments = Department::where('company_id', $admin->company_id)->get();
         $workSchedules = WorkSchedule::where('company_id', $admin->company_id)->get();
         $managers = Employee::where('company_id', $admin->company_id)
@@ -141,7 +136,9 @@ class EmployeeController extends Controller
             $approvalChains[$type] = EmployeeApprover::getChain($id, $type);
         }
 
-        return view('admin.employees.edit', compact('employee', 'departments', 'workSchedules', 'managers', 'approvalChains'));
+        $adminRoles = app(AdminPermission::class)->roles();
+
+        return view('admin.employees.edit', compact('employee', 'departments', 'workSchedules', 'managers', 'approvalChains', 'adminRoles'));
     }
 
     public function update(Request $request, $id)
@@ -157,7 +154,7 @@ class EmployeeController extends Controller
             'join_date' => 'nullable|date',
             'contract_start_date' => 'nullable|date',
             'contract_end_date' => 'nullable|date',
-            'role' => 'required|in:superadmin,admin,manager,employee',
+            'role' => 'required|in:superadmin,hr_admin,payroll_admin,finance_admin,manager,employee',
             'photo' => 'nullable|image|max:2048',
             'signature' => 'nullable|image|max:2048',
             'birth_place' => 'nullable|string|max:255',
@@ -204,8 +201,21 @@ class EmployeeController extends Controller
         }
 
         $employee->update($data);
+        $this->syncPrimaryRole($employee, $request->input('role'));
 
         return redirect()->route('admin.employees.index')->with('success', 'Data karyawan berhasil diperbarui.');
+    }
+
+    private function syncPrimaryRole(Employee $employee, string $roleSlug): void
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('roles') || !\Illuminate\Support\Facades\Schema::hasTable('employee_roles')) {
+            return;
+        }
+
+        $roleId = \App\Models\Role::where('slug', $roleSlug)->value('id');
+        if ($roleId) {
+            $employee->roles()->sync([$roleId]);
+        }
     }
 
     public function destroy($id)

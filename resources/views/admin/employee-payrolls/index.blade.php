@@ -2,24 +2,28 @@
 @section('title', 'Master Payroll Karyawan')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canManagePayrollMaster = $adminPermission->can($currentAdmin, 'payroll.master.manage');
+@endphp
+
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">account_balance</span> Master Payroll Karyawan</h3>
     </div>
     <div class="p-5">
         {{-- Filters --}}
-        <form method="GET" class="flex flex-wrap gap-3 mb-5">
+        <form method="GET" id="employeePayrollFilterForm" class="flex items-center gap-3 mb-5 flex-wrap">
             <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari nama / kode karyawan..."
-                   class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg w-64 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-            <select name="department_id" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                   class="w-full max-w-[280px] h-[42px] px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            <select name="department_id" onchange="document.getElementById('employeePayrollFilterForm').submit()" class="w-full max-w-[280px] h-[42px] px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                 <option value="">Semua Departemen</option>
                 @foreach($departments as $d)
                     <option value="{{ $d->id }}" {{ request('department_id') == $d->id ? 'selected' : '' }}>{{ $d->name }}</option>
                 @endforeach
             </select>
-            <button type="submit" class="px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">Filter</button>
             @if(request('search') || request('department_id'))
-                <a href="{{ route('admin.employee-payrolls.index') }}" class="px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Reset</a>
+                <a href="{{ route('admin.employee-payrolls.index') }}" class="inline-flex items-center px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Reset</a>
             @endif
         </form>
 
@@ -67,9 +71,13 @@
                             @endif
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-center">
+                            @if($canManagePayrollMaster)
                             <a href="{{ route('admin.employee-payrolls.edit', $emp->id) }}" class="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
                                 <span class="material-symbols-outlined text-[14px]">settings</span> Kelola
                             </a>
+                            @else
+                                <span class="text-gray-300">-</span>
+                            @endif
                         </td>
                     </tr>
                     @empty

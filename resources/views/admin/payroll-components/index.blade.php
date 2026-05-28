@@ -2,12 +2,19 @@
 @section('title', 'Komponen Payroll')
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canManagePayrollMaster = $adminPermission->can($currentAdmin, 'payroll.master.manage');
+@endphp
+
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">list_alt</span> Komponen Payroll</h3>
+        @if($canManagePayrollMaster)
         <button onclick="document.getElementById('createModal').classList.remove('hidden')" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">add</span> Tambah Komponen
         </button>
+        @endif
     </div>
     <div class="p-5">
         {{-- Filter Tabs --}}
@@ -22,6 +29,10 @@
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200
                       {{ $type === 'deduction' ? 'text-red-600 border-red-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">Deduction</a>
         </div>
+
+        <input type="search" id="payrollComponentSearch"
+               class="w-full max-w-[320px] mb-5 px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 bg-white outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10 placeholder:text-gray-400"
+               placeholder="Cari komponen payroll...">
 
         <div class="overflow-x-auto">
             <table class="w-full">
@@ -38,7 +49,7 @@
                 </thead>
                 <tbody>
                     @forelse($components as $c)
-                    <tr class="hover:bg-gray-50 transition-colors">
+                    <tr class="hover:bg-gray-50 transition-colors" data-fuse-row="payroll-component" data-search="{{ e($c->name . ' ' . $c->type . ' ' . $c->category . ' ' . number_format($c->default_amount, 0, ',', '.') . ' ' . ($c->is_taxable ? 'taxable kena pajak' : 'non taxable tidak kena pajak') . ' ' . ($c->is_active ? 'aktif' : 'nonaktif')) }}">
                         <td class="px-4 py-3.5 border-b border-gray-100 text-[13px] font-semibold text-gray-800">{{ $c->name }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-center">
                             @if($c->type === 'earning')
@@ -59,6 +70,7 @@
                             @endif
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-center">
+                            @if($canManagePayrollMaster)
                             <form action="{{ route('admin.payroll-components.toggle', $c->id) }}" method="POST" class="inline">
                                 @csrf
                                 <button type="submit" class="cursor-pointer">
@@ -69,8 +81,14 @@
                                     @endif
                                 </button>
                             </form>
+                            @elseif($c->is_active)
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700">Aktif</span>
+                            @else
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-500">Nonaktif</span>
+                            @endif
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-center">
+                            @if($canManagePayrollMaster)
                             <div class="flex items-center justify-center gap-1.5">
                                 <a href="{{ route('admin.payroll-components.employees', $c->id) }}"
                                    title="Kelola Karyawan"
@@ -84,11 +102,17 @@
                                     <button type="submit" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">delete</span></button>
                                 </form>
                             </div>
+                            @else
+                                <span class="text-gray-300">-</span>
+                            @endif
                         </td>
                     </tr>
                     @empty
                     <tr><td colspan="7" class="text-center py-12 text-gray-400 text-sm">Belum ada komponen payroll</td></tr>
                     @endforelse
+                    <tr id="payrollComponentFuseEmpty" class="hidden">
+                        <td colspan="7" class="text-center py-12 text-gray-400 text-sm">Tidak ada komponen payroll yang cocok dengan pencarian</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -96,6 +120,7 @@
 </div>
 
 {{-- Create Modal --}}
+@if($canManagePayrollMaster)
 <div id="createModal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
         <div class="px-6 py-4 border-b border-gray-100">
@@ -196,8 +221,49 @@
         </form>
     </div>
 </div>
+@endif
 
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 <script>
+const payrollComponentSearch = document.getElementById('payrollComponentSearch');
+const payrollComponentEmpty = document.getElementById('payrollComponentFuseEmpty');
+const payrollComponentItems = Array.from(document.querySelectorAll('[data-fuse-row="payroll-component"]')).map((row, index) => ({
+    index,
+    row,
+    text: row.dataset.search || '',
+}));
+const payrollComponentFuse = window.Fuse ? new Fuse(payrollComponentItems, {
+    keys: ['text'],
+    threshold: 0.45,
+    ignoreLocation: true,
+}) : null;
+
+function applyPayrollComponentSearch() {
+    if (!payrollComponentSearch) return;
+
+    const keyword = payrollComponentSearch.value.trim();
+    const matched = keyword && payrollComponentFuse
+        ? new Set(payrollComponentFuse.search(keyword).map((result) => result.item.index))
+        : new Set(payrollComponentItems.map((item) => item.index));
+    let visibleCount = 0;
+
+    payrollComponentItems.forEach((item) => {
+        const isVisible = matched.has(item.index);
+        item.row.classList.toggle('hidden', !isVisible);
+        if (isVisible) visibleCount++;
+    });
+
+    if (payrollComponentEmpty) {
+        payrollComponentEmpty.classList.toggle('hidden', !keyword || visibleCount > 0);
+    }
+}
+
+if (payrollComponentSearch) {
+    payrollComponentSearch.addEventListener('input', applyPayrollComponentSearch);
+    applyPayrollComponentSearch();
+}
+
+@if($canManagePayrollMaster)
 function openEdit(id, name, type, category, amount, taxable) {
     document.getElementById('editForm').action = '{{ url("admin/payroll-components") }}/' + id;
     document.getElementById('editName').value = name;
@@ -208,5 +274,6 @@ function openEdit(id, name, type, category, amount, taxable) {
     document.getElementById('editTaxable').checked = taxable === 1;
     document.getElementById('editModal').classList.remove('hidden');
 }
+@endif
 </script>
 @endsection

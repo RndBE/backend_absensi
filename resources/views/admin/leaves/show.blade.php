@@ -2,19 +2,25 @@
 @section('title', 'Detail Cuti')
 
 @section('content')
-<div class="max-w-3xl">
+<div class="space-y-5">
     {{-- Header --}}
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-5">
-        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">description</span> Detail Pengajuan Cuti</h3>
-            <a href="{{ route('admin.leaves.index') }}" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">← Kembali</a>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+            <h3 class="text-[15px] font-bold text-gray-900 flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-[18px]">description</span>
+                Detail Pengajuan Cuti
+            </h3>
+            <a href="{{ route('admin.leaves.index') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <span class="material-symbols-outlined text-[16px]">arrow_back</span>
+                Kembali
+            </a>
         </div>
         <div class="p-5">
-            <div class="grid grid-cols-2 gap-4 text-[13px]">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-[13px]">
                 <div>
                     <span class="text-gray-400 text-[11px] font-semibold uppercase">Karyawan</span>
                     <p class="font-semibold text-gray-900 mt-0.5">{{ $leave->employee->full_name }}</p>
-                    <p class="text-[11px] text-gray-400">{{ $leave->employee->department->name ?? '' }} · Level {{ $leave->employee->job_level }}</p>
+                    <p class="text-[11px] text-gray-400">{{ $leave->employee->department->name ?? '' }} - Level {{ $leave->employee->job_level }}</p>
                 </div>
                 <div>
                     <span class="text-gray-400 text-[11px] font-semibold uppercase">Jenis Cuti</span>
@@ -22,7 +28,7 @@
                 </div>
                 <div>
                     <span class="text-gray-400 text-[11px] font-semibold uppercase">Tanggal</span>
-                    <p class="font-semibold text-gray-900 mt-0.5">{{ $leave->start_date->format('d M Y') }} — {{ $leave->end_date->format('d M Y') }}</p>
+                    <p class="font-semibold text-gray-900 mt-0.5">{{ $leave->start_date->format('d M Y') }} - {{ $leave->end_date->format('d M Y') }}</p>
                     <p class="text-[11px] text-gray-400">{{ (int)$leave->total_days }} hari kerja</p>
                 </div>
                 <div>
@@ -50,58 +56,81 @@
     </div>
 
     {{-- Approval Chain --}}
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-5">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div class="px-5 py-4 border-b border-gray-100">
-            <h4 class="text-[14px] font-bold text-gray-900">🔗 Approval Chain</h4>
+            <h4 class="text-[14px] font-bold text-gray-900 flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-[17px] text-indigo-500">account_tree</span>
+                Approval Chain
+            </h4>
         </div>
         <div class="p-5">
-            <div class="flex items-center gap-2 flex-wrap">
+            <div id="approvalChainList" class="space-y-3">
                 {{-- Requester --}}
-                <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
-                    <div class="w-7 h-7 rounded-full bg-gray-300 flex items-center justify-center text-[10px] font-bold text-white">📤</div>
-                    <div>
-                        <div class="text-[11px] font-bold text-gray-700">{{ $leave->employee->full_name }}</div>
-                        <div class="text-[9px] text-gray-400">Pemohon</div>
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0">
+                        <span class="material-symbols-outlined text-[16px]">person</span>
+                    </div>
+                    <div class="min-w-0 flex-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5">
+                        <div class="text-[12px] font-bold text-gray-700 truncate">{{ $leave->employee->full_name }}</div>
+                        <div class="text-[10px] text-gray-400 mt-0.5">Pemohon</div>
                     </div>
                 </div>
 
                 @foreach($chain as $step)
-                    <span class="text-gray-300 text-xl">→</span>
-
                     @php
                         $log = $leave->approvalLogs->where('step_order', $step['step'])->first();
                         $isCurrent = !$log && $leave->current_step == $step['step'] && in_array($leave->status, ['pending', 'in_review']);
                         $isApproved = $log && $log->action === 'approved';
                         $isRejected = $log && $log->action === 'rejected';
+                        $cardClass = $isApproved ? 'bg-emerald-50 border-emerald-200' : ($isRejected ? 'bg-red-50 border-red-200' : ($isCurrent ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200' : 'bg-gray-50 border-gray-200'));
+                        $circleClass = $isApproved ? 'bg-emerald-500' : ($isRejected ? 'bg-red-500' : ($isCurrent ? 'bg-amber-500' : 'bg-gray-300'));
+                        $textClass = $isApproved ? 'text-emerald-700' : ($isRejected ? 'text-red-700' : ($isCurrent ? 'text-amber-700' : 'text-gray-600'));
+                        $mutedClass = $isApproved ? 'text-emerald-500' : ($isRejected ? 'text-red-500' : ($isCurrent ? 'text-amber-500' : 'text-gray-400'));
+                        $statusClass = $isApproved ? 'bg-emerald-100 text-emerald-700' : ($isRejected ? 'bg-red-100 text-red-700' : ($isCurrent ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'));
+                        $statusLabel = $isApproved ? 'Disetujui' : ($isRejected ? 'Ditolak' : ($isCurrent ? 'Menunggu' : 'Step '.$step['step']));
                     @endphp
 
-                    <div class="flex items-center gap-2 px-3 py-2 rounded-lg border
-                        {{ $isApproved ? 'bg-emerald-50 border-emerald-200' : ($isRejected ? 'bg-red-50 border-red-200' : ($isCurrent ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200' : 'bg-gray-50 border-gray-200')) }}">
-                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white
-                            {{ $isApproved ? 'bg-emerald-500' : ($isRejected ? 'bg-red-500' : ($isCurrent ? 'bg-amber-500' : 'bg-gray-300')) }}">
-                            {{ $isApproved ? '✓' : ($isRejected ? '✗' : $step['step']) }}
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 {{ $circleClass }}">
+                            @if($isApproved)
+                                &#10003;
+                            @elseif($isRejected)
+                                &#10005;
+                            @else
+                                {{ $step['step'] }}
+                            @endif
                         </div>
-                        <div>
-                            <div class="text-[11px] font-bold {{ $isApproved ? 'text-emerald-700' : ($isRejected ? 'text-red-700' : ($isCurrent ? 'text-amber-700' : 'text-gray-600')) }}">
-                                {{ $step['employee']->full_name }}
-                            </div>
-                            <div class="text-[9px] {{ $isApproved ? 'text-emerald-500' : ($isRejected ? 'text-red-500' : ($isCurrent ? 'text-amber-500' : 'text-gray-400')) }}">
-                                {{ $step['employee']->position }} · Lv{{ $step['employee']->job_level }}
-                                @if($isApproved) — <span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Disetujui @endif
-                                @if($isRejected) — <span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Ditolak @endif
-                                @if($isCurrent) — ⏳ Menunggu @endif
+                        <div class="min-w-0 flex-1 rounded-lg border px-3 py-2.5 {{ $cardClass }}">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-[12px] font-bold truncate {{ $textClass }}">
+                                        {{ $step['employee']->full_name }}
+                                    </div>
+                                    <div class="text-[10px] mt-0.5 {{ $mutedClass }}">
+                                        {{ $step['employee']->position ?? '-' }} - Lv{{ $step['employee']->job_level ?? '-' }}
+                                    </div>
+                                </div>
+                                <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap {{ $statusClass }}">
+                                    @if($isApproved)
+                                        <span aria-hidden="true">&#10003;</span>
+                                    @elseif($isRejected)
+                                        <span aria-hidden="true">&#10005;</span>
+                                    @elseif($isCurrent)
+                                        <span class="material-symbols-outlined text-[13px]">hourglass_top</span>
+                                    @endif
+                                    {{ $statusLabel }}
+                                </span>
                             </div>
                         </div>
                     </div>
                 @endforeach
 
                 @if($leave->status === 'approved')
-                <span class="text-gray-300 text-xl">→</span>
-                <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200">
-                    <div class="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white">check_circle</div>
-                    <div>
-                        <div class="text-[11px] font-bold text-emerald-700">Approved</div>
-                        <div class="text-[9px] text-emerald-500">Selesai</div>
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-[13px] font-bold text-white shrink-0" aria-label="Selesai">&#10003;</div>
+                    <div class="min-w-0 flex-1 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5">
+                        <div class="text-[12px] font-bold text-emerald-700">Approved</div>
+                        <div class="text-[10px] text-emerald-500 mt-0.5">Selesai</div>
                     </div>
                 </div>
                 @endif
@@ -113,17 +142,23 @@
     @if($leave->approvalLogs->isNotEmpty())
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div class="px-5 py-4 border-b border-gray-100">
-            <h4 class="text-[14px] font-bold text-gray-900">📜 Log Approval</h4>
+            <h4 class="text-[14px] font-bold text-gray-900 flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-[17px] text-amber-500">history</span>
+                Log Approval
+            </h4>
         </div>
         <div class="p-5">
             <div class="space-y-3">
                 @foreach($leave->approvalLogs as $log)
                 <div class="flex items-start gap-3 p-3 rounded-lg {{ $log->action === 'approved' ? 'bg-emerald-50' : 'bg-red-50' }}">
-                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0
-                        {{ $log->action === 'approved' ? 'bg-emerald-500' : 'bg-red-500' }}">
-                        {{ $log->action === 'approved' ? '✓' : '✗' }}
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 {{ $log->action === 'approved' ? 'bg-emerald-500' : 'bg-red-500' }}">
+                        @if($log->action === 'approved')
+                            &#10003;
+                        @else
+                            &#10005;
+                        @endif
                     </div>
-                    <div>
+                    <div class="min-w-0">
                         <div class="text-[13px] font-semibold {{ $log->action === 'approved' ? 'text-emerald-800' : 'text-red-800' }}">
                             {{ $log->approver->full_name ?? 'Unknown' }}
                             <span class="font-normal">{{ $log->action === 'approved' ? 'menyetujui' : 'menolak' }}</span>

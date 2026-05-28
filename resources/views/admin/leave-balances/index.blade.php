@@ -17,12 +17,17 @@
     </div>
 
     {{-- Filters --}}
+    @php
+        $leaveFilterParams = array_filter([
+            'department_id' => $departmentId,
+        ], fn($value) => filled($value));
+    @endphp
     <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
         <div class="flex items-center gap-2">
-            <a href="{{ route('admin.leave-balances.index', ['year' => $year - 1]) }}"
+            <a href="{{ route('admin.leave-balances.index', array_merge($leaveFilterParams, ['year' => $year - 1])) }}"
                class="px-2.5 py-1.5 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">←</a>
             <span class="px-3 py-1.5 text-[14px] font-black text-gray-800 bg-indigo-50 rounded-lg">{{ $year }}</span>
-            <a href="{{ route('admin.leave-balances.index', ['year' => $year + 1]) }}"
+            <a href="{{ route('admin.leave-balances.index', array_merge($leaveFilterParams, ['year' => $year + 1])) }}"
                class="px-2.5 py-1.5 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">→</a>
         </div>
         <form method="GET" action="{{ route('admin.leave-balances.index') }}" class="flex items-center gap-2">
@@ -33,7 +38,10 @@
                     <option value="{{ $dept->id }}" {{ $departmentId == $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
                 @endforeach
             </select>
-            <input type="text" name="search" value="{{ $search }}" placeholder="Cari nama..." class="px-3 py-1.5 text-[12px] border border-gray-300 rounded-lg outline-none w-[140px] focus:border-indigo-500">
+            <input type="search" id="leaveBalanceSearch" value="{{ $search }}" placeholder="Cari nama..." autocomplete="off" class="px-3 py-1.5 text-[12px] border border-gray-300 rounded-lg outline-none w-[160px] focus:border-indigo-500">
+            @if(request()->filled('department_id'))
+                <a href="{{ route('admin.leave-balances.index', ['year' => $year]) }}" class="px-3 py-1.5 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">Reset</a>
+            @endif
         </form>
     </div>
 
@@ -56,7 +64,7 @@
             <tbody>
                 @forelse($balances as $empId => $empBalances)
                 @php $emp = $empBalances->first()->employee; @endphp
-                <tr class="border-b border-gray-50 hover:bg-gray-50/30 transition-all">
+                <tr class="border-b border-gray-50 hover:bg-gray-50/30 transition-all" data-fuse-row="leave-balance" data-search="{{ e($emp->full_name . ' ' . $emp->employee_code . ' ' . ($emp->department->name ?? '')) }}">
                     <td class="py-2.5 px-4">
                         <div class="flex items-center gap-2.5">
                             <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($emp->full_name, 0, 1) }}</div>
@@ -101,6 +109,9 @@
                     </td>
                 </tr>
                 @endforelse
+                <tr id="leaveBalanceFuseEmpty" class="hidden">
+                    <td colspan="{{ 3 + count($leaveTypes) }}" class="py-10 text-center text-gray-400 text-sm">Tidak ada data yang cocok dengan pencarian.</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -121,8 +132,51 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 <script>
 const leaveTypes = @json($leaveTypes->pluck('name', 'id'));
+const leaveBalanceSearch = document.getElementById('leaveBalanceSearch');
+const leaveBalanceEmpty = document.getElementById('leaveBalanceFuseEmpty');
+const leaveBalanceItems = Array.from(document.querySelectorAll('[data-fuse-row="leave-balance"]')).map((row, index) => ({
+    index,
+    row,
+    text: row.dataset.search || '',
+}));
+const leaveBalanceFuse = window.Fuse ? new Fuse(leaveBalanceItems, {
+    keys: ['text'],
+    threshold: 0.45,
+    ignoreLocation: true,
+}) : null;
+
+function applyLeaveBalanceSearch() {
+    if (!leaveBalanceSearch) return;
+
+    const query = leaveBalanceSearch.value.trim();
+    let visibleIndexes = null;
+
+    if (query) {
+        const matches = leaveBalanceFuse
+            ? leaveBalanceFuse.search(query).map(result => result.item.index)
+            : leaveBalanceItems.filter(item => item.text.toLowerCase().includes(query.toLowerCase())).map(item => item.index);
+        visibleIndexes = new Set(matches);
+    }
+
+    let visibleCount = 0;
+    leaveBalanceItems.forEach(item => {
+        const visible = !visibleIndexes || visibleIndexes.has(item.index);
+        item.row.classList.toggle('hidden', !visible);
+        if (visible) visibleCount++;
+    });
+
+    if (leaveBalanceEmpty) {
+        leaveBalanceEmpty.classList.toggle('hidden', !query || visibleCount > 0);
+    }
+}
+
+if (leaveBalanceSearch) {
+    leaveBalanceSearch.addEventListener('input', applyLeaveBalanceSearch);
+    applyLeaveBalanceSearch();
+}
 
 function openEditBalance(empId, name, balances) {
     document.getElementById('balEmpName').textContent = name;

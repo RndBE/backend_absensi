@@ -5,14 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AdminActivityLog;
 use App\Models\Employee;
+use App\Support\AdminPermission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 
 class AuthController extends Controller
 {
-    private const ADMIN_ROLES = ['superadmin', 'admin', 'manager'];
-
     public function showLogin()
     {
         if (session('admin_id')) {
@@ -35,7 +34,7 @@ class AuthController extends Controller
             return back()->with('error', 'Email atau password salah.')->withInput();
         }
 
-        if (!in_array($employee->role, self::ADMIN_ROLES, true)) {
+        if (!app(AdminPermission::class)->isAdminUser($employee)) {
             return back()->with('error', 'Akses admin ditolak.')->withInput();
         }
 

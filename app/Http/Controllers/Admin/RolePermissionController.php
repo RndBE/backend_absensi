@@ -10,28 +10,28 @@ use Illuminate\Validation\Rule;
 
 class RolePermissionController extends Controller
 {
-    private const ROLES = ['superadmin', 'admin', 'manager'];
-    private const EDITABLE_ROLES = ['admin', 'manager'];
-
     public function index(Request $request, AdminPermission $permissions)
     {
         $admin = Employee::find(session('admin_id'));
         $selectedEmployee = null;
+        $roles = $permissions->roles();
+        $editableRoles = $permissions->editableRoles();
+        $isSuperadmin = in_array('superadmin', $permissions->roleSlugs($admin), true);
 
         $admins = Employee::query()
-            ->when($admin->role !== 'superadmin', fn ($q) => $q->where('company_id', $admin->company_id))
-            ->whereIn('role', self::ROLES)
-            ->with('department:id,name')
-            ->orderBy('role')
+            ->when(!$isSuperadmin && !$permissions->can($admin, 'company.manage'), fn ($q) => $q->where('company_id', $admin->company_id))
+            ->with(['department:id,name', 'roles:id,name,slug'])
             ->orderBy('full_name')
-            ->get();
+            ->get()
+            ->filter(fn (Employee $employee) => $permissions->isAdminUser($employee))
+            ->values();
 
         if ($request->employee_id) {
             $selectedEmployee = $admins->firstWhere('id', (int) $request->employee_id);
         }
 
         $roleStates = [];
-        foreach (self::ROLES as $role) {
+        foreach (array_keys($roles) as $role) {
             $roleStates[$role] = $permissions->roleState($role);
         }
 
@@ -41,8 +41,8 @@ class RolePermissionController extends Controller
 
         return view('admin.role-permissions.index', [
             'groups' => $permissions->groupedPermissions(),
-            'roles' => self::ROLES,
-            'editableRoles' => self::EDITABLE_ROLES,
+            'roles' => $roles,
+            'editableRoles' => $editableRoles,
             'roleStates' => $roleStates,
             'admins' => $admins,
             'selectedEmployee' => $selectedEmployee,
@@ -52,7 +52,7 @@ class RolePermissionController extends Controller
 
     public function updateRole(Request $request, string $role, AdminPermission $permissions)
     {
-        abort_unless(in_array($role, self::EDITABLE_ROLES, true), 403);
+        abort_unless(in_array($role, $permissions->editableRoles(), true), 403);
 
         $request->validate([
             'permissions' => 'array',
@@ -68,9 +68,9 @@ class RolePermissionController extends Controller
     public function updateEmployee(Request $request, Employee $employee, AdminPermission $permissions)
     {
         $admin = Employee::find(session('admin_id'));
-        abort_unless($admin->role === 'superadmin' || $employee->company_id === $admin->company_id, 403);
+        abort_unless($permissions->can($admin, '*') || $employee->company_id === $admin->company_id, 403);
 
-        if ($employee->role === 'superadmin') {
+        if (in_array('superadmin', $permissions->roleSlugs($employee), true)) {
             return redirect()->route('admin.role-permissions.index', ['employee_id' => $employee->id])
                 ->with('error', 'Super Admin selalu memiliki semua akses dan tidak memakai override.');
         }

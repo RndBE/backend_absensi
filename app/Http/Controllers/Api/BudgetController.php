@@ -43,6 +43,9 @@ class BudgetController extends Controller
      */
     public function store(Request $request)
     {
+        $this->decodeJsonField($request, 'items');
+        $this->decodeJsonField($request, 'participants');
+
         $request->validate([
             'type' => 'required|in:budget,reimbursement',
             'title' => 'required|string|max:255',
@@ -193,5 +196,17 @@ class BudgetController extends Controller
                 ['value' => 'lainnya', 'label' => 'Lainnya'],
             ],
         ]);
+    }
+
+    private function decodeJsonField(Request $request, string $field): void
+    {
+        if (! is_string($request->input($field))) {
+            return;
+        }
+
+        $decoded = json_decode($request->input($field), true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $request->merge([$field => $decoded]);
+        }
     }
 }

@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\AttendanceSettingController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\CompanyController;
+use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\RolePermissionController;
 use App\Http\Middleware\AdminActivityLogger;
 use App\Http\Middleware\AdminAuth;
@@ -162,6 +163,8 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::put('/attendance-settings', [AttendanceSettingController::class, 'update'])->name('attendance-settings.update');
 
     // Security
+    Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');
+    Route::put('/roles/employees/{employee}', [RoleController::class, 'updateEmployee'])->name('roles.employees.update');
     Route::get('/role-permissions', [RolePermissionController::class, 'index'])->name('role-permissions.index');
     Route::put('/role-permissions/roles/{role}', [RolePermissionController::class, 'updateRole'])->name('role-permissions.roles.update');
     Route::put('/role-permissions/employees/{employee}', [RolePermissionController::class, 'updateEmployee'])->name('role-permissions.employees.update');

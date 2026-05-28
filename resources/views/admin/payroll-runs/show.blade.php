@@ -2,6 +2,11 @@
 @section('title', 'Detail Payroll — ' . \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y'))
 
 @section('content')
+@php
+    $adminPermission = app(\App\Support\AdminPermission::class);
+    $canUpdatePayrollRun = $adminPermission->can($currentAdmin, 'payroll.runs.update');
+    $canPublishPayrollRun = $adminPermission->can($currentAdmin, 'payroll.runs.publish');
+@endphp
 <div class="mb-4">
     <a href="{{ route('admin.payroll-runs.index') }}" class="inline-flex items-center gap-1 text-[13px] text-gray-500 hover:text-indigo-600 transition-colors">
         <span class="material-symbols-outlined text-[16px]">arrow_back</span> Kembali ke Daftar
@@ -42,13 +47,15 @@
 
 {{-- Action Buttons --}}
 <div class="flex flex-wrap gap-2 mb-5">
-    @if($run->status === 'draft')
+    @if($run->status === 'draft' && $canPublishPayrollRun)
     <form action="{{ route('admin.payroll-runs.finalize', $run->id) }}" method="POST" data-confirm="Finalize payroll ini?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">check_circle</span> Finalize
         </button>
     </form>
+    @endif
+    @if($run->status === 'draft' && $canUpdatePayrollRun)
     <form action="{{ route('admin.payroll-runs.regenerate', $run->id) }}" method="POST" data-confirm="Regenerate semua data?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer">
@@ -57,7 +64,7 @@
     </form>
     @endif
 
-    @if($run->status === 'finalized')
+    @if($run->status === 'finalized' && $canPublishPayrollRun)
     <form action="{{ route('admin.payroll-runs.publish', $run->id) }}" method="POST" data-confirm="Publish payslip ke karyawan?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-blue-600 to-blue-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
@@ -78,7 +85,7 @@
     </form>
     @endif
 
-    @if($run->status === 'published')
+    @if($run->status === 'published' && $canPublishPayrollRun)
     <form action="{{ route('admin.payroll-runs.unpublish', $run->id) }}" method="POST" data-confirm="Unpublish payslip?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all duration-200 cursor-pointer">
@@ -93,7 +100,7 @@
     </form>
     @endif
 
-    @if($run->status === 'locked')
+    @if($run->status === 'locked' && $canPublishPayrollRun)
     <form action="{{ route('admin.payroll-runs.unlock', $run->id) }}" method="POST" data-confirm="Unlock payroll?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer">
@@ -109,7 +116,7 @@
             return collect($comps)->contains(fn($c) => str_contains($c['name'] ?? '', 'BPJS'));
         });
     @endphp
-    @if(!$hasBpjs || $run->status === 'draft')
+    @if((!$hasBpjs || $run->status === 'draft') && $canUpdatePayrollRun)
     <form action="{{ route('admin.payroll-runs.inject-bpjs', $run->id) }}" method="POST" data-confirm="Inject komponen BPJS ke semua karyawan dalam payroll ini?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-blue-600 to-cyan-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">

@@ -106,6 +106,7 @@
                     ['label' => 'Pengaturan', 'icon' => 'settings', 'key' => 'settings', 'items' => [
                         ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*'],
                         ['route' => 'admin.attendance-settings.index', 'icon' => 'tune', 'label' => 'Pengaturan Presensi', 'match' => 'admin.attendance-settings.*'],
+                        ['route' => 'admin.roles.index', 'icon' => 'badge', 'label' => 'Role', 'match' => 'admin.roles.*'],
                         ['route' => 'admin.role-permissions.index', 'icon' => 'admin_panel_settings', 'label' => 'Role Permission', 'match' => 'admin.role-permissions.*'],
                         ['route' => 'admin.audit-logs.index', 'icon' => 'manage_search', 'label' => 'Audit Log', 'match' => 'admin.audit-logs.*'],
                     ]],

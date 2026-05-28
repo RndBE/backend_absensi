@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\LeaveType;
@@ -205,34 +206,18 @@ class LeaveRequestController extends Controller
 
     private function getApproverAtStep(Employee $employee, int $step): ?Employee
     {
-        $current = $employee;
-        for ($i = 0; $i < $step; $i++) {
-            if (!$current->approver_id) return null;
-            $current = Employee::find($current->approver_id);
-            if (!$current) return null;
-        }
-        return $current;
+        return EmployeeApprover::getApproverAt($employee->id, 'leave', $step);
     }
 
     private function buildApprovalChain(Employee $employee): array
     {
-        $chain = [];
-        $current = $employee;
-        $visited = [];
-        $step = 1;
-
-        while ($current->approver_id && !in_array($current->approver_id, $visited)) {
-            $visited[] = $current->id;
-            $approver = Employee::find($current->approver_id);
-            if (!$approver) break;
-            $chain[] = [
-                'step' => $step,
-                'employee' => $approver,
-            ];
-            $current = $approver;
-            $step++;
-        }
-
-        return $chain;
+        return EmployeeApprover::getChain($employee->id, 'leave')
+            ->map(fn (EmployeeApprover $step) => [
+                'step' => $step->step_order,
+                'employee' => $step->approver,
+            ])
+            ->filter(fn (array $step) => $step['employee'] !== null)
+            ->values()
+            ->all();
     }
 }
