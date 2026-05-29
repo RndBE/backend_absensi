@@ -36,6 +36,28 @@ class AdminFilterViewTest extends TestCase
         $this->assertStringContainsString("request()->filled('department_id') || request()->filled('status')", $view);
     }
 
+    public function test_attendance_recap_stat_cards_use_status_color_accents(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/attendance-recap/index.blade.php'));
+
+        $this->assertStringContainsString('border-l-4', $view);
+        $this->assertStringContainsString('border-l-emerald-500', $view);
+        $this->assertStringContainsString('border-l-amber-500', $view);
+        $this->assertStringContainsString('border-l-blue-500', $view);
+        $this->assertStringContainsString('border-l-red-500', $view);
+        $this->assertStringContainsString('border-l-slate-400', $view);
+        $this->assertStringContainsString('border-l-rose-500', $view);
+        $this->assertStringContainsString('bg-emerald-50', $view);
+        $this->assertStringContainsString('bg-amber-50', $view);
+        $this->assertStringContainsString('bg-blue-50', $view);
+        $this->assertStringContainsString('bg-red-50', $view);
+        $this->assertStringContainsString('bg-slate-50', $view);
+        $this->assertStringContainsString('bg-rose-50', $view);
+        $this->assertStringContainsString('w-10 h-10 rounded-lg ring-1 ring-inset flex items-center justify-center shrink-0', $view);
+        $this->assertStringContainsString('material-symbols-outlined text-[22px] leading-none', $view);
+        $this->assertStringNotContainsString('material-symbols-outlined text-[22px] w-10 h-10', $view);
+    }
+
     public function test_employee_index_uses_fuse_search_and_preserves_backend_dropdown_filters(): void
     {
         $view = file_get_contents(resource_path('views/admin/employees/index.blade.php'));

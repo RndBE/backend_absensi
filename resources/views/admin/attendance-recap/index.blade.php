@@ -10,20 +10,22 @@
 <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
     @php
         $statCards = [
-            ['label' => 'Hadir', 'value' => $stats['hadir'], 'color' => 'emerald', 'icon' => 'check_circle'],
-            ['label' => 'Terlambat', 'value' => $stats['terlambat'], 'color' => 'amber', 'icon' => 'schedule'],
-            ['label' => 'Cuti', 'value' => $stats['cuti'], 'color' => 'blue', 'icon' => 'beach_access'],
-            ['label' => 'Alpha', 'value' => $stats['alpha'], 'color' => 'red', 'icon' => 'cancel'],
-            ['label' => 'Off', 'value' => $stats['off'], 'color' => 'gray', 'icon' => 'bedtime'],
-            ['label' => 'Libur', 'value' => $stats['libur'], 'color' => 'rose', 'icon' => 'block'],
+            ['label' => 'Hadir', 'value' => $stats['hadir'], 'icon' => 'check_circle', 'accent' => 'border-l-emerald-500', 'iconBox' => 'bg-emerald-50 text-emerald-600 ring-emerald-100', 'valueClass' => 'text-emerald-700'],
+            ['label' => 'Terlambat', 'value' => $stats['terlambat'], 'icon' => 'schedule', 'accent' => 'border-l-amber-500', 'iconBox' => 'bg-amber-50 text-amber-600 ring-amber-100', 'valueClass' => 'text-amber-700'],
+            ['label' => 'Cuti', 'value' => $stats['cuti'], 'icon' => 'beach_access', 'accent' => 'border-l-blue-500', 'iconBox' => 'bg-blue-50 text-blue-600 ring-blue-100', 'valueClass' => 'text-blue-700'],
+            ['label' => 'Alpha', 'value' => $stats['alpha'], 'icon' => 'cancel', 'accent' => 'border-l-red-500', 'iconBox' => 'bg-red-50 text-red-600 ring-red-100', 'valueClass' => 'text-red-700'],
+            ['label' => 'Off', 'value' => $stats['off'], 'icon' => 'bedtime', 'accent' => 'border-l-slate-400', 'iconBox' => 'bg-slate-50 text-slate-600 ring-slate-100', 'valueClass' => 'text-slate-700'],
+            ['label' => 'Libur', 'value' => $stats['libur'], 'icon' => 'block', 'accent' => 'border-l-rose-500', 'iconBox' => 'bg-rose-50 text-rose-600 ring-rose-100', 'valueClass' => 'text-rose-700'],
         ];
     @endphp
     @foreach($statCards as $card)
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-center gap-3">
-            <span class="material-symbols-outlined text-2xl">{{ $card['icon'] }}</span>
+        <div class="bg-white rounded-xl border border-gray-200 {{ $card['accent'] }} border-l-4 shadow-sm p-4 flex items-center gap-3 transition-all hover:-translate-y-0.5 hover:shadow-md">
+            <span class="w-10 h-10 rounded-lg ring-1 ring-inset flex items-center justify-center shrink-0 {{ $card['iconBox'] }}">
+                <span class="material-symbols-outlined text-[22px] leading-none">{{ $card['icon'] }}</span>
+            </span>
             <div>
-                <div class="text-[22px] font-black text-gray-900">{{ $card['value'] }}</div>
-                <div class="text-[11px] text-gray-400 font-semibold">{{ $card['label'] }}</div>
+                <div class="text-[22px] font-black leading-none {{ $card['valueClass'] }}">{{ $card['value'] }}</div>
+                <div class="mt-1 text-[11px] text-gray-500 font-semibold">{{ $card['label'] }}</div>
             </div>
         </div>
     @endforeach
