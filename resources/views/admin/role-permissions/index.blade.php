@@ -74,7 +74,7 @@
             @endforeach
         </div>
 
-        {{-- <div class="space-y-5">
+        <div class="space-y-5">
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                 <div class="px-5 py-4 border-b border-gray-100">
                     <h2 class="text-[15px] font-bold text-gray-900">Override Per Admin</h2>
@@ -122,11 +122,11 @@
                     @endif
                 </div>
             </div>
-        </div> --}}
+        </div>
     </div>
 </div>
 
-{{-- <div id="rolePermissionModal" class="role-permission-modal-shell hidden fixed inset-0 items-center justify-center p-4 sm:p-6" style="z-index: 1000;">
+<div id="rolePermissionModal" class="role-permission-modal-shell hidden fixed inset-0 items-center justify-center p-4 sm:p-6" style="z-index: 1000;">
     <div class="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]" data-role-modal-close></div>
     <div class="role-permission-dialog relative bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col" style="width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 80px); z-index: 1;">
         <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
@@ -259,7 +259,7 @@
         </div>
     </form>
 </div>
-@endif --}}
+@endif
 @endsection
 
 @push('scripts')
