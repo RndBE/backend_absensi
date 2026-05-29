@@ -6,9 +6,16 @@ use Tests\TestCase;
 
 class RolePermissionViewTest extends TestCase
 {
+    private function visibleBladeMarkup(string $view): string
+    {
+        return preg_replace('/{{--.*?--}}/s', '', $view) ?? $view;
+    }
+
     public function test_role_permission_view_uses_modals_for_permission_editing(): void
     {
-        $view = file_get_contents(resource_path('views/admin/role-permissions/index.blade.php'));
+        $view = $this->visibleBladeMarkup(
+            file_get_contents(resource_path('views/admin/role-permissions/index.blade.php'))
+        );
 
         $this->assertStringContainsString('id="rolePermissionModal"', $view);
         $this->assertStringContainsString('id="employeeOverrideModal"', $view);
