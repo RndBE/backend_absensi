@@ -25,6 +25,20 @@ class TravelReport extends Model
         return $this->belongsTo(BudgetRequest::class);
     }
 
+    public function travelZone()
+    {
+        return $this->belongsTo(TravelZone::class);
+    }
+
+    public function getMealAllowanceTotalAttribute(): float
+    {
+        if (! $this->travelZone || ! $this->duration_days) {
+            return 0;
+        }
+
+        return (float) $this->travelZone->meal_allowance * $this->duration_days;
+    }
+
     public function activities()
     {
         return $this->hasMany(TravelReportActivity::class)->orderBy('sort_order');
@@ -42,7 +56,7 @@ class TravelReport extends Model
 
     public function attachments()
     {
-        return $this->morphMany(Attachment::class, 'attachable');
+        return $this->morphMany(RequestAttachment::class, 'attachable');
     }
 
     /**
@@ -69,6 +83,7 @@ class TravelReport extends Model
         if ($this->departure_date && $this->return_date) {
             return $this->departure_date->diffInDays($this->return_date) + 1;
         }
+
         return 0;
     }
 }

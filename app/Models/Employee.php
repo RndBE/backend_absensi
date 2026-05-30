@@ -24,7 +24,7 @@ class Employee extends Authenticatable
         'resign_reason', 'resign_notes', 'last_working_date',
         'contract_start_date', 'contract_end_date',
         'internship_institution', 'internship_supervisor', 'internship_field_supervisor', 'internship_notes',
-        'photo', 'signature', 'is_active', 'role', 'fcm_token',
+        'photo', 'face_photo', 'signature', 'is_active', 'role', 'fcm_token',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -143,8 +143,11 @@ class Employee extends Authenticatable
 
     public function getMasaKerjaAttribute(): string
     {
-        if (!$this->join_date) return '-';
+        if (! $this->join_date) {
+            return '-';
+        }
         $diff = $this->join_date->diff(now());
+
         return "{$diff->y} Tahun {$diff->m} Bulan {$diff->d} Hari";
     }
 }

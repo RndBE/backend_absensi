@@ -6,7 +6,14 @@
     <a href="{{ route('admin.travel-reports.index') }}" class="inline-flex items-center gap-1 text-[13px] font-semibold text-gray-500 hover:text-gray-700 transition-colors">
         <span class="material-symbols-outlined text-[16px]">arrow_back</span> Kembali
     </a>
-    <a href="{{ route('admin.travel-reports.print', $report) }}" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">🖨️ Cetak LHP</a>
+    <div class="flex gap-2">
+        @if(in_array($report->status, ['pending', 'in_review']))
+        <a href="{{ route('admin.travel-reports.edit', $report->id) }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-amber-500 to-amber-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+            <span class="material-symbols-outlined text-[14px]">edit</span> Edit LHP
+        </a>
+        @endif
+        <a href="{{ route('admin.travel-reports.print', $report) }}" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">🖨️ Cetak LHP</a>
+    </div>
 </div>
 
 {{-- Header Card --}}

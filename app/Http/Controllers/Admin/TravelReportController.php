@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\BudgetRequest;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
+use App\Models\Notification;
 use App\Models\TravelReport;
-use App\Models\TravelReportActivity;
+use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -30,7 +32,7 @@ class TravelReportController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('destination_city', 'like', "%{$search}%")
-                    ->orWhereHas('employee', fn($eq) => $eq->where('full_name', 'like', "%{$search}%"));
+                    ->orWhereHas('employee', fn ($eq) => $eq->where('full_name', 'like', "%{$search}%"));
             });
         }
 
@@ -103,7 +105,9 @@ class TravelReportController extends Controller
 
             // Save grouped activities
             foreach ($request->activities as $i => $activityData) {
-                if (empty($activityData['description'])) continue;
+                if (empty($activityData['description'])) {
+                    continue;
+                }
 
                 $results = isset($activityData['results'])
                     ? array_values(array_filter($activityData['results']))
@@ -135,10 +139,160 @@ class TravelReportController extends Controller
 
             DB::commit();
 
+            $employee = Employee::find($request->employee_id);
+            $firstApprover = EmployeeApprover::getApproverAt((int) $request->employee_id, 'travel_report', 1);
+            if ($employee && $firstApprover) {
+                $notification = Notification::create([
+                    'employee_id' => $firstApprover->id,
+                    'title' => 'Pengajuan LHP Baru',
+                    'message' => "{$employee->full_name} mengajukan LHP ke {$report->destination_city}",
+                    'type' => 'approval',
+                    'reference_type' => TravelReport::class,
+                    'reference_id' => $report->id,
+                ]);
+
+                FcmService::sendToEmployee($firstApprover, $notification->title, $notification->message, [
+                    'type' => 'approval',
+                    'reference_type' => 'travel_report',
+                    'reference_id' => (string) $report->id,
+                ]);
+            }
+
             return redirect()->route('admin.travel-reports.show', $report)
                 ->with('success', 'Laporan Hasil Perjalanan berhasil dibuat.');
         } catch (\Throwable $e) {
             DB::rollBack();
+
+            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    public function edit($id)
+    {
+        $report = TravelReport::with(['employee', 'budgetRequest', 'activities.documents'])
+            ->findOrFail($id);
+
+        if (!in_array($report->status, ['pending', 'in_review'])) {
+            return redirect()->route('admin.travel-reports.show', $id)
+                ->with('error', 'LHP tidak dapat diedit karena sudah ' . ($report->status === 'approved' ? 'disetujui' : 'ditolak') . '.');
+        }
+
+        $availableRequests = BudgetRequest::whereIn('status', ['approved', 'paid'])
+            ->where(function ($q) use ($report) {
+                $q->whereDoesntHave('travelReport')
+                    ->orWhere('id', $report->budget_request_id);
+            })
+            ->with('employee:id,full_name')
+            ->latest()
+            ->get();
+
+        return view('admin.travel-reports.edit', compact('report', 'availableRequests'));
+    }
+
+    public function update(Request $request, $id)
+    {
+        $report = TravelReport::findOrFail($id);
+
+        if (!in_array($report->status, ['pending', 'in_review'])) {
+            return redirect()->route('admin.travel-reports.show', $id)
+                ->with('error', 'LHP tidak dapat diedit karena sudah ' . ($report->status === 'approved' ? 'disetujui' : 'ditolak') . '.');
+        }
+
+        $request->validate([
+            'destination_city' => 'required|string|max:255',
+            'departure_date' => 'required|date',
+            'return_date' => 'required|date|after_or_equal:departure_date',
+            'surat_tugas_no' => 'nullable|string|max:255',
+            'surat_tugas_date' => 'nullable|date',
+            'purpose' => 'required|string',
+            'conclusion' => 'required|string',
+            'recommendations' => 'nullable|array',
+            'recommendations.*' => 'nullable|string',
+            'activities' => 'required|array|min:1',
+            'activities.*.date' => 'required|date',
+            'activities.*.description' => 'required|string',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $report->update([
+                'budget_request_id' => $request->budget_request_id,
+                'surat_tugas_no'    => $request->surat_tugas_no,
+                'surat_tugas_date'  => $request->surat_tugas_date,
+                'destination_city'  => $request->destination_city,
+                'departure_date'    => $request->departure_date,
+                'return_date'       => $request->return_date,
+                'purpose'           => $request->purpose,
+                'conclusion'        => $request->conclusion,
+                'recommendations'   => $request->recommendations
+                    ? array_values(array_filter($request->recommendations))
+                    : null,
+            ]);
+
+            // Notifikasi approver saat ini bahwa konten LHP telah diperbarui
+            $currentApprover = EmployeeApprover::getApproverAt($report->employee_id, 'travel_report', $report->current_step);
+            if ($currentApprover) {
+                $notif = Notification::create([
+                    'employee_id'    => $currentApprover->id,
+                    'title'          => 'LHP Diperbarui',
+                    'message'        => "{$report->employee->full_name} memperbarui LHP ke {$report->destination_city}.",
+                    'type'           => 'approval',
+                    'reference_type' => TravelReport::class,
+                    'reference_id'   => $report->id,
+                ]);
+                FcmService::sendToEmployee($currentApprover, $notif->title, $notif->message, [
+                    'type'           => 'approval',
+                    'reference_type' => 'travel_report',
+                    'reference_id'   => (string) $report->id,
+                ]);
+            }
+
+            // Replace activities & documents
+            foreach ($report->documents as $doc) {
+                Storage::disk('public')->delete($doc->file_path);
+            }
+            $report->documents()->delete();
+            $report->activities()->delete();
+
+            foreach ($request->activities as $i => $activityData) {
+                if (empty($activityData['description'])) {
+                    continue;
+                }
+
+                $results = isset($activityData['results'])
+                    ? array_values(array_filter($activityData['results']))
+                    : null;
+
+                $activity = $report->activities()->create([
+                    'activity_date' => $activityData['date'],
+                    'description' => $activityData['description'],
+                    'results' => $results && count($results) ? $results : null,
+                    'issues' => $activityData['issues'] ?? null,
+                    'conclusion' => $activityData['conclusion'] ?? null,
+                    'sort_order' => $i,
+                ]);
+
+                if ($request->hasFile("activities.{$i}.documents")) {
+                    foreach ($request->file("activities.{$i}.documents") as $j => $file) {
+                        $path = $file->store('travel-report-docs', 'public');
+                        $report->documents()->create([
+                            'travel_report_activity_id' => $activity->id,
+                            'file_path' => $path,
+                            'caption' => $request->input("activities.{$i}.document_captions.{$j}"),
+                            'activity_date' => $activityData['date'],
+                            'sort_order' => $j,
+                        ]);
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return redirect()->route('admin.travel-reports.show', $id)
+                ->with('success', 'LHP berhasil diperbarui.');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
     }
@@ -174,7 +328,7 @@ class TravelReportController extends Controller
     public function destroy($id)
     {
         $admin = Employee::find(session('admin_id'));
-        if (!in_array($admin->role, ['superadmin', 'admin'])) {
+        if (! in_array($admin->role, ['superadmin', 'admin'])) {
             return back()->with('error', 'Tidak memiliki izin untuk menghapus LHP.');
         }
 

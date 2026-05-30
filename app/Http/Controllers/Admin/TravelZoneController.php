@@ -10,7 +10,8 @@ class TravelZoneController extends Controller
 {
     public function index()
     {
-        $zones = TravelZone::orderBy('zone')->get();
+        $zones = TravelZone::orderBy('min_km')->get();
+
         return view('admin.travel-zones.index', compact('zones'));
     }
 
@@ -19,10 +20,12 @@ class TravelZoneController extends Controller
         $request->validate([
             'zone' => 'required|integer|min:1|unique:travel_zones,zone',
             'name' => 'required|string|max:255',
+            'min_km' => 'required|integer|min:0',
+            'max_km' => 'nullable|integer|min:0|gt:min_km',
             'meal_allowance' => 'required|numeric|min:0',
         ]);
 
-        TravelZone::create($request->only('zone', 'name', 'meal_allowance'));
+        TravelZone::create($request->only('zone', 'name', 'min_km', 'max_km', 'meal_allowance'));
 
         return redirect()->route('admin.travel-zones.index')
             ->with('success', "Zona {$request->zone} berhasil ditambahkan.");
@@ -33,12 +36,14 @@ class TravelZoneController extends Controller
         $zone = TravelZone::findOrFail($id);
 
         $request->validate([
-            'zone' => 'required|integer|min:1|unique:travel_zones,zone,' . $id,
+            'zone' => 'required|integer|min:1|unique:travel_zones,zone,'.$id,
             'name' => 'required|string|max:255',
+            'min_km' => 'required|integer|min:0',
+            'max_km' => 'nullable|integer|min:0|gt:min_km',
             'meal_allowance' => 'required|numeric|min:0',
         ]);
 
-        $zone->update($request->only('zone', 'name', 'meal_allowance'));
+        $zone->update($request->only('zone', 'name', 'min_km', 'max_km', 'meal_allowance'));
 
         return redirect()->route('admin.travel-zones.index')
             ->with('success', "Zona {$zone->zone} berhasil diperbarui.");
@@ -52,5 +57,25 @@ class TravelZoneController extends Controller
 
         return redirect()->route('admin.travel-zones.index')
             ->with('success', "Zona {$zoneNo} berhasil dihapus.");
+    }
+
+    public function detect(Request $request)
+    {
+        $request->validate(['km' => 'required|integer|min:0']);
+
+        $zone = TravelZone::findByKm((int) $request->km);
+
+        if (! $zone) {
+            return response()->json(['found' => false]);
+        }
+
+        return response()->json([
+            'found' => true,
+            'id' => $zone->id,
+            'zone' => $zone->zone,
+            'name' => $zone->name,
+            'km_range' => $zone->km_range_label,
+            'meal_allowance' => (float) $zone->meal_allowance,
+        ]);
     }
 }

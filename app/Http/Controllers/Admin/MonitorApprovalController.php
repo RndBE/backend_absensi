@@ -16,11 +16,11 @@ use Illuminate\Pagination\LengthAwarePaginator;
 class MonitorApprovalController extends Controller
 {
     private const TYPE_MAP = [
-        'leave'      => ['label' => 'Cuti',            'model' => LeaveRequest::class,    'request_type' => 'leave'],
-        'overtime'   => ['label' => 'Lembur',           'model' => OvertimeRequest::class,  'request_type' => 'overtime'],
-        'attendance' => ['label' => 'Koreksi Presensi', 'model' => AttendanceRequest::class,'request_type' => 'attendance'],
-        'budget'     => ['label' => 'Anggaran',         'model' => BudgetRequest::class,    'request_type' => 'budget'],
-        'travel'     => ['label' => 'LHP',              'model' => TravelReport::class,     'request_type' => 'travel_report'],
+        'leave' => ['label' => 'Cuti',            'model' => LeaveRequest::class,    'request_type' => 'leave'],
+        'overtime' => ['label' => 'Lembur',           'model' => OvertimeRequest::class,  'request_type' => 'overtime'],
+        'attendance' => ['label' => 'Koreksi Presensi', 'model' => AttendanceRequest::class, 'request_type' => 'attendance'],
+        'budget' => ['label' => 'Anggaran',         'model' => BudgetRequest::class,    'request_type' => 'budget'],
+        'travel' => ['label' => 'LHP',              'model' => TravelReport::class,     'request_type' => 'travel_report'],
     ];
 
     public function index(Request $request)
@@ -31,9 +31,9 @@ class MonitorApprovalController extends Controller
             abort(403, 'Halaman ini hanya untuk Superadmin.');
         }
 
-        $filterType   = $request->get('type', 'all');
+        $filterType = $request->get('type', 'all');
         $filterStatus = $request->get('status', 'active');
-        $search       = $request->get('search');
+        $search = $request->get('search');
 
         $statuses = $filterStatus === 'done'
             ? ['approved', 'rejected']
@@ -45,7 +45,9 @@ class MonitorApprovalController extends Controller
 
         foreach ($typesToLoad as $typeKey) {
             $meta = self::TYPE_MAP[$typeKey] ?? null;
-            if (!$meta) continue;
+            if (! $meta) {
+                continue;
+            }
 
             $extraWith = [];
             if ($typeKey === 'leave') {
@@ -70,10 +72,10 @@ class MonitorApprovalController extends Controller
                 $chain = EmployeeApprover::getChain($item->employee_id, $meta['request_type']);
 
                 $allRequests->push([
-                    'type'       => $typeKey,
+                    'type' => $typeKey,
                     'type_label' => $meta['label'],
-                    'item'       => $item,
-                    'chain'      => $chain,
+                    'item' => $item,
+                    'chain' => $chain,
                 ]);
             });
         }
@@ -90,8 +92,8 @@ class MonitorApprovalController extends Controller
         $summary['all'] = array_sum($summary);
 
         // Paginate manually
-        $page      = (int) $request->get('page', 1);
-        $perPage   = 20;
+        $page = (int) $request->get('page', 1);
+        $perPage = 20;
         $paginator = new LengthAwarePaginator(
             $allRequests->slice(($page - 1) * $perPage, $perPage)->values(),
             $allRequests->count(),
@@ -101,12 +103,12 @@ class MonitorApprovalController extends Controller
         );
 
         return view('admin.monitor-approvals.index', [
-            'requests'     => $paginator,
-            'filterType'   => $filterType,
+            'requests' => $paginator,
+            'filterType' => $filterType,
             'filterStatus' => $filterStatus,
-            'search'       => $search,
-            'summary'      => $summary,
-            'typeMap'      => self::TYPE_MAP,
+            'search' => $search,
+            'summary' => $summary,
+            'typeMap' => self::TYPE_MAP,
         ]);
     }
 }

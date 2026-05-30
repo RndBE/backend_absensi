@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Models\Notification;
-use App\Models\Employee;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -36,7 +36,7 @@ class LeaveController extends Controller
     public function index(Request $request)
     {
         $request->validate(['period' => 'nullable|date_format:Y-m']);
-        $period = $request->period ? Carbon::parse($request->period . '-01') : now();
+        $period = $request->period ? Carbon::parse($request->period.'-01') : now();
 
         $requests = LeaveRequest::where('employee_id', $request->user()->id)
             ->whereYear('created_at', $period->year)
@@ -46,6 +46,114 @@ class LeaveController extends Controller
             ->get();
 
         return response()->json(['success' => true, 'data' => $requests]);
+    }
+
+    public function companyTimeline(Request $request)
+    {
+        $employee = $request->user();
+        $company = $employee->company;
+        $today = Carbon::today();
+
+        // Default: tampilkan 30 hari ke belakang dari hari ini
+        $dateFrom = $today->copy()->subDays(29);
+        $dateTo = $today;
+
+        // Semua approved leave yang tanggalnya overlap dengan window
+        $leaves = LeaveRequest::with([
+            'employee:id,full_name,department_id',
+            'employee.department:id,name',
+            'leaveType:id,name',
+        ])
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $company->id))
+            ->where('status', 'approved')
+            ->where('start_date', '<=', $dateTo->toDateString())
+            ->where('end_date', '>=', $dateFrom->toDateString())
+            ->get();
+
+        // Expand tiap leave ke hari-hari yang ada di window
+        $byDate = [];
+        for ($d = $today->copy(); ! $d->isBefore($dateFrom); $d->subDay()) {
+            $dateStr = $d->toDateString();
+            foreach ($leaves as $leave) {
+                $s = Carbon::parse($leave->start_date);
+                $e = Carbon::parse($leave->end_date);
+                if (! $d->isBefore($s) && ! $d->isAfter($e)) {
+                    $byDate[$dateStr][] = [
+                        'name' => strtoupper($leave->employee->full_name ?? '-'),
+                        'department' => strtoupper($leave->employee->department->name ?? '-'),
+                        'leave_type' => $leave->leaveType->name ?? 'Cuti',
+                        'created_at' => $leave->created_at?->toDateTimeString(),
+                    ];
+                }
+            }
+        }
+
+        // Bersihkan tanggal tanpa cuti
+        $byDate = array_filter($byDate);
+
+        $days = [];
+        foreach ($byDate as $dateStr => $employees) {
+            $latestCreatedAt = collect($employees)
+                ->pluck('created_at')
+                ->filter()
+                ->sortDesc()
+                ->first();
+
+            $days[] = [
+                'date' => $dateStr,
+                'created_at' => $latestCreatedAt,
+                'employees' => array_values($employees),
+            ];
+        }
+
+        $timeline = collect($days)
+            ->map(fn ($day) => [
+                'type' => 'leave',
+                'date' => $day['date'],
+                'created_at' => $day['created_at'],
+                'employees' => $day['employees'],
+            ]);
+
+        $birthdays = Employee::with('department:id,name')
+            ->where('company_id', $company->id)
+            ->whereNotNull('birth_date')
+            ->get()
+            ->map(function ($birthdayEmployee) use ($dateFrom, $dateTo) {
+                $birthdayDate = $birthdayEmployee->birth_date->copy()->year($dateTo->year);
+
+                if ($birthdayDate->isBefore($dateFrom) || $birthdayDate->isAfter($dateTo)) {
+                    return null;
+                }
+
+                return [
+                    'type' => 'birthday',
+                    'date' => $birthdayDate->toDateString(),
+                    'created_at' => $birthdayDate->startOfDay()->toDateTimeString(),
+                    'employee' => [
+                        'name' => strtoupper($birthdayEmployee->full_name ?? '-'),
+                        'department' => strtoupper($birthdayEmployee->department->name ?? '-'),
+                    ],
+                ];
+            })
+            ->filter()
+            ->values();
+
+        $timeline = $timeline
+            ->merge($birthdays)
+            ->sortByDesc(fn ($item) => ($item['date'] ?? '').' '.($item['created_at'] ?? ''))
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'company' => [
+                    'name' => $company->name,
+                    'logo' => $company->logo ? asset('storage/'.$company->logo) : null,
+                ],
+                'days' => $days,
+                'timeline' => $timeline,
+            ],
+        ]);
     }
 
     public function store(Request $request)

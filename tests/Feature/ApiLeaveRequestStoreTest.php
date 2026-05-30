@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\LeaveController;
 use App\Models\Employee;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -22,12 +23,30 @@ class ApiLeaveRequestStoreTest extends TestCase
         Schema::dropIfExists('leave_balances');
         Schema::dropIfExists('leave_types');
         Schema::dropIfExists('employees');
+        Schema::dropIfExists('departments');
+        Schema::dropIfExists('companies');
+
+        Schema::create('companies', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('logo')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('departments', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
 
         Schema::create('employees', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('company_id')->nullable();
+            $table->unsignedBigInteger('department_id')->nullable();
             $table->string('full_name');
             $table->string('email')->unique();
             $table->string('password');
+            $table->date('birth_date')->nullable();
             $table->timestamps();
         });
 
@@ -81,6 +100,13 @@ class ApiLeaveRequestStoreTest extends TestCase
         });
     }
 
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
     public function test_api_leave_request_store_sets_initial_approval_state(): void
     {
         DB::table('employees')->insert([
@@ -119,7 +145,7 @@ class ApiLeaveRequestStoreTest extends TestCase
         ]);
         $request->setUserResolver(fn () => $employee);
 
-        $response = (new LeaveController())->store($request);
+        $response = (new LeaveController)->store($request);
         $payload = $response->getData(true);
 
         $this->assertSame('pending', $payload['data']['status']);
@@ -129,5 +155,94 @@ class ApiLeaveRequestStoreTest extends TestCase
             'status' => 'pending',
             'current_step' => 1,
         ]);
+    }
+
+    public function test_company_timeline_mixes_leave_and_birthday_items(): void
+    {
+        Carbon::setTestNow('2026-05-30 10:00:00');
+
+        DB::table('companies')->insert([
+            'id' => 1,
+            'name' => 'PT Arta Teknologi Comunindo',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('departments')->insert([
+            'id' => 1,
+            'name' => 'HSE Officer',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            [
+                'id' => 1,
+                'company_id' => 1,
+                'department_id' => 1,
+                'full_name' => 'Employee One',
+                'email' => 'employee@example.test',
+                'password' => 'password',
+                'birth_date' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 2,
+                'company_id' => 1,
+                'department_id' => 1,
+                'full_name' => 'Shandy Bagus',
+                'email' => 'shandy@example.test',
+                'password' => 'password',
+                'birth_date' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 3,
+                'company_id' => 1,
+                'department_id' => 1,
+                'full_name' => 'Widya',
+                'email' => 'widya@example.test',
+                'password' => 'password',
+                'birth_date' => '1995-05-30',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        DB::table('leave_types')->insert([
+            'id' => 1,
+            'name' => 'Cuti Sakit',
+            'max_days' => 12,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            'employee_id' => 2,
+            'leave_type_id' => 1,
+            'start_date' => '2026-05-30',
+            'end_date' => '2026-05-30',
+            'total_days' => 1,
+            'reason' => 'Sakit',
+            'status' => 'approved',
+            'current_step' => 1,
+            'created_at' => '2026-05-30 08:00:00',
+            'updated_at' => '2026-05-30 08:00:00',
+        ]);
+
+        $employee = Employee::findOrFail(1);
+        $request = Request::create('/api/leave/company-timeline', 'GET');
+        $request->setUserResolver(fn () => $employee);
+
+        $response = (new LeaveController)->companyTimeline($request);
+        $payload = $response->getData(true);
+        $timeline = collect($payload['data']['timeline']);
+
+        $this->assertContains('leave', $timeline->pluck('type')->all());
+        $this->assertContains('birthday', $timeline->pluck('type')->all());
+        $this->assertSame('WIDYA', $timeline->firstWhere('type', 'birthday')['employee']['name']);
+        $this->assertSame('Cuti Sakit', $timeline->firstWhere('type', 'leave')['employees'][0]['leave_type']);
     }
 }

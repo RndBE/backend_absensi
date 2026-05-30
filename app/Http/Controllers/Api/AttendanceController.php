@@ -304,24 +304,33 @@ class AttendanceController extends Controller
             $photoPath = $this->storeBase64Photo($request->photo_base64, 'attendance/clock-in');
         }
 
-        // Face Verification: compare selfie with employee profile photo
+        // Face Verification: compare selfie with registered face photo
         $faceVerify = Setting::getValue('face_verification_enabled', '1') === '1';
-        if ($faceVerify && $photoPath && $employee->photo) {
-            $selfieFullPath = Storage::disk('public')->path($photoPath);
-            $profileFullPath = Storage::disk('public')->path($employee->photo);
+        if ($faceVerify) {
+            // Wajib daftar foto wajah terlebih dahulu
+            if (!$employee->face_photo) {
+                if ($photoPath) Storage::disk('public')->delete($photoPath);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda belum mendaftarkan foto verifikasi wajah. Silakan daftarkan di menu Akun → Verifikasi Wajah terlebih dahulu.',
+                ], 422);
+            }
 
-            if (file_exists($selfieFullPath) && file_exists($profileFullPath)) {
-                $similarity = $this->compareFaces($selfieFullPath, $profileFullPath);
+            if ($photoPath) {
+                $selfieFullPath = Storage::disk('public')->path($photoPath);
+                $faceFullPath   = Storage::disk('public')->path($employee->face_photo);
 
-                if ($similarity < 0.40) {
-                    // Delete the uploaded selfie since verification failed
-                    Storage::disk('public')->delete($photoPath);
+                if (file_exists($selfieFullPath) && file_exists($faceFullPath)) {
+                    $similarity = $this->compareFaces($selfieFullPath, $faceFullPath);
 
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Verifikasi wajah gagal. Wajah tidak sesuai dengan foto profil Anda.',
-                        'similarity' => round($similarity * 100, 1),
-                    ], 422);
+                    if ($similarity < 0.50) {
+                        Storage::disk('public')->delete($photoPath);
+                        return response()->json([
+                            'success'    => false,
+                            'message'    => 'Verifikasi wajah gagal. Wajah tidak sesuai dengan foto verifikasi wajah Anda.',
+                            'similarity' => round($similarity * 100, 1),
+                        ], 422);
+                    }
                 }
             }
         }
@@ -397,23 +406,18 @@ class AttendanceController extends Controller
         }
 
         $employee = $request->user();
-        $today = Carbon::today();
 
+        // Cari attendance yang belum clock out — support overnight shift (mis. 18:00–06:00)
         $attendance = Attendance::where('employee_id', $employee->id)
-            ->where('date', $today)
+            ->whereNotNull('clock_in')
+            ->whereNull('clock_out')
+            ->latest('date')
             ->first();
 
-        if (!$attendance || !$attendance->clock_in) {
+        if (!$attendance) {
             return response()->json([
                 'success' => false,
-                'message' => 'Anda belum clock in hari ini.',
-            ], 422);
-        }
-
-        if ($attendance->clock_out) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda sudah clock out hari ini.',
+                'message' => 'Anda belum clock in atau sudah clock out.',
             ], 422);
         }
 
@@ -434,15 +438,16 @@ class AttendanceController extends Controller
         ]);
 
         // === OVERTIME ACTUAL CALCULATION ===
+        $attendanceDate = Carbon::parse($attendance->date);
         $overtimeInfo = null;
         $overtimeRequest = OvertimeRequest::where('employee_id', $employee->id)
-            ->where('date', $today)
+            ->where('date', $attendanceDate->format('Y-m-d'))
             ->where('status', 'approved')
             ->first();
 
         if ($overtimeRequest) {
             $actualOt = $this->calculateActualOvertime(
-                $overtimeRequest, $employee, $today, $attendance, $clockOutTime
+                $overtimeRequest, $employee, $attendanceDate, $attendance, $clockOutTime
             );
 
             $overtimeRequest->update([

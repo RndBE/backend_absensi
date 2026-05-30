@@ -16,7 +16,7 @@ class AttendanceController extends Controller
         $today = Carbon::today();
 
         $attendances = Attendance::with(['employee:id,full_name,photo,department_id,position,employment_status', 'employee.department:id,name'])
-            ->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
             ->where('date', $today)
             ->orderBy('clock_in', 'desc')
             ->get();
@@ -29,7 +29,7 @@ class AttendanceController extends Controller
         $admin = Employee::find(session('admin_id'));
 
         $query = Attendance::with(['employee:id,full_name,employee_code,department_id,employment_status', 'employee.department:id,name'])
-            ->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id));
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id));
 
         if ($request->date_from) {
             $query->where('date', '>=', $request->date_from);
@@ -41,7 +41,7 @@ class AttendanceController extends Controller
             $query->where('employee_id', $request->employee_id);
         }
         if ($request->employment_status) {
-            $query->whereHas('employee', fn($q) => $q->where('employment_status', $request->employment_status));
+            $query->whereHas('employee', fn ($q) => $q->where('employment_status', $request->employment_status));
         }
 
         $attendances = $query->orderBy('date', 'desc')->orderBy('clock_in', 'desc')->paginate(20)->withQueryString();

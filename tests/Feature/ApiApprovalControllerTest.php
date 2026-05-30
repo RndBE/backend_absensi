@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\Api\ApprovalController;
+use App\Models\Employee;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,18 +20,32 @@ class ApiApprovalControllerTest extends TestCase
         Schema::dropIfExists('notifications');
         Schema::dropIfExists('request_attachments');
         Schema::dropIfExists('employee_approvers');
+        Schema::dropIfExists('travel_reports');
+        Schema::dropIfExists('budget_requests');
+        Schema::dropIfExists('data_change_requests');
+        Schema::dropIfExists('attendance_requests');
+        Schema::dropIfExists('overtime_requests');
         Schema::dropIfExists('leave_balances');
         Schema::dropIfExists('leave_requests');
         Schema::dropIfExists('leave_types');
+        Schema::dropIfExists('departments');
         Schema::dropIfExists('employees');
+
+        Schema::create('departments', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
 
         Schema::create('employees', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('department_id')->nullable();
             $table->unsignedBigInteger('approver_id')->nullable();
             $table->string('full_name');
             $table->string('email')->unique();
             $table->string('password');
             $table->string('role')->default('employee');
+            $table->string('photo')->nullable();
             $table->string('fcm_token')->nullable();
             $table->timestamps();
         });
@@ -54,6 +69,30 @@ class ApiApprovalControllerTest extends TestCase
             $table->integer('current_step')->nullable();
             $table->timestamps();
         });
+
+        foreach (['overtime_requests', 'attendance_requests', 'data_change_requests', 'budget_requests', 'travel_reports'] as $tableName) {
+            Schema::create($tableName, function (Blueprint $table) use ($tableName) {
+                $table->id();
+                $table->unsignedBigInteger('employee_id');
+                $table->string('status')->default('pending');
+                $table->integer('current_step')->nullable();
+
+                if ($tableName === 'budget_requests') {
+                    $table->string('title')->nullable();
+                    $table->decimal('total_amount', 12, 2)->default(0);
+                }
+
+                if ($tableName === 'travel_reports') {
+                    $table->string('destination_city')->nullable();
+                    $table->date('departure_date')->nullable();
+                    $table->date('return_date')->nullable();
+                    $table->text('purpose')->nullable();
+                    $table->text('conclusion')->nullable();
+                }
+
+                $table->timestamps();
+            });
+        }
 
         Schema::create('leave_balances', function (Blueprint $table) {
             $table->id();
@@ -155,6 +194,42 @@ class ApiApprovalControllerTest extends TestCase
         $this->assertSame('2026-06-01', $payload['data']['end_date']);
     }
 
+    public function test_superadmin_mobile_approval_inbox_only_shows_items_where_they_are_current_approver(): void
+    {
+        DB::table('employees')->insert([
+            ['id' => 1, 'full_name' => 'Requester One', 'email' => 'requester1@example.test', 'password' => 'secret', 'role' => 'employee', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'full_name' => 'Requester Two', 'email' => 'requester2@example.test', 'password' => 'secret', 'role' => 'employee', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 3, 'full_name' => 'Super Admin', 'email' => 'super@example.test', 'password' => 'secret', 'role' => 'superadmin', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 4, 'full_name' => 'Other Approver', 'email' => 'other@example.test', 'password' => 'secret', 'role' => 'manager', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        DB::table('leave_types')->insert([
+            'id' => 1,
+            'name' => 'Cuti Tahunan',
+            'max_days' => 12,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            ['id' => 11, 'employee_id' => 1, 'leave_type_id' => 1, 'start_date' => '2026-06-01', 'end_date' => '2026-06-01', 'total_days' => 1, 'reason' => 'Family event', 'status' => 'pending', 'current_step' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 12, 'employee_id' => 2, 'leave_type_id' => 1, 'start_date' => '2026-06-02', 'end_date' => '2026-06-02', 'total_days' => 1, 'reason' => 'Family event', 'status' => 'pending', 'current_step' => 1, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        DB::table('employee_approvers')->insert([
+            ['employee_id' => 1, 'request_type' => 'leave', 'step_order' => 1, 'approver_id' => 3, 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 2, 'request_type' => 'leave', 'step_order' => 1, 'approver_id' => 4, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $request = Request::create('/api/approvals', 'GET');
+        $request->setUserResolver(fn () => Employee::findOrFail(3));
+
+        $response = app(ApprovalController::class)->index($request);
+        $payload = $response->getData(true);
+
+        $this->assertSame([11], collect($payload['data']['leave'])->pluck('id')->all());
+    }
+
     public function test_final_leave_approval_uses_employee_approvers_not_approver_id_chain(): void
     {
         DB::table('employees')->insert([
@@ -202,7 +277,7 @@ class ApiApprovalControllerTest extends TestCase
             ['employee_id' => 1, 'request_type' => 'leave', 'step_order' => 2, 'approver_id' => 3, 'created_at' => now(), 'updated_at' => now()],
         ]);
 
-        $approver = \App\Models\Employee::findOrFail(3);
+        $approver = Employee::findOrFail(3);
         $request = Request::create('/api/approvals/leave/10/approve', 'POST');
         $request->setUserResolver(fn () => $approver);
 

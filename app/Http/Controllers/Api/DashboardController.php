@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
-use App\Models\Employee;
 use App\Models\Company;
+use App\Models\Employee;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
 use Illuminate\Http\Request;
@@ -37,53 +37,53 @@ class DashboardController extends Controller
 
         if ($manualAssignment && $manualAssignment->shift) {
             $shift = $manualAssignment->shift;
-            if (!$shift->is_off) {
+            if (! $shift->is_off) {
                 $workScheduleData = [
-                    'name'       => $shift->name,
-                    'work_days'  => null,
+                    'name' => $shift->name,
+                    'work_days' => null,
                     'start_time' => $shift->start_time,
-                    'end_time'   => $shift->end_time,
+                    'end_time' => $shift->end_time,
                 ];
             } else {
                 // Explicitly a day-off
                 $workScheduleData = [
-                    'name'       => 'Libur',
-                    'work_days'  => null,
+                    'name' => 'Libur',
+                    'work_days' => null,
                     'start_time' => null,
-                    'end_time'   => null,
+                    'end_time' => null,
                 ];
             }
         }
 
         // 2. Template-based schedule (ScheduleTemplate)
-        if (!$workScheduleData && $employee->scheduleTemplate) {
+        if (! $workScheduleData && $employee->scheduleTemplate) {
             $shift = $employee->scheduleTemplate->getShiftForDay($dayOfWeek);
             if ($shift) {
-                if (!$shift->is_off) {
+                if (! $shift->is_off) {
                     $workScheduleData = [
-                        'name'       => $employee->scheduleTemplate->name . ' – ' . $shift->name,
-                        'work_days'  => null,
+                        'name' => $employee->scheduleTemplate->name.' – '.$shift->name,
+                        'work_days' => null,
                         'start_time' => $shift->start_time,
-                        'end_time'   => $shift->end_time,
+                        'end_time' => $shift->end_time,
                     ];
                 } else {
                     $workScheduleData = [
-                        'name'       => 'Libur',
-                        'work_days'  => null,
+                        'name' => 'Libur',
+                        'work_days' => null,
                         'start_time' => null,
-                        'end_time'   => null,
+                        'end_time' => null,
                     ];
                 }
             }
         }
 
         // 3. Fallback: legacy WorkSchedule
-        if (!$workScheduleData && $employee->workSchedule) {
+        if (! $workScheduleData && $employee->workSchedule) {
             $workScheduleData = [
-                'name'       => $employee->workSchedule->name,
-                'work_days'  => $employee->workSchedule->work_days,
+                'name' => $employee->workSchedule->name,
+                'work_days' => $employee->workSchedule->work_days,
                 'start_time' => $employee->workSchedule->start_time,
-                'end_time'   => $employee->workSchedule->end_time,
+                'end_time' => $employee->workSchedule->end_time,
             ];
         }
 
@@ -111,27 +111,27 @@ class DashboardController extends Controller
             'success' => true,
             'data' => [
                 'employee' => [
-                    'id'         => $employee->id,
-                    'full_name'  => $employee->full_name,
-                    'position'   => $employee->position,
+                    'id' => $employee->id,
+                    'full_name' => $employee->full_name,
+                    'position' => $employee->position,
                     'department' => $employee->department?->name,
-                    'company'    => $employee->company?->name,
-                    'photo'      => $employee->photo ? asset('storage/' . $employee->photo) : null,
-                    'role'       => $employee->role,
+                    'company' => $employee->company?->name,
+                    'photo' => $employee->photo ? asset('storage/'.$employee->photo) : null,
+                    'role' => $employee->role,
                 ],
-                'work_schedule'      => $workScheduleData,
-                'today_attendance'   => $todayAttendance ? [
-                    'clock_in'  => $todayAttendance->clock_in,
+                'work_schedule' => $workScheduleData,
+                'today_attendance' => $todayAttendance ? [
+                    'clock_in' => $todayAttendance->clock_in,
                     'clock_out' => $todayAttendance->clock_out,
-                    'status'    => $todayAttendance->status,
-                    'is_late'   => $todayAttendance->is_late,
+                    'status' => $todayAttendance->status,
+                    'is_late' => $todayAttendance->is_late,
                     'is_remote' => $todayAttendance->is_remote,
                 ] : null,
                 'attendance_settings' => [
-                    'office_latitude'      => (float) Setting::getValue('office_latitude', '0'),
-                    'office_longitude'     => (float) Setting::getValue('office_longitude', '0'),
+                    'office_latitude' => (float) Setting::getValue('office_latitude', '0'),
+                    'office_longitude' => (float) Setting::getValue('office_longitude', '0'),
                     'office_radius_meters' => (int) Setting::getValue('office_radius_meters', '100'),
-                    'require_photo'        => Setting::getValue('require_photo', '1') === '1',
+                    'require_photo' => Setting::getValue('require_photo', '1') === '1',
                     'allow_remote_clockin' => Setting::getValue('allow_remote_clockin', '0') === '1',
                 ],
                 'team_members' => $teamMembers,
@@ -145,7 +145,7 @@ class DashboardController extends Controller
         $employee = $request->user();
         $company = $employee->company;
 
-        if (!$company) {
+        if (! $company) {
             $company = Company::first();
         }
 
@@ -154,7 +154,7 @@ class DashboardController extends Controller
             'data' => $company ? [
                 'id' => $company->id,
                 'name' => $company->name,
-                'logo' => $company->logo ? asset('storage/' . $company->logo) : null,
+                'logo' => $company->logo ? asset('storage/'.$company->logo) : null,
                 'address' => $company->address,
                 'phone' => $company->phone,
                 'email' => $company->email,

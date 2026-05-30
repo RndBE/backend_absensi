@@ -7,6 +7,7 @@ use App\Models\BudgetRequest;
 use App\Models\BudgetRequestItem;
 use App\Models\EmployeeApprover;
 use App\Models\Notification;
+use App\Models\TravelZone;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +57,7 @@ class BudgetController extends Controller
             'items.*.amount' => 'required|numeric|min:0',
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
+            'distance_km' => 'nullable|integer|min:0',
             'participants' => 'nullable|array',
             'participants.*' => 'exists:employees,id',
         ]);
@@ -64,6 +66,9 @@ class BudgetController extends Controller
 
         DB::beginTransaction();
         try {
+            $distanceKm = $request->filled('distance_km') ? (int) $request->distance_km : null;
+            $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
+
             $budgetRequest = BudgetRequest::create([
                 'employee_id' => $employee->id,
                 'type' => $request->type,
@@ -74,6 +79,8 @@ class BudgetController extends Controller
                 'total_amount' => 0,
                 'surat_tugas_no' => $request->surat_tugas_no,
                 'surat_tugas_date' => $request->surat_tugas_date,
+                'distance_km' => $distanceKm,
+                'travel_zone_id' => $travelZone?->id,
             ]);
 
             $total = 0;
@@ -172,11 +179,32 @@ class BudgetController extends Controller
             'participants:id,full_name,photo',
             'approvalLogs.approver:id,full_name,photo',
             'payments.processor:id,full_name',
+            'travelZone',
         ])->findOrFail($id);
 
         return response()->json([
             'success' => true,
             'data' => $budgetRequest,
+        ]);
+    }
+
+    /**
+     * Detect travel zone by distance.
+     */
+    public function detectZone(Request $request)
+    {
+        $request->validate(['km' => 'required|integer|min:0']);
+        $zone = TravelZone::findByKm((int) $request->km);
+
+        return response()->json([
+            'success' => true,
+            'data' => $zone ? [
+                'id' => $zone->id,
+                'zone' => $zone->zone,
+                'name' => $zone->name,
+                'km_range' => $zone->km_range_label,
+                'meal_allowance' => (float) $zone->meal_allowance,
+            ] : null,
         ]);
     }
 

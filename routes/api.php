@@ -10,7 +10,10 @@ use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OvertimeController;
+use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\TravelReportController;
+use App\Http\Controllers\Api\TravelZoneController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -46,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Leave (Cuti)
     Route::get('/leave/balance', [LeaveController::class, 'balance']);
     Route::get('/leave/types', [LeaveController::class, 'types']);
+    Route::get('/leave/company-timeline', [LeaveController::class, 'companyTimeline']);
     Route::get('/leave/requests', [LeaveController::class, 'index']);
     Route::post('/leave/requests', [LeaveController::class, 'store']);
     Route::get('/leave/requests/{id}', [LeaveController::class, 'show']);
@@ -74,19 +78,26 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/budget/requests', [BudgetController::class, 'index']);
     Route::post('/budget/requests', [BudgetController::class, 'store']);
     Route::get('/budget/item-types', [BudgetController::class, 'itemTypes']);
+    Route::get('/budget/detect-zone', [BudgetController::class, 'detectZone']);
     Route::get('/budget/requests/{id}', [BudgetController::class, 'show']);
 
+    // Travel Zone
+    Route::get('/travel/estimate-zone', [TravelZoneController::class, 'estimateZone']);
+
     // Travel Reports (LHP)
-    Route::get('/travel-reports', [\App\Http\Controllers\Api\TravelReportController::class, 'index']);
-    Route::post('/travel-reports', [\App\Http\Controllers\Api\TravelReportController::class, 'store']);
-    Route::get('/travel-reports/available-requests', [\App\Http\Controllers\Api\TravelReportController::class, 'availableRequests']);
-    Route::get('/travel-reports/{id}', [\App\Http\Controllers\Api\TravelReportController::class, 'show']);
+    Route::get('/travel-reports', [TravelReportController::class, 'index']);
+    Route::post('/travel-reports', [TravelReportController::class, 'store']);
+    Route::put('/travel-reports/{id}', [TravelReportController::class, 'update']);
+    Route::get('/travel-reports/available-requests', [TravelReportController::class, 'availableRequests']);
+    Route::get('/travel-reports/{id}', [TravelReportController::class, 'show']);
 
     // Profile
     Route::get('/profile', [ProfileController::class, 'index']);
     Route::get('/profile/personal', [ProfileController::class, 'personal']);
     Route::get('/profile/employment', [ProfileController::class, 'employment']);
     Route::post('/profile/fcm-token', [ProfileController::class, 'updateFcmToken']);
+    Route::post('/profile/face-photo', [ProfileController::class, 'uploadFacePhoto']);
+    Route::delete('/profile/face-photo', [ProfileController::class, 'deleteFacePhoto']);
 
     // Data Change Requests (Perubahan Data)
     Route::post('/data-change-requests', [ProfileController::class, 'requestDataChange']);
@@ -97,7 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/employees/{id}', [EmployeeController::class, 'show']);
 
     // Payslips
-    Route::get('/payslips', [\App\Http\Controllers\Api\PayslipController::class, 'index']);
-    Route::get('/payslips/{id}', [\App\Http\Controllers\Api\PayslipController::class, 'show']);
-    Route::get('/payslips/{id}/download', [\App\Http\Controllers\Api\PayslipController::class, 'downloadPdf']);
+    Route::get('/payslips', [PayslipController::class, 'index']);
+    Route::get('/payslips/{id}', [PayslipController::class, 'show']);
+    Route::get('/payslips/{id}/download', [PayslipController::class, 'downloadPdf']);
 });

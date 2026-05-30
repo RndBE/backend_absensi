@@ -14,6 +14,7 @@ class BudgetRequest extends Model
         'employee_id', 'type', 'title', 'description',
         'status', 'current_step', 'total_amount',
         'surat_tugas_no', 'surat_tugas_date', 'rejection_reason',
+        'distance_km', 'travel_zone_id',
     ];
 
     protected function casts(): array
@@ -47,6 +48,11 @@ class BudgetRequest extends Model
     public function approvalLogs(): MorphMany
     {
         return $this->morphMany(ApprovalLog::class, 'approvable');
+    }
+
+    public function travelZone()
+    {
+        return $this->belongsTo(TravelZone::class);
     }
 
     public function travelReport()

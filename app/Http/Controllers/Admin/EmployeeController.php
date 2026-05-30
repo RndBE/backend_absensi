@@ -3,20 +3,26 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\EmployeePayroll;
 use App\Models\EmployeePayrollComponent;
-use App\Models\Company;
-use App\Models\Department;
+use App\Models\Role;
 use App\Models\WorkSchedule;
+use App\Services\BpjsCalculator;
+use App\Services\Pph21Calculator;
 use App\Support\AdminPermission;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class EmployeeController extends Controller
 {
+    private const APPROVAL_REQUEST_TYPES = ['leave', 'overtime', 'attendance', 'budget', 'travel_report'];
+
     public function index(Request $request)
     {
         $admin = Employee::find(session('admin_id'));
@@ -115,7 +121,7 @@ class EmployeeController extends Controller
 
         // Load approval chains
         $approvalChains = [];
-        foreach (['leave', 'overtime', 'attendance'] as $type) {
+        foreach (self::APPROVAL_REQUEST_TYPES as $type) {
             $approvalChains[$type] = EmployeeApprover::getChain($id, $type);
         }
 
@@ -136,7 +142,7 @@ class EmployeeController extends Controller
 
         // Load approval chains
         $approvalChains = [];
-        foreach (['leave', 'overtime', 'attendance'] as $type) {
+        foreach (self::APPROVAL_REQUEST_TYPES as $type) {
             $approvalChains[$type] = EmployeeApprover::getChain($id, $type);
         }
 
@@ -150,9 +156,9 @@ class EmployeeController extends Controller
         $employee = Employee::findOrFail($id);
 
         $request->validate([
-            'employee_code' => 'required|unique:employees,employee_code,' . $id,
+            'employee_code' => 'required|unique:employees,employee_code,'.$id,
             'full_name' => 'required|string|max:255',
-            'email' => 'required|email|unique:employees,email,' . $id,
+            'email' => 'required|email|unique:employees,email,'.$id,
             'department_id' => 'required|exists:departments,id',
             'employment_status' => 'required|in:permanent,contract,intern,probation',
             'join_date' => 'nullable|date',
@@ -216,11 +222,11 @@ class EmployeeController extends Controller
 
     private function syncPrimaryRole(Employee $employee, string $roleSlug): void
     {
-        if (!\Illuminate\Support\Facades\Schema::hasTable('roles') || !\Illuminate\Support\Facades\Schema::hasTable('employee_roles')) {
+        if (! Schema::hasTable('roles') || ! Schema::hasTable('employee_roles')) {
             return;
         }
 
-        $roleId = \App\Models\Role::where('slug', $roleSlug)->value('id');
+        $roleId = Role::where('slug', $roleSlug)->value('id');
         if ($roleId) {
             $employee->roles()->sync([$roleId]);
         }
@@ -230,7 +236,7 @@ class EmployeeController extends Controller
     {
         $employee = Employee::findOrFail($id);
 
-        if (!$employee->is_active) {
+        if (! $employee->is_active) {
             return redirect()->route('admin.employees.index')
                 ->with('error', 'Karyawan ini sudah tidak aktif.');
         }
@@ -258,29 +264,29 @@ class EmployeeController extends Controller
     {
         $employee = Employee::with(['department', 'activePayroll'])->findOrFail($id);
 
-        if (!$employee->is_active) {
+        if (! $employee->is_active) {
             return redirect()->route('admin.employees.index')
                 ->with('error', 'Karyawan ini sudah tidak aktif.');
         }
 
         // Calculate months worked this year for PPh21 preview
-        $joinThisYear = \Carbon\Carbon::parse($employee->join_date ?? now()->startOfYear());
-        $startOfYear  = now()->startOfYear();
+        $joinThisYear = Carbon::parse($employee->join_date ?? now()->startOfYear());
+        $startOfYear = now()->startOfYear();
         $monthsWorked = (int) max(1, $startOfYear->lt($joinThisYear)
             ? $joinThisYear->diffInMonths(now()) + 1
             : now()->month);
 
         $pph21Preview = null;
-        $payroll      = $employee->activePayroll;
+        $payroll = $employee->activePayroll;
         if ($payroll) {
-            $bpjsCalc = new \App\Services\BpjsCalculator(now()->format('Y-m-d'));
-            $bpjs     = $bpjsCalc->calculate((float) $payroll->basic_salary);
+            $bpjsCalc = new BpjsCalculator(now()->format('Y-m-d'));
+            $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
 
-            $pph21Calc   = new \App\Services\Pph21Calculator(now()->format('Y-m-d'));
+            $pph21Calc = new Pph21Calculator(now()->format('Y-m-d'));
             $pph21Preview = $pph21Calc->calculateFinalMonth(
                 avgBrutoMonthly : (float) $payroll->basic_salary,
                 ptkpStatus      : $payroll->ptkp_status ?? 'TK/0',
-                taxMethod       : $payroll->tax_method  ?? 'gross',
+                taxMethod       : $payroll->tax_method ?? 'gross',
                 bpjsEmployee    : $bpjs['employee_total'],
                 monthsWorked    : $monthsWorked,
                 taxAlreadyPaid  : 0  // ideally summed from payroll_run_details this year
@@ -295,31 +301,31 @@ class EmployeeController extends Controller
         $employee = Employee::with(['activePayroll', 'payrollComponents'])->findOrFail($id);
 
         $request->validate([
-            'resign_date'       => 'required|date',
+            'resign_date' => 'required|date',
             'last_working_date' => 'required|date|after_or_equal:resign_date',
-            'resign_reason'     => 'required|in:voluntary,termination,contract_end,retirement,passed_away',
-            'resign_notes'      => 'nullable|string|max:1000',
+            'resign_reason' => 'required|in:voluntary,termination,contract_end,retirement,passed_away',
+            'resign_notes' => 'nullable|string|max:1000',
         ]);
 
         // 1. Update employee status
         $employee->update([
-            'is_active'         => false,
-            'resign_date'       => $request->resign_date,
+            'is_active' => false,
+            'resign_date' => $request->resign_date,
             'last_working_date' => $request->last_working_date,
-            'resign_reason'     => $request->resign_reason,
-            'resign_notes'      => $request->resign_notes,
+            'resign_reason' => $request->resign_reason,
+            'resign_notes' => $request->resign_notes,
         ]);
 
         // 2. Deactivate all payroll component assignments
-        \App\Models\EmployeePayrollComponent::where('employee_id', $id)
+        EmployeePayrollComponent::where('employee_id', $id)
             ->where('is_active', true)
             ->update([
                 'is_active' => false,
-                'end_date'  => $request->last_working_date,
+                'end_date' => $request->last_working_date,
             ]);
 
         // 3. Deactivate active EmployeePayroll
-        \App\Models\EmployeePayroll::where('employee_id', $id)
+        EmployeePayroll::where('employee_id', $id)
             ->where('is_active', true)
             ->update(['is_active' => false]);
 

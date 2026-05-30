@@ -4,7 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BudgetRequest;
+use App\Models\EmployeeApprover;
+use App\Models\Notification;
 use App\Models\TravelReport;
+use App\Models\TravelZone;
+use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -30,11 +34,34 @@ class TravelReportController extends Controller
         $report = TravelReport::with([
             'employee:id,full_name,photo,department_id,position',
             'employee.department:id,name',
-            'budgetRequest:id,title,total_amount',
+            'budgetRequest:id,title,total_amount,distance_km,travel_zone_id',
+            'budgetRequest.travelZone',
+            'travelZone',
             'activities.documents',
             'documents',
             'approvalLogs.approver:id,full_name,photo',
         ])->findOrFail($id);
+        $report->setAttribute('can_edit', in_array($report->status, ['pending', 'in_review'], true));
+
+        // Perbandingan uang makan budget vs realisasi
+        $mealComparison = null;
+        if ($report->travelZone && $report->duration_days > 0) {
+            $actualMeal = $report->meal_allowance_total;
+            $budgetMeal = null;
+            if ($report->budgetRequest?->travelZone) {
+                $budgetMeal = (float) $report->budgetRequest->travelZone->meal_allowance
+                    * $report->duration_days;
+            }
+            $mealComparison = [
+                'actual_meal'       => $actualMeal,
+                'budget_meal'       => $budgetMeal,
+                'selisih'           => $budgetMeal !== null ? $actualMeal - $budgetMeal : null,
+                'zone_name'         => $report->travelZone->name,
+                'meal_per_day'      => (float) $report->travelZone->meal_allowance,
+                'duration_days'     => $report->duration_days,
+            ];
+        }
+        $report->setAttribute('meal_comparison', $mealComparison);
 
         return response()->json(['success' => true, 'data' => $report]);
     }
@@ -48,10 +75,11 @@ class TravelReportController extends Controller
             'return_date' => 'required|date|after_or_equal:departure_date',
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
+            'distance_km' => 'nullable|integer|min:0',
             'purpose' => 'required|string',
             'conclusion' => 'required|string',
-            'recommendations' => 'nullable', // JSON string from mobile
-            'activities' => 'required', // JSON string from mobile
+            'recommendations' => 'nullable',
+            'activities' => 'required',
         ]);
 
         $employee = $request->user();
@@ -69,12 +97,17 @@ class TravelReportController extends Controller
                 $activitiesData = json_decode($activitiesData, true);
             }
 
+            $distanceKm = $request->filled('distance_km') ? (int) $request->distance_km : null;
+            $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
+
             $report = TravelReport::create([
                 'employee_id' => $employee->id,
                 'budget_request_id' => $request->budget_request_id,
                 'surat_tugas_no' => $request->surat_tugas_no,
                 'surat_tugas_date' => $request->surat_tugas_date,
                 'destination_city' => $request->destination_city,
+                'distance_km' => $distanceKm,
+                'travel_zone_id' => $travelZone?->id,
                 'departure_date' => $request->departure_date,
                 'return_date' => $request->return_date,
                 'purpose' => $request->purpose,
@@ -87,7 +120,9 @@ class TravelReportController extends Controller
             // Save activities
             if ($activitiesData && is_array($activitiesData)) {
                 foreach ($activitiesData as $i => $actData) {
-                    if (empty($actData['description'])) continue;
+                    if (empty($actData['description'])) {
+                        continue;
+                    }
 
                     $results = isset($actData['results'])
                         ? array_values(array_filter($actData['results'] ?? []))
@@ -120,6 +155,24 @@ class TravelReportController extends Controller
 
             DB::commit();
 
+            $firstApprover = EmployeeApprover::getApproverAt($employee->id, 'travel_report', 1);
+            if ($firstApprover) {
+                $notification = Notification::create([
+                    'employee_id' => $firstApprover->id,
+                    'title' => 'Pengajuan LHP Baru',
+                    'message' => "{$employee->full_name} mengajukan LHP ke {$report->destination_city}",
+                    'type' => 'approval',
+                    'reference_type' => TravelReport::class,
+                    'reference_id' => $report->id,
+                ]);
+
+                FcmService::sendToEmployee($firstApprover, $notification->title, $notification->message, [
+                    'type' => 'approval',
+                    'reference_type' => 'travel_report',
+                    'reference_id' => (string) $report->id,
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'LHP berhasil dibuat',
@@ -127,9 +180,140 @@ class TravelReportController extends Controller
             ], 201);
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat LHP: ' . $e->getMessage(),
+                'message' => 'Gagal membuat LHP: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function update(Request $request, $id)
+    {
+        $employee = $request->user();
+        $report = TravelReport::where('id', $id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+
+        if (! in_array($report->status, ['pending', 'in_review'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'LHP tidak dapat diedit karena sudah '.($report->status === 'approved' ? 'disetujui' : 'ditolak').'.',
+            ], 403);
+        }
+
+        $request->validate([
+            'destination_city' => 'required|string|max:255',
+            'departure_date' => 'required|date',
+            'return_date' => 'required|date|after_or_equal:departure_date',
+            'surat_tugas_no' => 'nullable|string|max:255',
+            'surat_tugas_date' => 'nullable|date',
+            'distance_km' => 'nullable|integer|min:0',
+            'purpose' => 'required|string',
+            'conclusion' => 'required|string',
+            'recommendations' => 'nullable',
+            'activities' => 'required',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $recommendations = $request->recommendations;
+            if (is_string($recommendations)) {
+                $recommendations = json_decode($recommendations, true);
+            }
+            $recommendations = $recommendations ? array_values(array_filter($recommendations)) : null;
+
+            $activitiesData = $request->activities;
+            if (is_string($activitiesData)) {
+                $activitiesData = json_decode($activitiesData, true);
+            }
+
+            $distanceKm = $request->filled('distance_km') ? (int) $request->distance_km : $report->distance_km;
+            $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
+
+            $report->update([
+                'budget_request_id' => $request->budget_request_id,
+                'surat_tugas_no' => $request->surat_tugas_no,
+                'surat_tugas_date' => $request->surat_tugas_date,
+                'destination_city' => $request->destination_city,
+                'distance_km' => $distanceKm,
+                'travel_zone_id' => $travelZone?->id,
+                'departure_date' => $request->departure_date,
+                'return_date' => $request->return_date,
+                'purpose' => $request->purpose,
+                'conclusion' => $request->conclusion,
+                'recommendations' => $recommendations,
+            ]);
+
+            // Notifikasi approver saat ini bahwa konten LHP telah diperbarui
+            $currentApprover = EmployeeApprover::getApproverAt($employee->id, 'travel_report', $report->current_step);
+            if ($currentApprover) {
+                $notif = Notification::create([
+                    'employee_id' => $currentApprover->id,
+                    'title' => 'LHP Diperbarui',
+                    'message' => "{$employee->full_name} memperbarui LHP ke {$report->destination_city}.",
+                    'type' => 'approval',
+                    'reference_type' => TravelReport::class,
+                    'reference_id' => $report->id,
+                ]);
+                FcmService::sendToEmployee($currentApprover, $notif->title, $notif->message, [
+                    'type' => 'approval',
+                    'reference_type' => 'travel_report',
+                    'reference_id' => (string) $report->id,
+                ]);
+            }
+
+            // Replace all activities and documents
+            $report->documents()->delete();
+            $report->activities()->delete();
+
+            if ($activitiesData && is_array($activitiesData)) {
+                foreach ($activitiesData as $i => $actData) {
+                    if (empty($actData['description'])) {
+                        continue;
+                    }
+
+                    $results = isset($actData['results'])
+                        ? array_values(array_filter($actData['results'] ?? []))
+                        : null;
+
+                    $activity = $report->activities()->create([
+                        'activity_date' => $actData['date'],
+                        'description' => $actData['description'],
+                        'results' => $results && count($results) ? $results : null,
+                        'issues' => $actData['issues'] ?? null,
+                        'conclusion' => $actData['conclusion'] ?? null,
+                        'sort_order' => $i,
+                    ]);
+
+                    if ($request->hasFile("activity_documents_{$i}")) {
+                        foreach ($request->file("activity_documents_{$i}") as $j => $file) {
+                            $path = $file->store('travel-report-docs', 'public');
+                            $report->documents()->create([
+                                'travel_report_activity_id' => $activity->id,
+                                'file_path' => $path,
+                                'caption' => $request->input("activity_captions_{$i}.{$j}"),
+                                'activity_date' => $actData['date'],
+                                'sort_order' => $j,
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'LHP berhasil diperbarui',
+                'data' => $report->load('activities'),
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui LHP: '.$e->getMessage(),
             ], 500);
         }
     }

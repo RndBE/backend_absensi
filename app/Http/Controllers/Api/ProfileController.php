@@ -6,9 +6,59 @@ use App\Http\Controllers\Controller;
 use App\Models\DataChangeRequest;
 use App\Models\Notification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ProfileController extends Controller
 {
+    public function uploadFacePhoto(Request $request)
+    {
+        $request->validate([
+            'photo'        => 'nullable|image|max:5120',
+            'photo_base64' => 'nullable|string',
+        ]);
+
+        $employee = $request->user();
+
+        if (!$request->hasFile('photo') && !$request->photo_base64) {
+            return response()->json(['success' => false, 'message' => 'Foto wajah harus diisi.'], 422);
+        }
+
+        // Hapus foto lama
+        if ($employee->face_photo) {
+            Storage::disk('public')->delete($employee->face_photo);
+        }
+
+        $path = null;
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('employees/face-photos', 'public');
+        } elseif ($request->photo_base64) {
+            $imageData = base64_decode($request->photo_base64);
+            $fileName  = 'employees/face-photos/' . uniqid() . '.jpg';
+            Storage::disk('public')->put($fileName, $imageData);
+            $path = $fileName;
+        }
+
+        $employee->update(['face_photo' => $path]);
+
+        return response()->json([
+            'success'    => true,
+            'message'    => 'Foto verifikasi wajah berhasil disimpan.',
+            'face_photo' => $path ? asset('storage/' . $path) : null,
+        ]);
+    }
+
+    public function deleteFacePhoto(Request $request)
+    {
+        $employee = $request->user();
+
+        if ($employee->face_photo) {
+            Storage::disk('public')->delete($employee->face_photo);
+            $employee->update(['face_photo' => null]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Foto verifikasi wajah dihapus.']);
+    }
+
     public function index(Request $request)
     {
         $employee = $request->user()->load(['department', 'company', 'workSchedule', 'manager', 'approver']);
@@ -31,6 +81,8 @@ class ProfileController extends Controller
                     'ktp_address' => $employee->ktp_address,
                     'residential_address' => $employee->residential_address,
                 ],
+                'face_photo'  => $employee->face_photo ? asset('storage/' . $employee->face_photo) : null,
+                'has_face_photo' => (bool) $employee->face_photo,
                 'employment' => [
                     'employee_code' => $employee->employee_code,
                     'company' => $employee->company?->name,

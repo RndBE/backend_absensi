@@ -6,10 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
-use App\Models\OvertimeRequest;
-use App\Models\AttendanceRequest;
 use App\Support\AdminDashboardSummary;
-use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
@@ -43,7 +40,7 @@ class DashboardController extends Controller
 
         // Recent attendance
         $recentAttendance = Attendance::with('employee:id,full_name,photo,department_id', 'employee.department:id,name')
-            ->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
             ->where('date', $today)
             ->orderBy('clock_in', 'desc')
             ->limit(10)
@@ -51,7 +48,7 @@ class DashboardController extends Controller
 
         // Recent leave requests
         $recentLeaves = LeaveRequest::with(['employee:id,full_name,photo', 'leaveType:id,name'])
-            ->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
             ->orderBy('created_at', 'desc')
             ->limit(5)
             ->get();

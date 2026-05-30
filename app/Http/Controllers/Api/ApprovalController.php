@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\ApprovalLog;
 use App\Models\AttendanceRequest;
 use App\Models\BudgetRequest;
-use App\Models\TravelReport;
 use App\Models\DataChangeRequest;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
@@ -14,8 +13,10 @@ use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\Notification;
 use App\Models\OvertimeRequest;
+use App\Models\TravelReport;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class ApprovalController extends Controller
 {
@@ -44,72 +45,82 @@ class ApprovalController extends Controller
         }
 
         $statusFilter = $request->query('status', 'all');
-        $typeFilter   = $request->query('type');
-        $dateFrom     = $request->query('date_from');
-        $dateTo       = $request->query('date_to');
+        $typeFilter = $request->query('type');
+        $dateFrom = $request->query('date_from');
+        $dateTo = $request->query('date_to');
 
-        $statuses = match($statusFilter) {
-            'active'   => ['pending', 'in_review'],
+        $statuses = match ($statusFilter) {
+            'active' => ['pending', 'in_review'],
             'approved' => ['approved'],
             'rejected' => ['rejected'],
-            default    => ['pending', 'in_review', 'approved', 'rejected'],
+            default => ['pending', 'in_review', 'approved', 'rejected'],
         };
 
         $result = [];
 
         foreach ($this->typeMap as $typeKey => $modelClass) {
-            if ($typeFilter && $typeFilter !== $typeKey) continue;
+            if ($typeFilter && $typeFilter !== $typeKey) {
+                continue;
+            }
 
             $relations = ['employee:id,full_name,photo,department_id', 'employee.department:id,name', 'approvalLogs.approver:id,full_name'];
-            if ($modelClass === LeaveRequest::class) $relations[] = 'leaveType:id,name';
-            if ($modelClass === BudgetRequest::class) $relations[] = 'items';
+            if ($modelClass === LeaveRequest::class) {
+                $relations[] = 'leaveType:id,name';
+            }
+            if ($modelClass === BudgetRequest::class) {
+                $relations[] = 'items';
+            }
 
             $query = $modelClass::whereIn('status', $statuses)->with($relations);
-            if ($dateFrom) $query->whereDate('created_at', '>=', $dateFrom);
-            if ($dateTo)   $query->whereDate('created_at', '<=', $dateTo);
+            if ($dateFrom) {
+                $query->whereDate('created_at', '>=', $dateFrom);
+            }
+            if ($dateTo) {
+                $query->whereDate('created_at', '<=', $dateTo);
+            }
 
             $items = $query->orderBy('created_at', 'desc')->get();
 
             foreach ($items as $item) {
-                $requestType  = $this->modelToRequestType($modelClass);
-                $totalSteps   = EmployeeApprover::totalSteps($item->employee_id, $requestType);
-                $currentStep  = $item->current_step ?? 1;
+                $requestType = $this->modelToRequestType($modelClass);
+                $totalSteps = EmployeeApprover::totalSteps($item->employee_id, $requestType);
+                $currentStep = $item->current_step ?? 1;
 
                 // Build full chain with approval status per step
                 $chain = [];
                 for ($step = 1; $step <= max($totalSteps, 1); $step++) {
                     $approver = EmployeeApprover::getApproverAt($item->employee_id, $requestType, $step);
-                    $log      = $item->approvalLogs->firstWhere('step_order', $step);
+                    $log = $item->approvalLogs->firstWhere('step_order', $step);
 
                     $chain[] = [
-                        'step'          => $step,
+                        'step' => $step,
                         'approver_name' => $approver?->full_name ?? '-',
-                        'action'        => $log?->action ?? ($step < $currentStep ? 'approved' : ($step === $currentStep && in_array($item->status, ['pending','in_review']) ? 'waiting' : 'pending')),
-                        'notes'         => $log?->notes,
-                        'acted_at'      => $log?->created_at?->format('d/m/Y H:i'),
+                        'action' => $log?->action ?? ($step < $currentStep ? 'approved' : ($step === $currentStep && in_array($item->status, ['pending', 'in_review']) ? 'waiting' : 'pending')),
+                        'notes' => $log?->notes,
+                        'acted_at' => $log?->created_at?->format('d/m/Y H:i'),
                     ];
                 }
 
                 $result[] = [
-                    'id'          => $item->id,
-                    'type'        => $typeKey,
-                    'type_label'  => $this->typeLabels[$typeKey],
-                    'status'      => $item->status,
-                    'current_step'=> $currentStep,
+                    'id' => $item->id,
+                    'type' => $typeKey,
+                    'type_label' => $this->typeLabels[$typeKey],
+                    'status' => $item->status,
+                    'current_step' => $currentStep,
                     'total_steps' => $totalSteps ?: 1,
-                    'employee'    => [
-                        'full_name'  => $item->employee?->full_name ?? '-',
+                    'employee' => [
+                        'full_name' => $item->employee?->full_name ?? '-',
                         'department' => $item->employee?->department?->name ?? '-',
-                        'photo'      => $item->employee?->photo ? asset('storage/' . $item->employee->photo) : null,
+                        'photo' => $item->employee?->photo ? asset('storage/'.$item->employee->photo) : null,
                     ],
-                    'chain'       => $chain,
-                    'created_at'  => $item->created_at?->format('d/m/Y H:i'),
+                    'chain' => $chain,
+                    'created_at' => $item->created_at?->format('d/m/Y H:i'),
                 ];
             }
         }
 
         // Sort by created_at desc
-        usort($result, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
+        usort($result, fn ($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
 
         return response()->json(['success' => true, 'data' => $result]);
     }
@@ -138,20 +149,13 @@ class ApprovalController extends Controller
     /**
      * Walk the approver chain to find requests where this employee is the expected approver.
      */
-    private function getMyPendingItems(string $modelClass, Employee $me, array $relations): \Illuminate\Support\Collection
+    private function getMyPendingItems(string $modelClass, Employee $me, array $relations): Collection
     {
         if ($modelClass === DataChangeRequest::class) {
             if ($me->role !== 'superadmin') {
                 return collect([]);
             }
 
-            return $modelClass::whereIn('status', ['pending', 'in_review'])
-                ->with($relations)
-                ->orderBy('created_at', 'desc')
-                ->get();
-        }
-
-        if ($me->role === 'superadmin') {
             return $modelClass::whereIn('status', ['pending', 'in_review'])
                 ->with($relations)
                 ->orderBy('created_at', 'desc')
@@ -193,7 +197,7 @@ class ApprovalController extends Controller
     public function show(Request $request, $type, $id)
     {
         $modelClass = $this->typeMap[$type] ?? null;
-        if (!$modelClass) {
+        if (! $modelClass) {
             return response()->json(['success' => false, 'message' => 'Tipe tidak valid'], 404);
         }
 
@@ -226,13 +230,13 @@ class ApprovalController extends Controller
 
         $modelClass = $this->typeMap[$type] ?? null;
         $typeLabel = $this->typeLabels[$type] ?? 'Pengajuan';
-        if (!$modelClass) {
+        if (! $modelClass) {
             return response()->json(['success' => false, 'message' => 'Tipe tidak valid'], 404);
         }
 
         $item = $modelClass::with('employee')->findOrFail($id);
 
-        if (!in_array($item->status, ['pending', 'in_review'])) {
+        if (! in_array($item->status, ['pending', 'in_review'])) {
             return response()->json(['success' => false, 'message' => 'Pengajuan sudah diproses'], 422);
         }
 
@@ -241,7 +245,7 @@ class ApprovalController extends Controller
 
         if ($modelClass !== DataChangeRequest::class && $request->user()->role !== 'superadmin') {
             $expectedApprover = EmployeeApprover::getApproverAt($item->employee_id, $requestType, $currentStep);
-            if (!$expectedApprover || $expectedApprover->id !== $request->user()->id) {
+            if (! $expectedApprover || $expectedApprover->id !== $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'Anda bukan approver untuk step ini.'], 403);
             }
         }
@@ -280,7 +284,7 @@ class ApprovalController extends Controller
             $notification = Notification::create([
                 'employee_id' => $nextApprover->id,
                 'title' => "Pengajuan $typeLabel - Persetujuan Lanjutan",
-                'message' => "{$item->employee->full_name} mengajukan {$typeLabel}, menunggu persetujuan Anda (Step " . ($currentStep + 1) . ")",
+                'message' => "{$item->employee->full_name} mengajukan {$typeLabel}, menunggu persetujuan Anda (Step ".($currentStep + 1).')',
                 'type' => 'approval',
                 'reference_type' => $modelClass,
                 'reference_id' => $item->id,
@@ -345,13 +349,13 @@ class ApprovalController extends Controller
 
         $modelClass = $this->typeMap[$type] ?? null;
         $typeLabel = $this->typeLabels[$type] ?? 'Pengajuan';
-        if (!$modelClass) {
+        if (! $modelClass) {
             return response()->json(['success' => false, 'message' => 'Tipe tidak valid'], 404);
         }
 
         $item = $modelClass::with('employee')->findOrFail($id);
 
-        if (!in_array($item->status, ['pending', 'in_review'])) {
+        if (! in_array($item->status, ['pending', 'in_review'])) {
             return response()->json(['success' => false, 'message' => 'Pengajuan sudah diproses'], 422);
         }
 
@@ -360,7 +364,7 @@ class ApprovalController extends Controller
 
         if ($modelClass !== DataChangeRequest::class && $request->user()->role !== 'superadmin') {
             $expectedApprover = EmployeeApprover::getApproverAt($item->employee_id, $requestType, $currentStep);
-            if (!$expectedApprover || $expectedApprover->id !== $request->user()->id) {
+            if (! $expectedApprover || $expectedApprover->id !== $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'Anda bukan approver untuk step ini.'], 403);
             }
         }
