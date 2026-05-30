@@ -117,6 +117,7 @@ class DashboardController extends Controller
                     'department' => $employee->department?->name,
                     'company'    => $employee->company?->name,
                     'photo'      => $employee->photo ? asset('storage/' . $employee->photo) : null,
+                    'role'       => $employee->role,
                 ],
                 'work_schedule'      => $workScheduleData,
                 'today_attendance'   => $todayAttendance ? [

@@ -37,6 +37,83 @@ class ApprovalController extends Controller
         'travel_report' => 'LHP',
     ];
 
+    public function monitor(Request $request)
+    {
+        if ($request->user()->role !== 'superadmin') {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
+        }
+
+        $statusFilter = $request->query('status', 'all');
+        $typeFilter   = $request->query('type');
+        $dateFrom     = $request->query('date_from');
+        $dateTo       = $request->query('date_to');
+
+        $statuses = match($statusFilter) {
+            'active'   => ['pending', 'in_review'],
+            'approved' => ['approved'],
+            'rejected' => ['rejected'],
+            default    => ['pending', 'in_review', 'approved', 'rejected'],
+        };
+
+        $result = [];
+
+        foreach ($this->typeMap as $typeKey => $modelClass) {
+            if ($typeFilter && $typeFilter !== $typeKey) continue;
+
+            $relations = ['employee:id,full_name,photo,department_id', 'employee.department:id,name', 'approvalLogs.approver:id,full_name'];
+            if ($modelClass === LeaveRequest::class) $relations[] = 'leaveType:id,name';
+            if ($modelClass === BudgetRequest::class) $relations[] = 'items';
+
+            $query = $modelClass::whereIn('status', $statuses)->with($relations);
+            if ($dateFrom) $query->whereDate('created_at', '>=', $dateFrom);
+            if ($dateTo)   $query->whereDate('created_at', '<=', $dateTo);
+
+            $items = $query->orderBy('created_at', 'desc')->get();
+
+            foreach ($items as $item) {
+                $requestType  = $this->modelToRequestType($modelClass);
+                $totalSteps   = EmployeeApprover::totalSteps($item->employee_id, $requestType);
+                $currentStep  = $item->current_step ?? 1;
+
+                // Build full chain with approval status per step
+                $chain = [];
+                for ($step = 1; $step <= max($totalSteps, 1); $step++) {
+                    $approver = EmployeeApprover::getApproverAt($item->employee_id, $requestType, $step);
+                    $log      = $item->approvalLogs->firstWhere('step_order', $step);
+
+                    $chain[] = [
+                        'step'          => $step,
+                        'approver_name' => $approver?->full_name ?? '-',
+                        'action'        => $log?->action ?? ($step < $currentStep ? 'approved' : ($step === $currentStep && in_array($item->status, ['pending','in_review']) ? 'waiting' : 'pending')),
+                        'notes'         => $log?->notes,
+                        'acted_at'      => $log?->created_at?->format('d/m/Y H:i'),
+                    ];
+                }
+
+                $result[] = [
+                    'id'          => $item->id,
+                    'type'        => $typeKey,
+                    'type_label'  => $this->typeLabels[$typeKey],
+                    'status'      => $item->status,
+                    'current_step'=> $currentStep,
+                    'total_steps' => $totalSteps ?: 1,
+                    'employee'    => [
+                        'full_name'  => $item->employee?->full_name ?? '-',
+                        'department' => $item->employee?->department?->name ?? '-',
+                        'photo'      => $item->employee?->photo ? asset('storage/' . $item->employee->photo) : null,
+                    ],
+                    'chain'       => $chain,
+                    'created_at'  => $item->created_at?->format('d/m/Y H:i'),
+                ];
+            }
+        }
+
+        // Sort by created_at desc
+        usort($result, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
+
+        return response()->json(['success' => true, 'data' => $result]);
+    }
+
     public function index(Request $request)
     {
         $employee = $request->user();

@@ -53,7 +53,7 @@ class AdminDashboardSummary
             ->whereIn('status', $pendingStatuses)
             ->count();
 
-        $contractWindowEnd = $today->copy()->addDays(30);
+        $contractWindowEnd = $today->copy()->addDays(60);
 
         return [
             'attendance' => [
@@ -75,12 +75,13 @@ class AdminDashboardSummary
                     ->count(),
                 'contracts_expiring_soon' => Employee::where('company_id', $companyId)
                     ->where('is_active', true)
+                    ->whereNotNull('contract_end_date')
                     ->whereBetween('contract_end_date', [$todayDate, $contractWindowEnd->toDateString()])
                     ->count(),
                 'inactive_employees' => Employee::where('company_id', $companyId)
                     ->where('is_active', false)
                     ->count(),
-                'contract_window_days' => 30,
+                'contract_window_days' => 60,
             ],
         ];
     }

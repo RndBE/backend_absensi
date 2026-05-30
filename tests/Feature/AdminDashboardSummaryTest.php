@@ -31,6 +31,7 @@ class AdminDashboardSummaryTest extends TestCase
             $table->string('password');
             $table->string('full_name');
             $table->string('role')->default('employee');
+            $table->string('employment_status')->default('permanent');
             $table->boolean('is_active')->default(true);
             $table->date('resign_date')->nullable();
             $table->date('contract_end_date')->nullable();
@@ -69,11 +70,11 @@ class AdminDashboardSummaryTest extends TestCase
     public function test_dashboard_summary_counts_company_scoped_attendance_approvals_and_hr_alerts(): void
     {
         DB::table('employees')->insert([
-            ['id' => 1, 'company_id' => 1, 'email' => 'admin@example.test', 'password' => 'secret', 'full_name' => 'Admin', 'role' => 'admin', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => null, 'created_at' => now(), 'updated_at' => now()],
-            ['id' => 2, 'company_id' => 1, 'email' => 'a@example.test', 'password' => 'secret', 'full_name' => 'Active One', 'role' => 'employee', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => '2026-06-10', 'created_at' => now(), 'updated_at' => now()],
-            ['id' => 3, 'company_id' => 1, 'email' => 'b@example.test', 'password' => 'secret', 'full_name' => 'Active Two', 'role' => 'employee', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => '2026-07-30', 'created_at' => now(), 'updated_at' => now()],
-            ['id' => 4, 'company_id' => 1, 'email' => 'resigned@example.test', 'password' => 'secret', 'full_name' => 'Resigned', 'role' => 'employee', 'is_active' => false, 'resign_date' => '2026-05-15', 'contract_end_date' => null, 'created_at' => now(), 'updated_at' => now()],
-            ['id' => 5, 'company_id' => 2, 'email' => 'other@example.test', 'password' => 'secret', 'full_name' => 'Other Company', 'role' => 'employee', 'is_active' => true, 'resign_date' => '2026-05-20', 'contract_end_date' => '2026-06-05', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 1, 'company_id' => 1, 'email' => 'admin@example.test', 'password' => 'secret', 'full_name' => 'Admin', 'role' => 'admin', 'employment_status' => 'permanent', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'company_id' => 1, 'email' => 'a@example.test', 'password' => 'secret', 'full_name' => 'Active One', 'role' => 'employee', 'employment_status' => 'contract', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => '2026-06-10', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 3, 'company_id' => 1, 'email' => 'b@example.test', 'password' => 'secret', 'full_name' => 'Active Two', 'role' => 'employee', 'employment_status' => 'permanent', 'is_active' => true, 'resign_date' => null, 'contract_end_date' => '2026-07-30', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 4, 'company_id' => 1, 'email' => 'resigned@example.test', 'password' => 'secret', 'full_name' => 'Resigned', 'role' => 'employee', 'employment_status' => 'permanent', 'is_active' => false, 'resign_date' => '2026-05-15', 'contract_end_date' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 5, 'company_id' => 2, 'email' => 'other@example.test', 'password' => 'secret', 'full_name' => 'Other Company', 'role' => 'employee', 'employment_status' => 'contract', 'is_active' => true, 'resign_date' => '2026-05-20', 'contract_end_date' => '2026-06-05', 'created_at' => now(), 'updated_at' => now()],
         ]);
 
         DB::table('attendances')->insert([

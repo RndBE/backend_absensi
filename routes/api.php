@@ -64,6 +64,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
 
     // Approvals
+    Route::get('/approvals/monitor', [ApprovalController::class, 'monitor']);
     Route::get('/approvals', [ApprovalController::class, 'index']);
     Route::get('/approvals/{type}/{id}', [ApprovalController::class, 'show']);
     Route::post('/approvals/{type}/{id}/approve', [ApprovalController::class, 'approve']);

@@ -97,6 +97,7 @@
                     ]],
                     ['label' => 'Persetujuan', 'icon' => 'task_alt', 'key' => 'approval', 'items' => [
                         ['route' => 'admin.approvals.index', 'icon' => 'task_alt', 'label' => 'Persetujuan', 'match' => 'admin.approvals.*', 'badge' => true],
+                        ['route' => 'admin.monitor-approvals.index', 'icon' => 'monitoring', 'label' => 'Monitor Approval', 'match' => 'admin.monitor-approvals.*', 'superadmin_only' => true],
                         ['route' => 'admin.approval-rules.index', 'icon' => 'settings', 'label' => 'Pengaturan Approval', 'match' => 'admin.approval-rules.*'],
                     ]],
                     ['label' => 'Laporan', 'icon' => 'analytics', 'key' => 'reports', 'items' => [
@@ -119,6 +120,9 @@
             @foreach($navGroups as $group)
                 @php
                     $visibleItems = array_values(array_filter($group['items'], function ($item) use ($adminPermission, $currentAdmin) {
+                        if (!empty($item['superadmin_only']) && $currentAdmin?->role !== 'superadmin') {
+                            return false;
+                        }
                         $permission = $adminPermission->permissionForRoute($item['route']);
                         return !$permission || ($currentAdmin && $adminPermission->can($currentAdmin, $permission));
                     }));

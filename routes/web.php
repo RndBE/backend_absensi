@@ -121,6 +121,9 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::post('/approvals/{type}/{id}/approve', [ApprovalController::class, 'approve'])->name('approvals.approve');
     Route::post('/approvals/{type}/{id}/reject', [ApprovalController::class, 'reject'])->name('approvals.reject');
 
+    // Monitor Approval (superadmin only)
+    Route::get('/monitor-approvals', [\App\Http\Controllers\Admin\MonitorApprovalController::class, 'index'])->name('monitor-approvals.index');
+
     // Approval Rules (Recap Dashboard)
     Route::get('/approval-rules', [ApprovalRuleController::class, 'index'])->name('approval-rules.index');
     Route::post('/approval-rules/bulk-assign', [ApprovalRuleController::class, 'bulkAssign'])->name('approval-rules.bulk-assign');

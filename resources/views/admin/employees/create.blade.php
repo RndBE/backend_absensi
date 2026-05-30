@@ -130,6 +130,38 @@
                 </div>
             </div>
 
+            {{-- Internship Info (shown when status = intern) --}}
+            <div id="internshipSectionCreate" style="{{ old('employment_status') === 'intern' ? '' : 'display:none' }}">
+                <div class="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="material-symbols-outlined text-[16px] text-orange-600">school</span>
+                        <h4 class="text-[13px] font-bold text-orange-800">Informasi Magang</h4>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Institusi / Universitas</label>
+                            <input type="text" name="internship_institution" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10 placeholder:text-gray-400" value="{{ old('internship_institution') }}" placeholder="Universitas Gadjah Mada">
+                            @error('internship_institution')<div class="text-red-500 text-xs mt-1">{{ $message }}</div>@enderror
+                        </div>
+                        <div>
+                            <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Pembimbing Institusi <span class="font-normal text-gray-400">(Opsional)</span></label>
+                            <input type="text" name="internship_supervisor" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10 placeholder:text-gray-400" value="{{ old('internship_supervisor') }}" placeholder="Boleh dikosongi jika tidak ada pembimbing dari kampus/sekolah">
+                            @error('internship_supervisor')<div class="text-red-500 text-xs mt-1">{{ $message }}</div>@enderror
+                        </div>
+                        <div>
+                            <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Pembimbing Lapangan / Kantor</label>
+                            <input type="text" name="internship_field_supervisor" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10 placeholder:text-gray-400" value="{{ old('internship_field_supervisor') }}" placeholder="Nama pembimbing di kantor/lapangan">
+                            @error('internship_field_supervisor')<div class="text-red-500 text-xs mt-1">{{ $message }}</div>@enderror
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Catatan Magang</label>
+                        <textarea name="internship_notes" rows="2" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10 placeholder:text-gray-400 resize-none" placeholder="Catatan atau keterangan tambahan mengenai magang...">{{ old('internship_notes') }}</textarea>
+                        @error('internship_notes')<div class="text-red-500 text-xs mt-1">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="mb-2">
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Manager</label>
@@ -255,19 +287,23 @@ function previewPhoto(input) {
     }
 }
 
-// Toggle contract dates based on employment status
+// Toggle contract dates and internship section based on employment status
 document.addEventListener('DOMContentLoaded', function() {
     const statusSelect = document.getElementById('employmentStatusCreate');
     const contractRow = document.getElementById('contractDatesRowCreate');
+    const internshipSection = document.getElementById('internshipSectionCreate');
 
-    function toggleContractDates() {
+    function toggleStatusSections() {
         const val = statusSelect.value;
-        const show = ['contract', 'intern', 'probation'].includes(val);
-        contractRow.style.display = show ? '' : 'none';
+        const showContract = ['contract', 'intern', 'probation'].includes(val);
+        contractRow.style.display = showContract ? '' : 'none';
+        if (internshipSection) {
+            internshipSection.style.display = val === 'intern' ? '' : 'none';
+        }
     }
 
     if (statusSelect && contractRow) {
-        statusSelect.addEventListener('change', toggleContractDates);
+        statusSelect.addEventListener('change', toggleStatusSections);
     }
 });
 </script>

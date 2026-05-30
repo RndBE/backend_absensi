@@ -104,14 +104,28 @@
                             <div class="text-[11px] text-gray-400">{{ $employee->employee_code }} - {{ $employee->position ?? '-' }}</div>
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-gray-100 text-gray-700">{{ ucfirst($employee->employment_status) }}</span>
+                            @php
+                                $statusLabel = match($employee->employment_status) {
+                                    'contract' => 'Kontrak',
+                                    'intern' => 'Magang',
+                                    'probation' => 'Probation',
+                                    default => ucfirst($employee->employment_status),
+                                };
+                                $statusColor = match($employee->employment_status) {
+                                    'contract' => 'bg-blue-100 text-blue-800',
+                                    'intern' => 'bg-orange-100 text-orange-700',
+                                    'probation' => 'bg-amber-100 text-amber-800',
+                                    default => 'bg-gray-100 text-gray-700',
+                                };
+                            @endphp
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold {{ $statusColor }}">{{ $statusLabel }}</span>
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-[13px] text-gray-700">{{ $employee->contract_end_date?->format('d/m/Y') }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-right text-[13px] font-bold text-amber-700">{{ now()->startOfDay()->diffInDays($employee->contract_end_date, false) }} hari</td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="4" class="text-center py-8 text-gray-400 text-sm">Tidak ada kontrak yang habis dalam 30 hari ke depan</td>
+                        <td colspan="4" class="text-center py-8 text-gray-400 text-sm">Tidak ada kontrak yang habis dalam 60 hari ke depan</td>
                     </tr>
                 @endforelse
             </tbody>

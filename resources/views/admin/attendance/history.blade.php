@@ -22,8 +22,20 @@
                 <select name="employee_id" class="max-w-[220px] px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
                     <option value="">Semua Karyawan</option>
                     @foreach($employees as $emp)
-                        <option value="{{ $emp->id }}" {{ request('employee_id') == $emp->id ? 'selected' : '' }}>{{ $emp->full_name }}</option>
+                        <option value="{{ $emp->id }}" {{ request('employee_id') == $emp->id ? 'selected' : '' }}>
+                            {{ $emp->full_name }}{{ $emp->employment_status === 'intern' ? ' (Magang)' : '' }}
+                        </option>
                     @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Status Karyawan</label>
+                <select name="employment_status" class="px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
+                    <option value="">Semua Status</option>
+                    <option value="permanent" {{ request('employment_status') === 'permanent' ? 'selected' : '' }}>Tetap</option>
+                    <option value="contract" {{ request('employment_status') === 'contract' ? 'selected' : '' }}>Kontrak</option>
+                    <option value="intern" {{ request('employment_status') === 'intern' ? 'selected' : '' }}>Magang</option>
+                    <option value="probation" {{ request('employment_status') === 'probation' ? 'selected' : '' }}>Probation</option>
                 </select>
             </div>
             <button type="submit" class="inline-flex items-center px-3 py-2.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer">🔍 Filter</button>
@@ -47,7 +59,14 @@
                     @forelse($attendances as $att)
                     <tr class="hover:bg-gray-50 transition-colors cursor-pointer" onclick="openDetail({{ $att->id }})">
                         <td class="px-4 py-3.5 text-[13.5px] font-semibold text-gray-800 border-b border-gray-100">{{ $att->date->format('d/m/Y') }}</td>
-                        <td class="px-4 py-3.5 text-[13.5px] text-gray-700 border-b border-gray-100">{{ $att->employee->full_name ?? '-' }}</td>
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[13.5px] text-gray-700">{{ $att->employee->full_name ?? '-' }}</span>
+                                @if(($att->employee->employment_status ?? '') === 'intern')
+                                    <span class="inline-flex items-center px-1.5 py-0 rounded-full text-[9.5px] font-bold bg-orange-100 text-orange-700 uppercase tracking-wide">Magang</span>
+                                @endif
+                            </div>
+                        </td>
                         <td class="px-4 py-3.5 border-b border-gray-100"><code class="text-[11px] bg-gray-100 px-1.5 py-0.5 rounded">{{ $att->employee->employee_code ?? '-' }}</code></td>
                         <td class="px-4 py-3.5 text-[13.5px] text-gray-700 border-b border-gray-100">{{ $att->employee->department->name ?? '-' }}</td>
                         <td class="px-4 py-3.5 text-[13.5px] text-gray-700 border-b border-gray-100">{{ $att->clock_in ?? '-' }}</td>

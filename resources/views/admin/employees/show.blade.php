@@ -185,6 +185,37 @@
                 </div>
             </div>
 
+            @if($employee->employment_status === 'intern')
+            {{-- Internship Info Card --}}
+            <div class="bg-white rounded-xl border border-orange-200 shadow-sm">
+                <div class="px-5 py-3.5 border-b border-orange-100 bg-orange-50 rounded-t-xl">
+                    <h3 class="text-[14px] font-bold text-orange-800 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[16px] text-orange-600">school</span> Informasi Magang
+                    </h3>
+                </div>
+                <div class="p-5 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
+                    <div>
+                        <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Institusi / Universitas</div>
+                        <div class="text-[13.5px] font-medium text-gray-800">{{ $employee->internship_institution ?? '-' }}</div>
+                    </div>
+                    <div>
+                        <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Pembimbing Institusi</div>
+                        <div class="text-[13.5px] font-medium text-gray-800">{{ $employee->internship_supervisor ?? '-' }}</div>
+                    </div>
+                    <div>
+                        <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Pembimbing Lapangan / Kantor</div>
+                        <div class="text-[13.5px] font-medium text-gray-800">{{ $employee->internship_field_supervisor ?? '-' }}</div>
+                    </div>
+                    @if($employee->internship_notes)
+                    <div class="md:col-span-3">
+                        <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Catatan Magang</div>
+                        <div class="text-[13.5px] font-medium text-gray-800">{{ $employee->internship_notes }}</div>
+                    </div>
+                    @endif
+                </div>
+            </div>
+            @endif
+
             {{-- Personal Info --}}
             <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
                 <div class="px-5 py-3.5 border-b border-gray-100">

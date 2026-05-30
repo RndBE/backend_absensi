@@ -49,7 +49,7 @@ class DashboardViewTest extends TestCase
         $this->assertStringContainsString('text-[11px] font-bold uppercase tracking-wider', $view);
         $this->assertStringContainsString('$contractsEndingSoon', $view);
         $this->assertStringContainsString('$contractsEndingSoonCount', $view);
-        $this->assertStringContainsString('Tidak ada kontrak yang habis dalam 30 hari ke depan', $view);
+        $this->assertStringContainsString('Tidak ada kontrak yang habis dalam 60 hari ke depan', $view);
         $this->assertStringNotContainsString('Ringkasan Approval', $view);
         $this->assertStringNotContainsString('Ringkasan HR', $view);
     }

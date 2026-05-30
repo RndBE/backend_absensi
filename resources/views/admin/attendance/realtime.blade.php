@@ -32,7 +32,12 @@
                                 <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[13px] font-bold shrink-0">{{ substr($att->employee->full_name ?? '?', 0, 1) }}</div>
                             @endif
                             <div>
-                                <div class="text-[13.5px] font-semibold text-gray-800">{{ $att->employee->full_name ?? '-' }}</div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-[13.5px] font-semibold text-gray-800">{{ $att->employee->full_name ?? '-' }}</span>
+                                    @if(($att->employee->employment_status ?? '') === 'intern')
+                                        <span class="inline-flex items-center px-1.5 py-0 rounded-full text-[9.5px] font-bold bg-orange-100 text-orange-700 uppercase tracking-wide">Magang</span>
+                                    @endif
+                                </div>
                                 <div class="text-[11px] text-gray-400">{{ $att->employee->position ?? '' }}</div>
                             </div>
                         </div>

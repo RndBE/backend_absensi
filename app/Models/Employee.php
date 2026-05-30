@@ -22,7 +22,9 @@ class Employee extends Authenticatable
         'postal_code', 'ktp_address', 'residential_address',
         'position', 'job_level', 'employment_status', 'join_date', 'resign_date',
         'resign_reason', 'resign_notes', 'last_working_date',
-        'contract_start_date', 'contract_end_date', 'photo', 'signature', 'is_active', 'role', 'fcm_token',
+        'contract_start_date', 'contract_end_date',
+        'internship_institution', 'internship_supervisor', 'internship_field_supervisor', 'internship_notes',
+        'photo', 'signature', 'is_active', 'role', 'fcm_token',
     ];
 
     protected $hidden = ['password', 'remember_token'];

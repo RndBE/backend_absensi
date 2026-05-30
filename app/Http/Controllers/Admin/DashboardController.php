@@ -35,6 +35,7 @@ class DashboardController extends Controller
 
         $contractsEndingSoon = Employee::where('company_id', $admin->company_id)
             ->where('is_active', true)
+            ->whereNotNull('contract_end_date')
             ->whereBetween('contract_end_date', [$today->toDateString(), $contractWindowEnd->toDateString()])
             ->orderBy('contract_end_date')
             ->limit(5)

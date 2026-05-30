@@ -228,7 +228,7 @@ class KaryawanPtArtaSeeder extends Seeder
              'join_date'=>'2022-03-01','resign_date'=>null,'is_active'=>1,'role'=>'manager',
              'schedule_template_id'=>1,'orig_manager_id'=>2,'orig_approver_id'=>2],
             // Akhmad Zaeni Mustofa — Leader Marketing
-            ['orig_id'=>6,'employee_code'=>'002/MAR/I/2023','company_id'=>1,'department_id'=>23,
+            ['orig_id'=>6,'employee_code'=>'003/MAR/I/2023','company_id'=>1,'department_id'=>23,
              'full_name'=>'Akhmad Zaeni Mustofa','email'=>'zeniakhmadmustofa@gmail.com',
              'gender'=>'male','marital_status'=>'married',
              'nik'=>'3323150402950001','npwp_15'=>'85.591.371.1-533.000','npwp_16'=>'3323150402950001',
@@ -372,7 +372,7 @@ class KaryawanPtArtaSeeder extends Seeder
              'join_date'=>'2024-03-01','resign_date'=>null,'is_active'=>1,'role'=>'employee',
              'schedule_template_id'=>2,'orig_manager_id'=>2,'orig_approver_id'=>11],
             // Dewi Setiawati — Manager Marketing
-             ['orig_id'=>18,'employee_code'=>'001/MAR/III/2013','company_id'=>1,'department_id'=>23,
+             ['orig_id'=>18,'employee_code'=>'002/MAR/IV/2026','company_id'=>1,'department_id'=>23,
              'full_name'=>'Dewi Setiawati','email'=>'dewi.priyambodo@yahoo.com',
              'gender'=>'female','marital_status'=>'married',
              'nik'=>'','npwp_15'=>'','npwp_16'=>'',
@@ -381,7 +381,7 @@ class KaryawanPtArtaSeeder extends Seeder
              'ktp_address'=>'',
              'residential_address'=>'',
              'position'=>'Manager Marketing','job_level'=>2,'employment_status'=>'contract',
-             'join_date'=>'2022-03-01','resign_date'=>null,'is_active'=>1,'role'=>'manager',
+             'join_date'=>'2026-04-14','resign_date'=>null,'is_active'=>1,'role'=>'manager',
              'schedule_template_id'=>1,'orig_manager_id'=>2,'orig_approver_id'=>2],
             // Meilisa Jibrani — Publication Division
             // ['orig_id'=>18,'employee_code'=>'002/MARBD/III/2024','company_id'=>1,'department_id'=>28,
@@ -492,7 +492,7 @@ class KaryawanPtArtaSeeder extends Seeder
              'join_date'=>'2025-02-19','resign_date'=>null,'is_active'=>1,'role'=>'employee',
              'schedule_template_id'=>null,'orig_manager_id'=>2,'orig_approver_id'=>11],
             // Afif Faishahuda — Corporate Account Manager
-            ['orig_id'=>28,'employee_code'=>'003/MAR/XI/2025','company_id'=>1,'department_id'=>23,
+            ['orig_id'=>28,'employee_code'=>'001/MAR/XI/2025','company_id'=>1,'department_id'=>23,
              'full_name'=>'Afif Faishahuda','email'=>'afiffaishahuda@gmail.com',
              'gender'=>'male','marital_status'=>'married',
              'nik'=>'3324030109000002','npwp_15'=>null,'npwp_16'=>'3324030109000002',
