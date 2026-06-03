@@ -1,0 +1,25 @@
+[Unit]
+Description=Face Verification Service
+After=network.target
+
+[Service]
+# Ganti dengan user yang menjalankan PHP/Laravel di server kamu (biasanya www-data atau nama domain)
+User=www-data
+Group=www-data
+
+# Ganti path sesuai lokasi face-service di server
+WorkingDirectory=/var/www/absensi-beacon/face-service
+
+# Gunakan venv jika sudah dibuat, atau python3 global
+ExecStart=/var/www/absensi-beacon/face-service/venv/bin/uvicorn main:app --host 127.0.0.1 --port 5001 --workers 2
+
+Restart=always
+RestartSec=5
+
+# Batasi log agar tidak memenuhi disk
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=face-service
+
+[Install]
+WantedBy=multi-user.target
