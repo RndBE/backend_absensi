@@ -41,7 +41,7 @@ class TravelReportController extends Controller
             'documents',
             'approvalLogs.approver:id,full_name,photo',
         ])->findOrFail($id);
-        $report->setAttribute('can_edit', in_array($report->status, ['pending', 'in_review'], true));
+        $report->setAttribute('can_edit', $this->canEditTravelReport($report));
 
         // Perbandingan uang makan budget vs realisasi
         $mealComparison = null;
@@ -195,10 +195,15 @@ class TravelReportController extends Controller
             ->where('employee_id', $employee->id)
             ->firstOrFail();
 
-        if (! in_array($report->status, ['pending', 'in_review'])) {
+        if (! $this->canEditTravelReport($report)) {
+            $reason = match ($report->status) {
+                'approved' => 'sudah disetujui',
+                'rejected' => 'sudah ditolak',
+                default    => 'sedang dalam proses persetujuan lanjutan',
+            };
             return response()->json([
                 'success' => false,
-                'message' => 'LHP tidak dapat diedit karena sudah '.($report->status === 'approved' ? 'disetujui' : 'ditolak').'.',
+                'message' => "LHP tidak dapat diedit karena $reason.",
             ], 403);
         }
 
@@ -316,6 +321,20 @@ class TravelReportController extends Controller
                 'message' => 'Gagal memperbarui LHP: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    private function canEditTravelReport(TravelReport $report): bool
+    {
+        if (! in_array($report->status, ['pending', 'in_review'], true)) {
+            return false;
+        }
+
+        $hseStep = EmployeeApprover::where('employee_id', $report->employee_id)
+            ->where('request_type', 'travel_report')
+            ->whereHas('approver', fn ($q) => $q->where('position', 'like', '%HSE%'))
+            ->min('step_order');
+
+        return $hseStep === null || $report->current_step <= $hseStep;
     }
 
     /**

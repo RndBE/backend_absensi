@@ -10,6 +10,7 @@ use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
+use App\Services\FaceVerificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -307,7 +308,6 @@ class AttendanceController extends Controller
         // Face Verification: compare selfie with registered face photo
         $faceVerify = Setting::getValue('face_verification_enabled', '1') === '1';
         if ($faceVerify) {
-            // Wajib daftar foto wajah terlebih dahulu
             if (!$employee->face_photo) {
                 if ($photoPath) Storage::disk('public')->delete($photoPath);
                 return response()->json([
@@ -317,20 +317,15 @@ class AttendanceController extends Controller
             }
 
             if ($photoPath) {
-                $selfieFullPath = Storage::disk('public')->path($photoPath);
-                $faceFullPath   = Storage::disk('public')->path($employee->face_photo);
+                $result = (new FaceVerificationService())->verify($photoPath, $employee->face_photo);
 
-                if (file_exists($selfieFullPath) && file_exists($faceFullPath)) {
-                    $similarity = $this->compareFaces($selfieFullPath, $faceFullPath);
-
-                    if ($similarity < 0.50) {
-                        Storage::disk('public')->delete($photoPath);
-                        return response()->json([
-                            'success'    => false,
-                            'message'    => 'Verifikasi wajah gagal. Wajah tidak sesuai dengan foto verifikasi wajah Anda.',
-                            'similarity' => round($similarity * 100, 1),
-                        ], 422);
-                    }
+                if (!$result['match']) {
+                    Storage::disk('public')->delete($photoPath);
+                    return response()->json([
+                        'success'    => false,
+                        'message'    => $result['message'],
+                        'similarity' => isset($result['similarity']) ? round($result['similarity'] * 100, 1) : null,
+                    ], 422);
                 }
             }
         }
@@ -428,6 +423,21 @@ class AttendanceController extends Controller
             $photoPath = $this->storeBase64Photo($request->photo_base64, 'attendance/clock-out');
         }
 
+        // Face Verification saat clock-out
+        $faceVerify = Setting::getValue('face_verification_enabled', '1') === '1';
+        if ($faceVerify && $employee->face_photo && $photoPath) {
+            $result = (new FaceVerificationService())->verify($photoPath, $employee->face_photo);
+
+            if (!$result['match']) {
+                Storage::disk('public')->delete($photoPath);
+                return response()->json([
+                    'success'    => false,
+                    'message'    => $result['message'],
+                    'similarity' => isset($result['similarity']) ? round($result['similarity'] * 100, 1) : null,
+                ], 422);
+            }
+        }
+
         $clockOutTime = now();
 
         $attendance->update([
@@ -503,100 +513,6 @@ class AttendanceController extends Controller
         $fileName = $directory . '/' . uniqid() . '.jpg';
         Storage::disk('public')->put($fileName, $imageData);
         return $fileName;
-    }
-
-    /**
-     * Basic face verification using color histogram comparison.
-     * Returns similarity score 0.0 to 1.0
-     */
-    private function compareFaces(string $path1, string $path2): float
-    {
-        try {
-            $img1 = $this->loadImage($path1);
-            $img2 = $this->loadImage($path2);
-
-            if (!$img1 || !$img2) return 0.0;
-
-            // Resize both to 64x64 for uniform comparison
-            $size = 64;
-            $thumb1 = imagecreatetruecolor($size, $size);
-            $thumb2 = imagecreatetruecolor($size, $size);
-
-            imagecopyresampled($thumb1, $img1, 0, 0, 0, 0, $size, $size, imagesx($img1), imagesy($img1));
-            imagecopyresampled($thumb2, $img2, 0, 0, 0, 0, $size, $size, imagesx($img2), imagesy($img2));
-
-            imagedestroy($img1);
-            imagedestroy($img2);
-
-            // Build color histograms (16 bins per channel = 48 total bins)
-            $bins = 16;
-            $hist1 = array_fill(0, $bins * 3, 0);
-            $hist2 = array_fill(0, $bins * 3, 0);
-
-            for ($x = 0; $x < $size; $x++) {
-                for ($y = 0; $y < $size; $y++) {
-                    $rgb1 = imagecolorat($thumb1, $x, $y);
-                    $rgb2 = imagecolorat($thumb2, $x, $y);
-
-                    $r1 = ($rgb1 >> 16) & 0xFF;
-                    $g1 = ($rgb1 >> 8) & 0xFF;
-                    $b1 = $rgb1 & 0xFF;
-
-                    $r2 = ($rgb2 >> 16) & 0xFF;
-                    $g2 = ($rgb2 >> 8) & 0xFF;
-                    $b2 = $rgb2 & 0xFF;
-
-                    $hist1[intdiv($r1, (256 / $bins))]++;
-                    $hist1[$bins + intdiv($g1, (256 / $bins))]++;
-                    $hist1[$bins * 2 + intdiv($b1, (256 / $bins))]++;
-
-                    $hist2[intdiv($r2, (256 / $bins))]++;
-                    $hist2[$bins + intdiv($g2, (256 / $bins))]++;
-                    $hist2[$bins * 2 + intdiv($b2, (256 / $bins))]++;
-                }
-            }
-
-            imagedestroy($thumb1);
-            imagedestroy($thumb2);
-
-            // Cosine similarity
-            $dot = 0;
-            $mag1 = 0;
-            $mag2 = 0;
-            for ($i = 0; $i < count($hist1); $i++) {
-                $dot += $hist1[$i] * $hist2[$i];
-                $mag1 += $hist1[$i] * $hist1[$i];
-                $mag2 += $hist2[$i] * $hist2[$i];
-            }
-
-            $mag1 = sqrt($mag1);
-            $mag2 = sqrt($mag2);
-
-            if ($mag1 == 0 || $mag2 == 0) return 0.0;
-
-            return $dot / ($mag1 * $mag2);
-        } catch (\Throwable $e) {
-            // If comparison fails, allow clock-in (don't block on error)
-            \Log::warning('Face comparison error: ' . $e->getMessage());
-            return 1.0;
-        }
-    }
-
-    /**
-     * Load image from file path regardless of format.
-     */
-    private function loadImage(string $path): \GdImage|false
-    {
-        $info = @getimagesize($path);
-        if (!$info) return false;
-
-        return match ($info[2]) {
-            IMAGETYPE_JPEG => @imagecreatefromjpeg($path),
-            IMAGETYPE_PNG => @imagecreatefrompng($path),
-            IMAGETYPE_WEBP => @imagecreatefromwebp($path),
-            IMAGETYPE_GIF => @imagecreatefromgif($path),
-            default => false,
-        };
     }
 
     /**

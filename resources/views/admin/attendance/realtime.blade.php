@@ -59,9 +59,7 @@
                     </td>
                     <td class="px-4 py-3.5 border-b border-gray-100">
                         @if($att->clock_in_photo)
-                            <a href="{{ asset('storage/' . $att->clock_in_photo) }}" target="_blank">
-                                <img src="{{ asset('storage/' . $att->clock_in_photo) }}" class="w-10 h-10 rounded-lg object-cover border border-gray-200 hover:scale-110 transition-transform cursor-pointer" alt="Selfie">
-                            </a>
+                            <img src="{{ asset('storage/' . $att->clock_in_photo) }}" class="w-10 h-10 rounded-lg object-cover border border-gray-200 hover:scale-110 transition-transform cursor-pointer" alt="Selfie">
                         @else
                             <span class="text-[10px] text-gray-300">-</span>
                         @endif
