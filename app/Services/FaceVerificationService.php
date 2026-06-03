@@ -38,6 +38,13 @@ class FaceVerificationService
                 return $response->json();
             }
 
+            // HTTP 4xx/5xx tapi body mengandung match=false → tetap tolak, jangan fail-open
+            $body = $response->json();
+            if (isset($body['match']) && $body['match'] === false) {
+                Log::warning('[FaceVerification] Service error but match=false, rejecting.');
+                return $body;
+            }
+
             Log::warning('[FaceVerification] Service error: ' . $response->status() . ' ' . $response->body());
             return $this->failOpen();
 

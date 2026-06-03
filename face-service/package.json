@@ -1,0 +1,17 @@
+{
+  "name": "face-service",
+  "version": "1.0.0",
+  "description": "Face verification service untuk absensi",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "postinstall": "node setup-shim.js"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
+    "@vladmandic/face-api": "^1.7.13",
+    "express": "^4.19.2",
+    "sharp": "^0.33.4"
+  }
+}
