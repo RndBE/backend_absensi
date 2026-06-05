@@ -86,4 +86,22 @@ class AuthController extends Controller
             'message' => 'Password berhasil diubah',
         ]);
     }
+
+    public function verifyPassword(Request $request)
+    {
+        $request->validate([
+            'password' => 'required|string',
+        ]);
+
+        if (! Hash::check($request->password, $request->user()->password)) {
+            throw ValidationException::withMessages([
+                'password' => ['Password salah.'],
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password valid',
+        ]);
+    }
 }
