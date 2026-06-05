@@ -3,14 +3,25 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\EmployeePayroll;
 use App\Models\EmployeePayrollComponent;
+use App\Models\Holiday;
+use App\Models\LeaveRequest;
+use App\Models\OvertimeRequest;
+use App\Models\PayrollAdjustment;
 use App\Models\PayrollLog;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunDetail;
+use App\Models\ScheduleAssignment;
+use App\Services\BpjsCalculator;
+use App\Services\Pph21Calculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class PayrollRunController extends Controller
 {
@@ -50,10 +61,10 @@ class PayrollRunController extends Controller
         ]);
 
         $this->generateDetails($run, $request->employee_ids);
-        $this->logAction($run, 'created', $admin->id, 'Payroll run dibuat untuk ' . count($request->employee_ids) . ' karyawan');
+        $this->logAction($run, 'created', $admin->id, 'Payroll run dibuat untuk '.count($request->employee_ids).' karyawan');
 
         return redirect()->route('admin.payroll-runs.show', $run->id)
-            ->with('success', 'Payroll run berhasil dibuat untuk ' . count($request->employee_ids) . ' karyawan.');
+            ->with('success', 'Payroll run berhasil dibuat untuk '.count($request->employee_ids).' karyawan.');
     }
 
     public function show($id)
@@ -81,7 +92,7 @@ class PayrollRunController extends Controller
         $request->validate([
             'components' => 'required|array',
             'components.*.name' => 'required|string',
-            'components.*.type' => 'required|in:earning,deduction',
+            'components.*.type' => 'required|in:earning,deduction,info',
             'components.*.amount' => 'required|numeric|min:0',
         ]);
 
@@ -160,7 +171,7 @@ class PayrollRunController extends Controller
         $run = PayrollRun::findOrFail($id);
         $admin = Employee::find(session('admin_id'));
 
-        if (!in_array($run->status, ['finalized', 'published'])) {
+        if (! in_array($run->status, ['finalized', 'published'])) {
             return back()->with('error', 'Hanya payroll finalized/published yang bisa di-lock.');
         }
 
@@ -223,7 +234,7 @@ class PayrollRunController extends Controller
     {
         $run = PayrollRun::findOrFail($id);
         $admin = Employee::find(session('admin_id'));
-        $periodDate = Carbon::parse($run->period . '-01');
+        $periodDate = Carbon::parse($run->period.'-01');
         $periodStart = $periodDate->copy()->startOfMonth();
 
         $details = $run->details()->with('employee.activePayroll')->get();
@@ -231,80 +242,86 @@ class PayrollRunController extends Controller
 
         foreach ($details as $detail) {
             $payroll = $detail->employee?->activePayroll;
-            if (!$payroll) continue;
+            if (! $payroll) {
+                continue;
+            }
 
             $comps = is_array($detail->components) ? $detail->components : json_decode($detail->components, true) ?? [];
 
             // Remove ALL existing BPJS components (both old combined and new split)
             $comps = array_values(array_filter($comps, function ($c) {
                 $name = $c['name'] ?? '';
-                return !str_contains($name, 'BPJS') && !str_contains($name, 'JHT') && !str_contains($name, 'JKK') && !str_contains($name, 'JKM');
+
+                return ! str_contains($name, 'BPJS') && ! str_contains($name, 'JHT') && ! str_contains($name, 'JKK') && ! str_contains($name, 'JKM');
             }));
 
             // Recalculate totals from remaining non-BPJS components
             $totalEarning = (float) $detail->basic_salary;
             $totalDeduction = 0;
             foreach ($comps as $c) {
-                if (($c['type'] ?? '') === 'earning')       $totalEarning   += (float) ($c['amount'] ?? 0);
-                elseif (($c['type'] ?? '') === 'deduction') $totalDeduction += (float) ($c['amount'] ?? 0);
+                if (($c['type'] ?? '') === 'earning') {
+                    $totalEarning += (float) ($c['amount'] ?? 0);
+                } elseif (($c['type'] ?? '') === 'deduction') {
+                    $totalDeduction += (float) ($c['amount'] ?? 0);
+                }
             }
 
             // Calculate fresh BPJS
-            $bpjsCalc = new \App\Services\BpjsCalculator($periodStart->format('Y-m-d'));
+            $bpjsCalc = new BpjsCalculator($periodStart->format('Y-m-d'));
             $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
 
             // ── BPJS Karyawan: tiap program jadi baris terpisah ──
             if ($bpjs['kesehatan']['employee'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'BPJS Kesehatan', 'type' => 'deduction', 'category' => 'recurring',
-                            'amount' => $bpjs['kesehatan']['employee'], 'is_taxable' => false, 'is_auto' => true,
-                            'detail' => '1% x Rp ' . number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['kesehatan']['employee'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '1% x Rp '.number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['kesehatan']['employee'];
             }
             if ($bpjs['jht']['employee'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JHT Karyawan', 'type' => 'deduction', 'category' => 'recurring',
-                            'amount' => $bpjs['jht']['employee'], 'is_taxable' => false, 'is_auto' => true,
-                            'detail' => '2% x Rp ' . number_format($bpjs['jht']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jht']['employee'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '2% x Rp '.number_format($bpjs['jht']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['jht']['employee'];
             }
             if ($bpjs['jp']['employee'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JP Karyawan', 'type' => 'deduction', 'category' => 'recurring',
-                            'amount' => $bpjs['jp']['employee'], 'is_taxable' => false, 'is_auto' => true,
-                            'detail' => '1% x Rp ' . number_format($bpjs['jp']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jp']['employee'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '1% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['jp']['employee'];
             }
 
             // ── BPJS Perusahaan: tiap program jadi baris terpisah (info only) ──
             if ($bpjs['kesehatan']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'category' => 'info',
-                            'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => false, 'is_auto' => true,
-                            'detail' => '4% x Rp ' . number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '4% x Rp '.number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jht']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JHT Perusahaan', 'type' => 'info', 'category' => 'info',
-                            'amount' => $bpjs['jht']['company'], 'is_taxable' => false, 'is_auto' => true,
-                            'detail' => '3.7% x Rp ' . number_format($bpjs['jht']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jht']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '3.7% x Rp '.number_format($bpjs['jht']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jkk']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JKK Perusahaan', 'type' => 'info', 'category' => 'info',
-                            'amount' => $bpjs['jkk']['company'], 'is_taxable' => false, 'is_auto' => true,
-                            'detail' => '0.24% x Rp ' . number_format($bpjs['jkk']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '0.24% x Rp '.number_format($bpjs['jkk']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jkm']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JKM Perusahaan', 'type' => 'info', 'category' => 'info',
-                            'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
-                            'detail' => '0.3% x Rp ' . number_format($bpjs['jkm']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '0.3% x Rp '.number_format($bpjs['jkm']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jp']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JP Perusahaan', 'type' => 'info', 'category' => 'info',
-                            'amount' => $bpjs['jp']['company'], 'is_taxable' => false, 'is_auto' => true,
-                            'detail' => '2% x Rp ' . number_format($bpjs['jp']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jp']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '2% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
             }
 
             $detail->update([
-                'components'      => $comps,
-                'total_earning'   => $totalEarning,
+                'components' => $comps,
+                'total_earning' => $totalEarning,
                 'total_deduction' => $totalDeduction,
-                'net_salary'      => $totalEarning - $totalDeduction,
+                'net_salary' => $totalEarning - $totalDeduction,
             ]);
 
             $injected++;
@@ -351,21 +368,27 @@ class PayrollRunController extends Controller
                 $q->where('company_id', $admin->company_id)->where('is_active', true);
             });
 
-        if (!empty($employeeIds)) {
+        if (! empty($employeeIds)) {
             $query->whereIn('employee_id', $employeeIds);
         }
 
         $payrolls = $query->with('employee')->get();
-        $periodDate = Carbon::parse($run->period . '-01');
+        $periodDate = Carbon::parse($run->period.'-01');
         $periodStart = $periodDate->copy()->startOfMonth();
         $periodEnd = $periodDate->copy()->endOfMonth();
 
         // Collect holiday dates for the period
-        $holidayDates = \App\Models\Holiday::where('company_id', $admin->company_id)
+        $holidayDates = Holiday::where('company_id', $admin->company_id)
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->pluck('date')
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
+
+        $dailyReportLateCounts = $this->fetchDailyReportLateCounts(
+            $payrolls->pluck('employee.email'),
+            $periodStart,
+            $periodEnd
+        );
 
         $totalDaysInMonth = $periodEnd->day;
 
@@ -382,7 +405,7 @@ class PayrollRunController extends Controller
                 $joinDate = Carbon::parse($employee->join_date);
                 if ($joinDate->between($periodStart, $periodEnd) && $joinDate->day > 1) {
                     $workingDays = $periodEnd->day - $joinDate->day + 1;
-                    $proRateReason = 'Join tgl ' . $joinDate->day;
+                    $proRateReason = 'Join tgl '.$joinDate->day;
                 }
             }
 
@@ -391,7 +414,7 @@ class PayrollRunController extends Controller
                 $resignDate = Carbon::parse($employee->resign_date);
                 if ($resignDate->between($periodStart, $periodEnd) && $resignDate->day < $periodEnd->day) {
                     $workingDays = $resignDate->day;
-                    $proRateReason = ($proRateReason ? $proRateReason . ', ' : '') . 'Resign tgl ' . $resignDate->day;
+                    $proRateReason = ($proRateReason ? $proRateReason.', ' : '').'Resign tgl '.$resignDate->day;
                 }
             }
 
@@ -419,7 +442,7 @@ class PayrollRunController extends Controller
                     $oldSalary = (float) $previousPayroll->basic_salary;
                     $newSalary = (float) $currentPayroll->basic_salary;
                     $basicSalary = round((($oldSalary * $daysOld) + ($newSalary * $daysNew)) / $totalDaysInMonth, 0);
-                    $salaryRevisionNote = "Revisi gaji tgl {$effectiveDate->day}: Rp " . number_format($oldSalary, 0, ',', '.') . " → Rp " . number_format($newSalary, 0, ',', '.');
+                    $salaryRevisionNote = "Revisi gaji tgl {$effectiveDate->day}: Rp ".number_format($oldSalary, 0, ',', '.').' → Rp '.number_format($newSalary, 0, ',', '.');
                 }
             }
 
@@ -432,7 +455,7 @@ class PayrollRunController extends Controller
                 ->where('start_date', '<=', $periodEnd)
                 ->where(function ($q) use ($periodStart) {
                     $q->whereNull('end_date')
-                      ->orWhere('end_date', '>=', $periodStart);
+                        ->orWhere('end_date', '>=', $periodStart);
                 })
                 ->with('component')
                 ->get();
@@ -470,7 +493,9 @@ class PayrollRunController extends Controller
             // Process manual (non-auto) components (also pro-rated if applicable)
             foreach ($empComponents as $ec) {
                 $comp = $ec->component;
-                if ($comp->is_auto) continue;
+                if ($comp->is_auto) {
+                    continue;
+                }
 
                 $amount = round((float) $ec->amount * $proRateRatio, 0);
                 $components[] = [
@@ -491,7 +516,7 @@ class PayrollRunController extends Controller
             }
 
             // 2. Auto-calculate: Keterlambatan & Alpha (skip if exempt)
-            if (!$payroll->is_exempt_penalty) {
+            if (! $payroll->is_exempt_penalty) {
                 $latePenalty = (float) ($payroll->late_penalty_per_day ?? 50000);
 
                 if ($latePenalty > 0) {
@@ -505,10 +530,17 @@ class PayrollRunController extends Controller
                             'amount' => $lateData['amount'],
                             'is_taxable' => false,
                             'is_auto' => true,
-                            'detail' => $lateData['days'] . ' hari × Rp ' . number_format($latePenalty, 0, ',', '.'),
+                            'detail' => $lateData['days'].' hari × Rp '.number_format($latePenalty, 0, ',', '.'),
                         ];
                         $totalDeduction += $lateData['amount'];
                     }
+                }
+
+                $disciplineLateDays = (int) ($dailyReportLateCounts[strtolower((string) $employee->email)] ?? 0);
+                if ($disciplineLateDays > 0 && $latePenalty > 0) {
+                    $disciplineComponent = $this->buildDisciplinePenaltyComponent($disciplineLateDays, $latePenalty);
+                    $components[] = $disciplineComponent;
+                    $totalDeduction += $disciplineComponent['amount'];
                 }
 
                 // Alpha
@@ -522,7 +554,7 @@ class PayrollRunController extends Controller
                         'amount' => $alphaData['amount'],
                         'is_taxable' => false,
                         'is_auto' => true,
-                        'detail' => $alphaData['days'] . ' hari × Rp ' . number_format($alphaData['per_day'], 0, ',', '.'),
+                        'detail' => $alphaData['days'].' hari × Rp '.number_format($alphaData['per_day'], 0, ',', '.'),
                     ];
                     $totalDeduction += $alphaData['amount'];
                 }
@@ -548,7 +580,7 @@ class PayrollRunController extends Controller
             }
 
             // 4. Apply pending adjustments for this period
-            $pendingAdjustments = \App\Models\PayrollAdjustment::where('employee_id', $empId)
+            $pendingAdjustments = PayrollAdjustment::where('employee_id', $empId)
                 ->where('target_period', $run->period)
                 ->where('status', 'pending')
                 ->get();
@@ -556,7 +588,7 @@ class PayrollRunController extends Controller
             foreach ($pendingAdjustments as $adj) {
                 $components[] = [
                     'id' => null,
-                    'name' => ucfirst($adj->type) . ': ' . $adj->name,
+                    'name' => ucfirst($adj->type).': '.$adj->name,
                     'type' => $adj->earning_type,
                     'category' => 'one-time',
                     'amount' => (float) $adj->amount,
@@ -575,76 +607,78 @@ class PayrollRunController extends Controller
             }
 
             // 5. Auto-calculate: BPJS (tiap program jadi komponen terpisah)
-            $bpjsCalc = new \App\Services\BpjsCalculator($periodStart->format('Y-m-d'));
+            $bpjsCalc = new BpjsCalculator($periodStart->format('Y-m-d'));
             $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
 
             // BPJS Karyawan — masing-masing program sebagai deduction terpisah
             if ($bpjs['kesehatan']['employee'] > 0) {
                 $components[] = ['id' => null, 'name' => 'BPJS Kesehatan', 'type' => 'deduction', 'category' => 'recurring',
-                                 'amount' => $bpjs['kesehatan']['employee'], 'is_taxable' => false, 'is_auto' => true,
-                                 'detail' => '1% x Rp ' . number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['kesehatan']['employee'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '1% x Rp '.number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['kesehatan']['employee'];
             }
             if ($bpjs['jht']['employee'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JHT Karyawan', 'type' => 'deduction', 'category' => 'recurring',
-                                 'amount' => $bpjs['jht']['employee'], 'is_taxable' => false, 'is_auto' => true,
-                                 'detail' => '2% x Rp ' . number_format($bpjs['jht']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jht']['employee'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '2% x Rp '.number_format($bpjs['jht']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['jht']['employee'];
             }
             if ($bpjs['jp']['employee'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JP Karyawan', 'type' => 'deduction', 'category' => 'recurring',
-                                 'amount' => $bpjs['jp']['employee'], 'is_taxable' => false, 'is_auto' => true,
-                                 'detail' => '1% x Rp ' . number_format($bpjs['jp']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jp']['employee'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '1% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['jp']['employee'];
             }
 
             // BPJS Perusahaan — masing-masing program sebagai info terpisah
             if ($bpjs['kesehatan']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'category' => 'info',
-                                 'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => false, 'is_auto' => true,
-                                 'detail' => '4% x Rp ' . number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '4% x Rp '.number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jht']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JHT Perusahaan', 'type' => 'info', 'category' => 'info',
-                                 'amount' => $bpjs['jht']['company'], 'is_taxable' => false, 'is_auto' => true,
-                                 'detail' => '3.7% x Rp ' . number_format($bpjs['jht']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jht']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '3.7% x Rp '.number_format($bpjs['jht']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jkk']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JKK Perusahaan', 'type' => 'info', 'category' => 'info',
-                                 'amount' => $bpjs['jkk']['company'], 'is_taxable' => false, 'is_auto' => true,
-                                 'detail' => '0.24% x Rp ' . number_format($bpjs['jkk']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '0.24% x Rp '.number_format($bpjs['jkk']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jkm']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JKM Perusahaan', 'type' => 'info', 'category' => 'info',
-                                 'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
-                                 'detail' => '0.3% x Rp ' . number_format($bpjs['jkm']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '0.3% x Rp '.number_format($bpjs['jkm']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jp']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JP Perusahaan', 'type' => 'info', 'category' => 'info',
-                                 'amount' => $bpjs['jp']['company'], 'is_taxable' => false, 'is_auto' => true,
-                                 'detail' => '2% x Rp ' . number_format($bpjs['jp']['basis'], 0, ',', '.')];
+                    'amount' => $bpjs['jp']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '2% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
             }
 
             // 6. Auto-calculate: PPh 21
             $ptkpStatus = $payroll->employee->ptkp_status ?? $payroll->ptkp_status ?? 'TK/0';
-            if (!$ptkpStatus) $ptkpStatus = 'TK/0';
+            if (! $ptkpStatus) {
+                $ptkpStatus = 'TK/0';
+            }
             $taxMethod = $payroll->tax_method ?? 'gross_up';
 
-            $pph21Calc = new \App\Services\Pph21Calculator($periodStart->format('Y-m-d'));
+            $pph21Calc = new Pph21Calculator($periodStart->format('Y-m-d'));
             $isDecember = ($periodDate->month === 12);
 
             if ($isDecember) {
                 // ── Desember: Penghitungan Kembali berdasarkan penghasilan sebenarnya ──
                 // Ambil akumulasi bruto & PPh21 Jan-Nov dari payroll run detail tahun ini
                 $year = $periodDate->year;
-                $prevDetails = \App\Models\PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year, $empId) {
+                $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year) {
                     $q->whereYear('period', $year)
-                      ->whereMonth('period', '<=', 11) // Jan-Nov only
-                      ->where('status', '!=', 'draft');
+                        ->whereMonth('period', '<=', 11) // Jan-Nov only
+                        ->where('status', '!=', 'draft');
                 })->where('employee_id', $empId)->get();
 
                 $brutoJanToNov = 0;
-                $taxJanToNov   = 0;
+                $taxJanToNov = 0;
                 foreach ($prevDetails as $pd) {
                     $brutoJanToNov += (float) $pd->total_earning;
                     // Sum PPh21 deduction components
@@ -665,13 +699,13 @@ class PayrollRunController extends Controller
                     taxJanToNov        : $taxJanToNov
                 );
                 $detailNote = "Desember — Penghitungan Kembali Tahunan\n"
-                            . "Bruto Jan-Nov: Rp " . number_format($brutoJanToNov, 0, ',', '.') . " | "
-                            . "Pajak Jan-Nov: Rp " . number_format($taxJanToNov, 0, ',', '.') . " | "
-                            . "PKP Aktual: Rp " . number_format($tax['pkp'], 0, ',', '.');
+                            .'Bruto Jan-Nov: Rp '.number_format($brutoJanToNov, 0, ',', '.').' | '
+                            .'Pajak Jan-Nov: Rp '.number_format($taxJanToNov, 0, ',', '.').' | '
+                            .'PKP Aktual: Rp '.number_format($tax['pkp'], 0, ',', '.');
             } else {
                 // ── Jan-Nov: annualized × 12 (metode normal) ──
                 $tax = $pph21Calc->calculateMonthly($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
-                $detailNote = "Metode: {$taxMethod}, PTKP: {$ptkpStatus}, PKP: Rp " . number_format($tax['pkp'], 0, ',', '.');
+                $detailNote = "Metode: {$taxMethod}, PTKP: {$ptkpStatus}, PKP: Rp ".number_format($tax['pkp'], 0, ',', '.');
             }
 
             // Gross-up: add tunjangan pajak as earning
@@ -694,7 +728,7 @@ class PayrollRunController extends Controller
                 $isPph21Dtp = $payroll->pph21_dtp ?? false;
                 $components[] = [
                     'id' => null,
-                    'name' => 'PPh 21' . ($isPph21Dtp ? ' (DTP)' : '') . ($isDecember ? ' *Desember' : ''),
+                    'name' => 'PPh 21'.($isPph21Dtp ? ' (DTP)' : '').($isDecember ? ' *Desember' : ''),
                     'type' => $isPph21Dtp ? 'info' : 'deduction',
                     'category' => 'recurring',
                     'amount' => $tax['pph21_deduction'],
@@ -702,7 +736,7 @@ class PayrollRunController extends Controller
                     'is_auto' => true,
                     'detail' => $detailNote,
                 ];
-                if (!$isPph21Dtp) {
+                if (! $isPph21Dtp) {
                     $totalDeduction += $tax['pph21_deduction'];
                 }
             }
@@ -732,7 +766,7 @@ class PayrollRunController extends Controller
         $leaveDates = $this->getApprovedLeaveDates($empId, $periodStart, $periodEnd);
 
         // Count late days from attendance
-        $lateDays = \App\Models\Attendance::where('employee_id', $empId)
+        $lateDays = Attendance::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->where('is_late', true)
             ->where('status', 'present')
@@ -746,6 +780,71 @@ class PayrollRunController extends Controller
         ];
     }
 
+    private function fetchDailyReportLateCounts(Collection $emails, Carbon $periodStart, Carbon $periodEnd): array
+    {
+        $baseUrl = rtrim((string) config('services.daily.url'), '/');
+        $secret = (string) config('services.daily.internal_secret');
+        $emails = $emails
+            ->map(fn ($email) => strtolower(trim((string) $email)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($baseUrl === '' || $secret === '' || $emails->isEmpty()) {
+            return [];
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'Accept' => 'application/json',
+                'X-Internal-Secret' => $secret,
+            ])
+                ->timeout(10)
+                ->get($baseUrl.'/api/internal/payroll/daily-report-late', [
+                    'start' => $periodStart->toDateString(),
+                    'end' => $periodEnd->toDateString(),
+                    'emails' => $emails->all(),
+                ]);
+
+            if (! $response->ok()) {
+                Log::warning('Gagal mengambil data telat laporan harian untuk payroll.', [
+                    'status' => $response->status(),
+                ]);
+
+                return [];
+            }
+
+            return collect($response->json('data') ?? [])
+                ->mapWithKeys(fn ($row) => [
+                    strtolower((string) ($row['email'] ?? '')) => (int) ($row['late_days'] ?? 0),
+                ])
+                ->filter(fn ($days, $email) => $email !== '')
+                ->all();
+        } catch (\Throwable $exception) {
+            Log::warning('Tidak dapat terhubung ke DailyCloseApp saat menghitung potongan kedisiplinan.', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    private function buildDisciplinePenaltyComponent(int $lateDays, float $penaltyPerDay): array
+    {
+        $amount = $lateDays * $penaltyPerDay;
+
+        return [
+            'id' => null,
+            'name' => 'Potongan Kedisiplinan',
+            'type' => 'deduction',
+            'category' => 'recurring',
+            'amount' => $amount,
+            'is_taxable' => false,
+            'is_auto' => true,
+            'detail' => $lateDays.' hari × Rp '.number_format($penaltyPerDay, 0, ',', '.'),
+        ];
+    }
+
     /**
      * Hitung potongan alpha: (gaji pokok / 30) per hari absent
      * Exclude hari libur, cuti, dan hari off shift
@@ -756,14 +855,14 @@ class PayrollRunController extends Controller
         $leaveDates = $this->getApprovedLeaveDates($empId, $periodStart, $periodEnd);
 
         // Get off-shift dates
-        $offDates = \App\Models\ScheduleAssignment::where('employee_id', $empId)
+        $offDates = ScheduleAssignment::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
-            ->whereHas('shift', fn($q) => $q->where('is_off', true))
+            ->whereHas('shift', fn ($q) => $q->where('is_off', true))
             ->pluck('date')
-            ->map(fn($d) => Carbon::parse($d)->format('Y-m-d'))
+            ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
 
-        $absentDays = \App\Models\Attendance::where('employee_id', $empId)
+        $absentDays = Attendance::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->where('status', 'absent')
             ->whereNotIn('date', $holidayDates)
@@ -799,7 +898,7 @@ class PayrollRunController extends Controller
     {
         $baseRate = ($basicSalary / 173) * $multiplier;
 
-        $overtimes = \App\Models\OvertimeRequest::where('employee_id', $empId)
+        $overtimes = OvertimeRequest::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->where('status', 'approved')
             ->get();
@@ -809,27 +908,29 @@ class PayrollRunController extends Controller
         }
 
         // Pola hari kerja per minggu dari work schedule karyawan
-        $employee = \App\Models\Employee::with('workSchedule')->find($empId);
+        $employee = Employee::with('workSchedule')->find($empId);
         $workDaysPerWeek = $employee?->workSchedule?->work_days ?? 5;
 
-        $offDates = \App\Models\ScheduleAssignment::where('employee_id', $empId)
+        $offDates = ScheduleAssignment::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
-            ->whereHas('shift', fn($q) => $q->where('is_off', true))
+            ->whereHas('shift', fn ($q) => $q->where('is_off', true))
             ->pluck('date')
-            ->map(fn($d) => Carbon::parse($d)->format('Y-m-d'))
+            ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
 
-        $totalAmount   = 0;
-        $workdayMins   = 0;
-        $holidayMins   = 0;
+        $totalAmount = 0;
+        $workdayMins = 0;
+        $holidayMins = 0;
         $workdayAmount = 0;
         $holidayAmount = 0;
 
         foreach ($overtimes as $ot) {
             $payableMinutes = $ot->getPayableDuration();
-            if ($payableMinutes <= 0) continue;
+            if ($payableMinutes <= 0) {
+                continue;
+            }
 
-            $dateStr   = Carbon::parse($ot->date)->format('Y-m-d');
+            $dateStr = Carbon::parse($ot->date)->format('Y-m-d');
             $isHoliday = $ot->overtime_type === 'holiday'
                 || in_array($dateStr, $holidayDates)
                 || in_array($dateStr, $offDates);
@@ -839,10 +940,10 @@ class PayrollRunController extends Controller
             $totalAmount += $amount;
 
             if ($isHoliday) {
-                $holidayMins   += $payableMinutes;
+                $holidayMins += $payableMinutes;
                 $holidayAmount += $amount;
             } else {
-                $workdayMins   += $payableMinutes;
+                $workdayMins += $payableMinutes;
                 $workdayAmount += $amount;
             }
         }
@@ -855,7 +956,7 @@ class PayrollRunController extends Controller
 
         return [
             'total_amount' => round($totalAmount, 0),
-            'detail'       => $detail,
+            'detail' => $detail,
         ];
     }
 
@@ -866,9 +967,10 @@ class PayrollRunController extends Controller
     {
         $hours = $minutes / 60;
 
-        if (!$isHoliday) {
+        if (! $isHoliday) {
             $first = min($hours, 1.0);
-            $rest  = max(0.0, $hours - 1.0);
+            $rest = max(0.0, $hours - 1.0);
+
             return ($first * 1.5 + $rest * 2.0) * $baseRate;
         }
 
@@ -886,22 +988,22 @@ class PayrollRunController extends Controller
      */
     private function buildOvertimeDetail(int $workdayMins, float $workdayAmount, int $holidayMins, float $holidayAmount, float $baseRate, int $workDaysPerWeek): string
     {
-        $perJam = 'Rp ' . number_format(round($baseRate, 0), 0, ',', '.');
-        $parts  = [];
+        $perJam = 'Rp '.number_format(round($baseRate, 0), 0, ',', '.');
+        $parts = [];
 
         if ($workdayMins > 0) {
             $h = round($workdayMins / 60, 1);
-            $parts[] = 'Hari kerja: ' . number_format($h, 1, ',', '.') . ' jam'
-                . ' (1j×1,5 + selebihnya×2, @' . $perJam . '/jam)'
-                . ' = Rp ' . number_format(round($workdayAmount, 0), 0, ',', '.');
+            $parts[] = 'Hari kerja: '.number_format($h, 1, ',', '.').' jam'
+                .' (1j×1,5 + selebihnya×2, @'.$perJam.'/jam)'
+                .' = Rp '.number_format(round($workdayAmount, 0), 0, ',', '.');
         }
 
         if ($holidayMins > 0) {
-            $h         = round($holidayMins / 60, 1);
+            $h = round($holidayMins / 60, 1);
             $threshold = ($workDaysPerWeek >= 6) ? 7 : 8;
-            $parts[]   = 'Hari libur: ' . number_format($h, 1, ',', '.') . ' jam'
-                . ' (1–' . $threshold . 'j×2, ' . ($threshold + 1) . 'j×3, dst×4, @' . $perJam . '/jam)'
-                . ' = Rp ' . number_format(round($holidayAmount, 0), 0, ',', '.');
+            $parts[] = 'Hari libur: '.number_format($h, 1, ',', '.').' jam'
+                .' (1–'.$threshold.'j×2, '.($threshold + 1).'j×3, dst×4, @'.$perJam.'/jam)'
+                .' = Rp '.number_format(round($holidayAmount, 0), 0, ',', '.');
         }
 
         return implode(' | ', $parts);
@@ -912,7 +1014,7 @@ class PayrollRunController extends Controller
      */
     private function getApprovedLeaveDates(int $empId, $periodStart, $periodEnd): array
     {
-        $leaves = \App\Models\LeaveRequest::where('employee_id', $empId)
+        $leaves = LeaveRequest::where('employee_id', $empId)
             ->where('status', 'approved')
             ->where('start_date', '<=', $periodEnd)
             ->where('end_date', '>=', $periodStart)
@@ -927,6 +1029,7 @@ class PayrollRunController extends Controller
                 $start->addDay();
             }
         }
+
         return $dates;
     }
 

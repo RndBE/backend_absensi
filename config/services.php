@@ -40,8 +40,13 @@ return [
     ],
 
     'face_verification' => [
-        'url'     => env('FACE_SERVICE_URL', 'http://127.0.0.1:5001'),
+        'url' => env('FACE_SERVICE_URL', 'http://127.0.0.1:5001'),
         'timeout' => env('FACE_SERVICE_TIMEOUT', 15),
+    ],
+
+    'daily' => [
+        'url' => env('DAILY_APP_URL', 'http://127.0.0.1:8001'),
+        'internal_secret' => env('DAILY_INTERNAL_SECRET'),
     ],
 
 ];

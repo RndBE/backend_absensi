@@ -148,6 +148,7 @@ return [
         'admin.departments.*' => 'organization.manage',
 
         'admin.attendance.*' => 'attendance.view',
+        'admin.attendance-photo-archives.*' => 'attendance.manage',
         'admin.attendance-recap.index' => 'attendance.view',
         'admin.attendance-recap.employee-detail' => 'attendance.view',
         'admin.attendance-recap.update' => 'attendance.manage',

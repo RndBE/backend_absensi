@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AttendanceRequestController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BudgetController;
+use App\Http\Controllers\Api\DailyReportPrefillController;
+use App\Http\Controllers\Api\DailyTokenController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\LeaveController;
@@ -28,6 +30,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);
+
+    // DailyCloseApp bridge
+    Route::get('/daily/token', [DailyTokenController::class, 'issue']);
+    Route::get('/daily/prefill', [DailyReportPrefillController::class, 'show']);
 
     // Company Info
     Route::get('/company', [DashboardController::class, 'companyInfo']);

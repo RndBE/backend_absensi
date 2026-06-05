@@ -67,6 +67,7 @@
                         ['route' => 'admin.attendance.realtime', 'icon' => 'location_on', 'label' => 'Realtime Hari Ini', 'match' => 'admin.attendance.realtime'],
                         ['route' => 'admin.attendance.history', 'icon' => 'history', 'label' => 'Riwayat Absensi', 'match' => 'admin.attendance.history'],
                         ['route' => 'admin.attendance-recap.index', 'icon' => 'summarize', 'label' => 'Rekap Presensi', 'match' => 'admin.attendance-recap.*'],
+                        ['route' => 'admin.attendance-photo-archives.index', 'icon' => 'archive', 'label' => 'Arsip Foto Absensi', 'match' => 'admin.attendance-photo-archives.*'],
                     ]],
                     ['label' => 'Cuti', 'icon' => 'event_busy', 'key' => 'leave', 'items' => [
                         ['route' => 'admin.leaves.index', 'icon' => 'event_busy', 'label' => 'Pengajuan Cuti', 'match' => 'admin.leaves.*'],

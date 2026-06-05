@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\ApprovalController;
 use App\Http\Controllers\Admin\ApprovalRuleController;
 use App\Http\Controllers\Admin\AttendanceController;
+use App\Http\Controllers\Admin\AttendancePhotoArchiveController;
 use App\Http\Controllers\Admin\AttendanceRecapController;
 use App\Http\Controllers\Admin\AttendanceSettingController;
 use App\Http\Controllers\Admin\AuditLogController;
@@ -80,6 +81,10 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Attendance
     Route::get('/attendance/realtime', [AttendanceController::class, 'realtime'])->name('attendance.realtime');
     Route::get('/attendance/history', [AttendanceController::class, 'history'])->name('attendance.history');
+    Route::get('/attendance-photo-archives', [AttendancePhotoArchiveController::class, 'index'])->name('attendance-photo-archives.index');
+    Route::post('/attendance-photo-archives/generate', [AttendancePhotoArchiveController::class, 'generate'])->name('attendance-photo-archives.generate');
+    Route::get('/attendance-photo-archives/{archive}/download', [AttendancePhotoArchiveController::class, 'download'])->name('attendance-photo-archives.download');
+    Route::post('/attendance-photo-archives/{archive}/mark-uploaded', [AttendancePhotoArchiveController::class, 'markUploaded'])->name('attendance-photo-archives.mark-uploaded');
 
     // Leave Requests
     Route::get('/leaves', [LeaveRequestController::class, 'index'])->name('leaves.index');

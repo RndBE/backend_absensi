@@ -319,8 +319,10 @@ function closeEdit() {
             'clock_in_lng' => $att->clock_in_lng,
             'clock_out_lat' => $att->clock_out_lat,
             'clock_out_lng' => $att->clock_out_lng,
-            'clock_in_photo' => $att->clock_in_photo ? asset('storage/' . $att->clock_in_photo) : null,
-            'clock_out_photo' => $att->clock_out_photo ? asset('storage/' . $att->clock_out_photo) : null,
+            'clock_in_photo' => $att->clock_in_photo && \Illuminate\Support\Facades\Storage::disk('public')->exists($att->clock_in_photo) ? asset('storage/' . $att->clock_in_photo) : null,
+            'clock_out_photo' => $att->clock_out_photo && \Illuminate\Support\Facades\Storage::disk('public')->exists($att->clock_out_photo) ? asset('storage/' . $att->clock_out_photo) : null,
+            'clock_in_photo_archived' => $att->clock_in_photo && !\Illuminate\Support\Facades\Storage::disk('public')->exists($att->clock_in_photo),
+            'clock_out_photo_archived' => $att->clock_out_photo && !\Illuminate\Support\Facades\Storage::disk('public')->exists($att->clock_out_photo),
             'is_late' => $att->is_late,
             'is_remote' => $att->is_remote,
             'remote_notes' => $att->remote_notes,
@@ -388,8 +390,8 @@ function openDetail(id) {
     html += '</div>';
 
     html += '<div class="grid grid-cols-2 gap-3">';
-    html += buildTimeCard('Clock In', att.clock_in, att.clock_in_photo, 'emerald');
-    html += buildTimeCard('Clock Out', att.clock_out, att.clock_out_photo, 'blue');
+    html += buildTimeCard('Clock In', att.clock_in, att.clock_in_photo, 'emerald', att.clock_in_photo_archived);
+    html += buildTimeCard('Clock Out', att.clock_out, att.clock_out_photo, 'blue', att.clock_out_photo_archived);
     html += '</div>';
 
     if (att.clock_in_lat && att.clock_in_lng) {
@@ -428,9 +430,15 @@ function openDetail(id) {
     }, 100);
 }
 
-function buildTimeCard(label, time, photo, color) {
+function buildTimeCard(label, time, photo, color, archived = false) {
     let h = '<div class="rounded-xl border border-gray-200 overflow-hidden">';
-    h += photo ? '<img src="' + photo + '" class="w-full h-[140px] object-cover">' : '<div class="w-full h-[140px] bg-gray-100 flex items-center justify-center"><span class="material-symbols-outlined text-[36px] text-gray-300">no_photography</span></div>';
+    if (photo) {
+        h += '<img src="' + photo + '" class="w-full h-[140px] object-cover">';
+    } else if (archived) {
+        h += '<div class="w-full h-[140px] bg-blue-50 flex flex-col items-center justify-center text-center px-4"><span class="material-symbols-outlined text-[34px] text-blue-400">archive</span><span class="mt-2 text-[12px] font-semibold text-blue-700">Foto sudah diarsipkan</span></div>';
+    } else {
+        h += '<div class="w-full h-[140px] bg-gray-100 flex items-center justify-center"><span class="material-symbols-outlined text-[36px] text-gray-300">no_photography</span></div>';
+    }
     h += '<div class="px-3 py-2.5 bg-' + color + '-50 border-t border-' + color + '-100">';
     h += '<div class="text-[10px] font-bold text-' + color + '-600 uppercase tracking-wider">' + label + '</div>';
     h += '<div class="text-[16px] font-black text-gray-800">' + (time ? time.substring(0,5) : '-') + '</div></div></div>';

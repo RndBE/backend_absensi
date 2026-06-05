@@ -191,6 +191,9 @@
                     <td class="px-4 py-3.5 border-b border-gray-100 text-right text-[14px] font-bold text-gray-900">Rp {{ number_format($detail->net_salary, 0, ',', '.') }}</td>
                     <td class="px-4 py-3.5 border-b border-gray-100 text-center">
                         <div class="flex items-center justify-center gap-1">
+                            @if($run->status === 'draft' && $canUpdatePayrollRun)
+                            <button type="button" onclick="openPayrollDetailEdit({{ $detail->id }})" class="p-1 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer" title="Edit Detail"><span class="material-symbols-outlined text-[14px]">edit</span></button>
+                            @endif
                             @if(in_array($run->status, ['published', 'locked']))
                             <a href="{{ route('admin.payslips.show', $detail->id) }}" class="p-1 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors" title="Lihat Payslip"><span class="material-symbols-outlined text-[14px]">receipt</span></a>
                             <a href="{{ route('admin.payslips.download', $detail->id) }}" class="p-1 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 transition-colors" title="Download PDF"><span class="material-symbols-outlined text-[14px]">download</span></a>
@@ -219,6 +222,99 @@
         </table>
     </div>
 </div>
+
+@if($run->status === 'draft' && $canUpdatePayrollRun)
+@foreach($details as $detail)
+@php
+    $components = collect($detail->components ?? [])->values();
+@endphp
+<div id="editPayrollDetail-{{ $detail->id }}" class="hidden fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm px-4 py-5 overflow-y-auto">
+    <div class="mx-auto w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+        <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-4 py-3">
+            <div>
+                <h3 class="text-[14px] font-bold text-gray-900">Edit Detail Payroll</h3>
+                <p class="mt-0.5 text-[11px] text-gray-500">{{ $detail->employee->full_name ?? '-' }} · {{ \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y') }}</p>
+            </div>
+            <button type="button" onclick="closePayrollDetailEdit({{ $detail->id }})" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer">
+                <span class="material-symbols-outlined text-[17px]">close</span>
+            </button>
+        </div>
+        <form action="{{ route('admin.payroll-runs.update-detail', [$run->id, $detail->id]) }}" method="POST">
+            @csrf
+            @method('PUT')
+            <div class="p-4">
+                <div class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-800">
+                    Perubahan manual akan menghitung ulang total earning, deduction, dan net salary karyawan ini.
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-gray-200">
+                    <table class="w-full min-w-[600px]">
+                        <thead>
+                            <tr>
+                                <th class="bg-gray-50 px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Nama Komponen</th>
+                                <th class="bg-gray-50 px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Tipe</th>
+                                <th class="bg-gray-50 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-gray-500">Nominal</th>
+                                <th class="bg-gray-50 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-gray-500">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payrollDetailComponents-{{ $detail->id }}" data-next-index="{{ $components->count() }}">
+                            @foreach($components as $index => $component)
+                            @php
+                                $isAutoComponent = !empty($component['is_auto']);
+                            @endphp
+                            <tr data-component-row>
+                                <td class="border-t border-gray-100 px-2 py-1">
+                                    <input type="text" name="components[{{ $index }}][name]" value="{{ $component['name'] ?? '' }}" required @disabled($isAutoComponent) class="h-8 w-full rounded-md border border-gray-300 px-2 text-[11px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500">
+                                    <input type="hidden" name="components[{{ $index }}][category]" value="{{ $component['category'] ?? 'recurring' }}">
+                                    <input type="hidden" name="components[{{ $index }}][is_taxable]" value="{{ !empty($component['is_taxable']) ? 1 : 0 }}">
+                                    <input type="hidden" name="components[{{ $index }}][is_auto]" value="{{ !empty($component['is_auto']) ? 1 : 0 }}">
+                                    <input type="hidden" name="components[{{ $index }}][detail]" value="{{ $component['detail'] ?? '' }}">
+                                    @if($isAutoComponent)
+                                        <input type="hidden" name="components[{{ $index }}][name]" value="{{ $component['name'] ?? '' }}">
+                                    @endif
+                                </td>
+                                <td class="border-t border-gray-100 px-2 py-1">
+                                    <select name="components[{{ $index }}][type]" required @disabled($isAutoComponent) class="h-8 w-full rounded-md border border-gray-300 px-2 text-[11px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500">
+                                        <option value="earning" @selected(($component['type'] ?? '') === 'earning')>Earning</option>
+                                        <option value="deduction" @selected(($component['type'] ?? '') === 'deduction')>Deduction</option>
+                                        <option value="info" @selected(($component['type'] ?? '') === 'info')>Info</option>
+                                    </select>
+                                    @if($isAutoComponent)
+                                        <input type="hidden" name="components[{{ $index }}][type]" value="{{ $component['type'] ?? 'info' }}">
+                                    @endif
+                                </td>
+                                <td class="border-t border-gray-100 px-2 py-1">
+                                    <input type="number" min="0" step="1" name="components[{{ $index }}][amount]" value="{{ $component['amount'] ?? 0 }}" required @disabled($isAutoComponent) class="h-8 w-full rounded-md border border-gray-300 px-2 text-right text-[11px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500">
+                                    @if($isAutoComponent)
+                                        <input type="hidden" name="components[{{ $index }}][amount]" value="{{ $component['amount'] ?? 0 }}">
+                                    @endif
+                                </td>
+                                <td class="border-t border-gray-100 px-2 py-1 text-center">
+                                    @unless($isAutoComponent)
+                                    <button type="button" onclick="this.closest('[data-component-row]').remove()" class="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer">
+                                        <span class="material-symbols-outlined text-[15px]">delete</span>
+                                    </button>
+                                    @else
+                                        <span class="material-symbols-outlined text-[15px] text-gray-300" title="Tidak bisa dihapus">lock</span>
+                                    @endunless
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <button type="button" onclick="addPayrollDetailComponent({{ $detail->id }})" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors cursor-pointer">
+                    <span class="material-symbols-outlined text-[14px]">add</span> Tambah Komponen
+                </button>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-gray-100 px-4 py-3">
+                <button type="button" onclick="closePayrollDetailEdit({{ $detail->id }})" class="rounded-md bg-gray-100 px-3 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer">Batal</button>
+                <button type="submit" class="rounded-md bg-gradient-to-br from-indigo-600 to-indigo-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer">Simpan Perubahan</button>
+            </div>
+        </form>
+    </div>
+</div>
+@endforeach
+@endif
 
 {{-- Activity Log --}}
 @if($run->logs && $run->logs->count() > 0)
@@ -252,4 +348,50 @@
     </div>
 </div>
 @endif
+
+@push('scripts')
+<script>
+function openPayrollDetailEdit(id) {
+    document.getElementById('editPayrollDetail-' + id)?.classList.remove('hidden');
+}
+
+function closePayrollDetailEdit(id) {
+    document.getElementById('editPayrollDetail-' + id)?.classList.add('hidden');
+}
+
+function addPayrollDetailComponent(id) {
+    const tbody = document.getElementById('payrollDetailComponents-' + id);
+    if (!tbody) return;
+
+    const index = Number(tbody.dataset.nextIndex || 0);
+    tbody.dataset.nextIndex = String(index + 1);
+    tbody.insertAdjacentHTML('beforeend', `
+        <tr data-component-row>
+            <td class="border-t border-gray-100 px-2 py-1">
+                <input type="text" name="components[${index}][name]" required class="h-8 w-full rounded-md border border-gray-300 px-2 text-[11px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                <input type="hidden" name="components[${index}][category]" value="recurring">
+                <input type="hidden" name="components[${index}][is_taxable]" value="0">
+                <input type="hidden" name="components[${index}][is_auto]" value="0">
+                <input type="hidden" name="components[${index}][detail]" value="">
+            </td>
+            <td class="border-t border-gray-100 px-2 py-1">
+                <select name="components[${index}][type]" required class="h-8 w-full rounded-md border border-gray-300 px-2 text-[11px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                    <option value="earning">Earning</option>
+                    <option value="deduction">Deduction</option>
+                    <option value="info">Info</option>
+                </select>
+            </td>
+            <td class="border-t border-gray-100 px-2 py-1">
+                <input type="number" min="0" step="1" name="components[${index}][amount]" value="0" required class="h-8 w-full rounded-md border border-gray-300 px-2 text-right text-[11px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+            </td>
+            <td class="border-t border-gray-100 px-2 py-1 text-center">
+                <button type="button" onclick="this.closest('[data-component-row]').remove()" class="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer">
+                    <span class="material-symbols-outlined text-[15px]">delete</span>
+                </button>
+            </td>
+        </tr>
+    `);
+}
+</script>
+@endpush
 @endsection
