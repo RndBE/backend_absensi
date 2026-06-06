@@ -37,13 +37,13 @@
             </div>
             <form action="{{ route('admin.holidays.import-national') }}" method="POST" class="p-5">
                 @csrf
-                <p class="text-[11px] text-gray-500 mb-3">Import otomatis hari libur nasional Indonesia untuk tahun tertentu.</p>
+                <p class="text-[11px] text-gray-500 mb-3">Import hari libur nasional dari data SKB resmi yang tersedia di sistem.</p>
                 <div class="flex items-end gap-2">
                     <div class="flex-1">
                         <label class="block text-[11px] font-semibold text-gray-600 mb-1">Tahun</label>
                         <input type="number" name="year" value="{{ $year }}" min="2020" max="2030" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] outline-none focus:border-indigo-500">
                     </div>
-                    <button type="submit" class="px-4 py-2.5 text-[12px] font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-all cursor-pointer whitespace-nowrap" data-confirm="Import hari libur nasional tahun ini?">
+                    <button type="submit" class="px-4 py-2.5 text-[12px] font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-all cursor-pointer whitespace-nowrap" data-confirm="Import hari libur nasional dari SKB resmi untuk tahun ini?">
                         🇮🇩 Import
                     </button>
                 </div>
