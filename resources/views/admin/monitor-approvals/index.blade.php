@@ -122,6 +122,15 @@
                         default      => 'bg-gray-100 text-gray-600',
                     };
 
+                    $formatDurationValue = function ($value) {
+                        $number = (float) $value;
+                        if (floor($number) === $number) {
+                            return (string) (int) $number;
+                        }
+
+                        return rtrim(rtrim(number_format($number, 1, ',', '.'), '0'), ',');
+                    };
+
                     // Build chain steps with log info
                     $chainSteps = [];
                     if ($chain->isNotEmpty()) {
@@ -140,8 +149,8 @@
 
                     // Summary info per type
                     $summaryLine = match($row['type']) {
-                        'leave'      => ($item->leaveType->name ?? 'Cuti') . ' · ' . $item->start_date->format('d/m/Y') . ($item->total_days ? ' · ' . $item->total_days . ' hari' : ''),
-                        'overtime'   => $item->date->format('d/m/Y') . ' · ' . ($item->overtime_type === 'holiday' ? 'Hari Libur' : 'Hari Kerja') . ' · ' . number_format(($item->total_duration ?? 0) / 60, 1) . ' jam',
+                        'leave'      => ($item->leaveType->name ?? 'Cuti') . ' · ' . $item->start_date->format('d/m/Y') . ($item->total_days ? ' · ' . $formatDurationValue($item->total_days) . ' hari' : ''),
+                        'overtime'   => $item->date->format('d/m/Y') . ' · ' . ($item->overtime_type === 'holiday' ? 'Hari Libur' : 'Hari Kerja') . ' · ' . $formatDurationValue(($item->total_duration ?? 0) / 60) . ' jam',
                         'attendance' => $item->date->format('d/m/Y') . ' · In: ' . ($item->clock_in ?? '-') . ' Out: ' . ($item->clock_out ?? '-'),
                         'budget'     => ($item->title ?? 'Anggaran') . ' · ' . 'Rp ' . number_format($item->total_amount ?? 0, 0, ',', '.'),
                         'travel'     => ($item->destination_city ?? '-') . ' · ' . ($item->departure_date?->format('d/m') ?? '-') . ' s/d ' . ($item->return_date?->format('d/m/Y') ?? '-'),
