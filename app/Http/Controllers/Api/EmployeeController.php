@@ -25,9 +25,9 @@ class EmployeeController extends Controller
 
         $employees = $query->select('id', 'employee_code', 'full_name', 'phone', 'photo', 'position', 'department_id')
             ->orderBy('full_name')
-            ->paginate(20);
+            ->get();
 
-        $employees->getCollection()->transform(function ($employee) {
+        $employees = $employees->map(function ($employee) {
             return [
                 'id' => $employee->id,
                 'employee_code' => $employee->employee_code,
