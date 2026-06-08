@@ -19,9 +19,10 @@ class AttendanceRequestController extends Controller
         $period = $request->period ? Carbon::parse($request->period . '-01') : now();
 
         $requests = AttendanceRequest::where('employee_id', $request->user()->id)
-            ->whereYear('created_at', $period->year)
-            ->whereMonth('created_at', $period->month)
+            ->whereYear('date', $period->year)
+            ->whereMonth('date', $period->month)
             ->with('attachments')
+            ->orderBy('date', 'desc')
             ->orderBy('created_at', 'desc')
             ->get();
 
