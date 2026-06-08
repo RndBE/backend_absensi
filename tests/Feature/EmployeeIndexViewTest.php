@@ -17,6 +17,16 @@ class EmployeeIndexViewTest extends TestCase
         $this->assertStringNotContainsString('data-confirm="Nonaktifkan karyawan ini?"', $view);
     }
 
+    public function test_employee_payroll_index_uses_local_fuzzy_search_like_employee_index(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/employee-payrolls/index.blade.php'));
+
+        $this->assertStringContainsString('id="employeePayrollSearch"', $view);
+        $this->assertStringContainsString('data-fuse-row="employee-payroll"', $view);
+        $this->assertStringContainsString('employeePayrollFuse', $view);
+        $this->assertStringContainsString('employeePayrollFuseEmpty', $view);
+    }
+
     public function test_internship_supervisor_field_is_marked_optional(): void
     {
         foreach ([

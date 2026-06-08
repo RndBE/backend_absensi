@@ -19,18 +19,11 @@ class EmployeePayrollController extends Controller
             ->where('is_active', true)
             ->with(['department:id,name', 'activePayroll']);
 
-        if ($request->search) {
-            $query->where(function ($q) use ($request) {
-                $q->where('full_name', 'like', "%{$request->search}%")
-                  ->orWhere('employee_code', 'like', "%{$request->search}%");
-            });
-        }
-
         if ($request->department_id) {
             $query->where('department_id', $request->department_id);
         }
 
-        $employees = $query->orderBy('full_name')->paginate(20)->withQueryString();
+        $employees = $query->orderBy('full_name')->get();
 
         $departments = \App\Models\Department::where('company_id', $admin->company_id)->orderBy('name')->get(['id', 'name']);
 

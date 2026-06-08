@@ -94,15 +94,24 @@ class AdminFilterViewTest extends TestCase
     public function test_employee_payroll_index_auto_submits_department_filter_without_filter_button(): void
     {
         $view = file_get_contents(resource_path('views/admin/employee-payrolls/index.blade.php'));
+        $controller = file_get_contents(app_path('Http/Controllers/Admin/EmployeePayrollController.php'));
 
+        $this->assertStringContainsString('fuse.js', $view);
+        $this->assertStringContainsString('id="employeePayrollSearch"', $view);
+        $this->assertStringContainsString('data-fuse-row="employee-payroll"', $view);
+        $this->assertStringContainsString('data-search=', $view);
+        $this->assertStringContainsString('threshold: 0.45', $view);
         $this->assertStringContainsString('<form method="GET" id="employeePayrollFilterForm" class="flex items-center gap-3 mb-5 flex-wrap">', $view);
         $this->assertStringContainsString('onchange="document.getElementById(\'employeePayrollFilterForm\').submit()"', $view);
         $this->assertSame(2, substr_count($view, 'w-full max-w-[280px]'));
         $this->assertSame(2, substr_count($view, 'h-[42px]'));
         $this->assertStringContainsString('class="inline-flex items-center px-4 py-2', $view);
         $this->assertStringNotContainsString('type="submit"', $view);
+        $this->assertStringNotContainsString('name="search"', $view);
         $this->assertStringNotContainsString('>Filter</button>', $view);
-        $this->assertStringContainsString("request('search') || request('department_id')", $view);
+        $this->assertStringContainsString("request()->filled('department_id')", $view);
+        $this->assertStringNotContainsString('$request->search', $controller);
+        $this->assertStringNotContainsString('paginate(20)', $controller);
     }
 
     public function test_payslip_index_uses_fuse_search_and_preserves_period_filter(): void
