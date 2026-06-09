@@ -190,7 +190,7 @@
         </div>
     </div>
 
-    {{-- Recent Leaves --}}
+    {{-- Recent Requests --}}
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm animate-fade-in-up">
         <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">description</span> Pengajuan Terbaru</h3>
@@ -207,29 +207,34 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse($recentLeaves as $lr)
+                    @forelse($recentRequests as $request)
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex items-center gap-2">
-                                <div class="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($lr->employee->full_name ?? '?', 0, 1) }}</div>
-                                <span class="text-[13px] font-semibold text-gray-800">{{ $lr->employee->full_name ?? '-' }}</span>
+                                <div class="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ $request['employee_initial'] }}</div>
+                                <span class="text-[13px] font-semibold text-gray-800">{{ $request['employee_name'] }}</span>
                             </div>
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">{{ $lr->leaveType->name ?? 'Cuti' }}</span>
+                            <a href="{{ $request['url'] }}" class="inline-flex flex-col gap-1 group">
+                                <span class="inline-flex w-fit items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">{{ $request['category'] }}</span>
+                                <span class="text-[12px] font-semibold text-gray-600 group-hover:text-indigo-600">{{ $request['type'] }}</span>
+                            </a>
                         </td>
-                        <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $lr->start_date->format('d/m/Y') }}</td>
+                        <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $request['date']->format('d/m/Y') }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
-                            @if($lr->status === 'pending')
+                            @if($request['status'] === 'pending')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Pending</span>
-                            @elseif($lr->status === 'in_review')
+                            @elseif($request['status'] === 'in_review')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">Diproses</span>
-                            @elseif($lr->status === 'approved')
+                            @elseif($request['status'] === 'approved')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Disetujui</span>
-                            @elseif($lr->status === 'rejected')
+                            @elseif($request['status'] === 'rejected')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-red-100 text-red-800">Ditolak</span>
+                            @elseif($request['status'] === 'paid')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-purple-100 text-purple-800">Dibayar</span>
                             @else
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-gray-100 text-gray-800">{{ ucfirst($lr->status) }}</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-gray-100 text-gray-800">{{ ucfirst($request['status']) }}</span>
                             @endif
                         </td>
                     </tr>

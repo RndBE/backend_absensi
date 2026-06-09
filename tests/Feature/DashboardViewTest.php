@@ -54,11 +54,11 @@ class DashboardViewTest extends TestCase
         $this->assertStringNotContainsString('Ringkasan HR', $view);
     }
 
-    public function test_dashboard_recent_leave_marks_in_review_as_diproses_not_ditolak(): void
+    public function test_dashboard_recent_request_marks_in_review_as_diproses_not_ditolak(): void
     {
         $view = file_get_contents(resource_path('views/admin/dashboard.blade.php'));
 
-        $this->assertStringContainsString("\$lr->status === 'in_review'", $view);
+        $this->assertStringContainsString("\$request['status'] === 'in_review'", $view);
         $this->assertStringContainsString('Diproses', $view);
     }
 }
