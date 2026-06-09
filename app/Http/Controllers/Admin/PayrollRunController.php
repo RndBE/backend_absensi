@@ -908,7 +908,7 @@ class PayrollRunController extends Controller
         }
 
         // Pola hari kerja per minggu dari work schedule karyawan
-        $employee = Employee::with('workSchedule')->find($empId);
+        $employee = Employee::with(['workSchedule', 'scheduleTemplate.days.shift'])->find($empId);
         $workDaysPerWeek = $employee?->workSchedule?->work_days ?? 5;
 
         $offDates = ScheduleAssignment::where('employee_id', $empId)
@@ -921,8 +921,10 @@ class PayrollRunController extends Controller
         $totalAmount = 0;
         $workdayMins = 0;
         $holidayMins = 0;
+        $shortHolidayMins = 0;
         $workdayAmount = 0;
         $holidayAmount = 0;
+        $shortHolidayAmount = 0;
 
         foreach ($overtimes as $ot) {
             $payableMinutes = $ot->getPayableDuration();
@@ -931,15 +933,21 @@ class PayrollRunController extends Controller
             }
 
             $dateStr = Carbon::parse($ot->date)->format('Y-m-d');
+            $isOfficialHoliday = in_array($dateStr, $holidayDates, true);
             $isHoliday = $ot->overtime_type === 'holiday'
-                || in_array($dateStr, $holidayDates)
-                || in_array($dateStr, $offDates);
+                || $isOfficialHoliday
+                || in_array($dateStr, $offDates, true);
+            $isShortestWorkdayHoliday = $isHoliday
+                && $this->isSixDayOfficialHolidayOnShortestWorkday($employee, $dateStr, $holidayDates, $workDaysPerWeek);
 
             // Hitung per hari agar tarif progresif ter-reset setiap hari
-            $amount = $this->computeOvertimeAmount($payableMinutes, $baseRate, $isHoliday, $workDaysPerWeek);
+            $amount = $this->computeOvertimeAmount($payableMinutes, $baseRate, $isHoliday, $workDaysPerWeek, $isShortestWorkdayHoliday);
             $totalAmount += $amount;
 
-            if ($isHoliday) {
+            if ($isShortestWorkdayHoliday) {
+                $shortHolidayMins += $payableMinutes;
+                $shortHolidayAmount += $amount;
+            } elseif ($isHoliday) {
                 $holidayMins += $payableMinutes;
                 $holidayAmount += $amount;
             } else {
@@ -951,6 +959,7 @@ class PayrollRunController extends Controller
         $detail = $this->buildOvertimeDetail(
             $workdayMins, $workdayAmount,
             $holidayMins, $holidayAmount,
+            $shortHolidayMins, $shortHolidayAmount,
             $baseRate, $workDaysPerWeek
         );
 
@@ -963,7 +972,7 @@ class PayrollRunController extends Controller
     /**
      * Hitung upah lembur untuk satu hari berdasarkan PP No. 35 Tahun 2021.
      */
-    private function computeOvertimeAmount(int $minutes, float $baseRate, bool $isHoliday, int $workDaysPerWeek = 5): float
+    private function computeOvertimeAmount(int $minutes, float $baseRate, bool $isHoliday, int $workDaysPerWeek = 5, bool $isShortestWorkdayHoliday = false): float
     {
         $hours = $minutes / 60;
 
@@ -975,7 +984,7 @@ class PayrollRunController extends Controller
         }
 
         // Ambang batas jam berbeda tergantung pola kerja per minggu
-        $threshold = ($workDaysPerWeek >= 6) ? 7.0 : 8.0;
+        $threshold = ($workDaysPerWeek >= 6 && $isShortestWorkdayHoliday) ? 5.0 : (($workDaysPerWeek >= 6) ? 7.0 : 8.0);
         $tier1 = min($hours, $threshold);
         $tier2 = min(max(0.0, $hours - $threshold), 1.0);
         $tier3 = max(0.0, $hours - $threshold - 1.0);
@@ -986,7 +995,7 @@ class PayrollRunController extends Controller
     /**
      * Bangun string detail lembur untuk ditampilkan di slip gaji.
      */
-    private function buildOvertimeDetail(int $workdayMins, float $workdayAmount, int $holidayMins, float $holidayAmount, float $baseRate, int $workDaysPerWeek): string
+    private function buildOvertimeDetail(int $workdayMins, float $workdayAmount, int $holidayMins, float $holidayAmount, int $shortHolidayMins, float $shortHolidayAmount, float $baseRate, int $workDaysPerWeek): string
     {
         $perJam = 'Rp '.number_format(round($baseRate, 0), 0, ',', '.');
         $parts = [];
@@ -1006,7 +1015,55 @@ class PayrollRunController extends Controller
                 .' = Rp '.number_format(round($holidayAmount, 0), 0, ',', '.');
         }
 
+        if ($shortHolidayMins > 0) {
+            $h = round($shortHolidayMins / 60, 1);
+            $parts[] = 'Hari libur hari kerja terpendek: '.number_format($h, 1, ',', '.').' jam'
+                .' (1-5j x2, 6j x3, dst x4, @'.$perJam.'/jam)'
+                .' = Rp '.number_format(round($shortHolidayAmount, 0), 0, ',', '.');
+        }
+
         return implode(' | ', $parts);
+    }
+
+    private function isSixDayOfficialHolidayOnShortestWorkday(?Employee $employee, string $dateStr, array $holidayDates, int $workDaysPerWeek): bool
+    {
+        if (! $employee || $workDaysPerWeek < 6 || ! in_array($dateStr, $holidayDates, true)) {
+            return false;
+        }
+
+        $template = $employee->scheduleTemplate;
+        if (! $template) {
+            return false;
+        }
+
+        $workdayDurations = $template->days
+            ->map(fn ($day) => $day->shift)
+            ->filter(fn ($shift) => $shift && ! $shift->is_off)
+            ->map(fn ($shift) => $this->getPayrollShiftDurationMinutes($shift))
+            ->filter(fn ($duration) => $duration > 0)
+            ->values();
+
+        if ($workdayDurations->count() < 6 || $workdayDurations->min() === $workdayDurations->max()) {
+            return false;
+        }
+
+        $assignedShift = ScheduleAssignment::with('shift')
+            ->where('employee_id', $employee->id)
+            ->whereDate('date', $dateStr)
+            ->first()
+            ?->shift;
+
+        $dateShift = $assignedShift ?: $template->getShiftForDay(Carbon::parse($dateStr)->dayOfWeekIso);
+        if (! $dateShift || $dateShift->is_off) {
+            return false;
+        }
+
+        return $this->getPayrollShiftDurationMinutes($dateShift) === $workdayDurations->min();
+    }
+
+    private function getPayrollShiftDurationMinutes($shift): int
+    {
+        return abs($shift->getShiftDurationMinutes());
     }
 
     /**
