@@ -73,6 +73,7 @@
                     ]],
                     ['label' => 'Cuti', 'icon' => 'event_busy', 'key' => 'leave', 'items' => [
                         ['route' => 'admin.leaves.index', 'icon' => 'event_busy', 'label' => 'Pengajuan Cuti', 'match' => 'admin.leaves.*'],
+                        ['route' => 'admin.leave-types.index', 'icon' => 'category', 'label' => 'Tipe Cuti', 'match' => 'admin.leave-types.*'],
                         ['route' => 'admin.leave-policies.index', 'icon' => 'tune', 'label' => 'Kebijakan Cuti', 'match' => 'admin.leave-policies.*'],
                         ['route' => 'admin.leave-balances.index', 'icon' => 'account_balance_wallet', 'label' => 'Saldo Cuti', 'match' => 'admin.leave-balances.*'],
                     ]],

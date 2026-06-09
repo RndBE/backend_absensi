@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\HolidayController;
 use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\LeavePolicyController;
 use App\Http\Controllers\Admin\LeaveRequestController;
+use App\Http\Controllers\Admin\LeaveTypeController;
 use App\Http\Controllers\Admin\MonitorApprovalController;
 use App\Http\Controllers\Admin\PayrollAdjustmentController;
 use App\Http\Controllers\Admin\PayrollComponentController;
@@ -85,6 +86,12 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::post('/attendance-photo-archives/generate', [AttendancePhotoArchiveController::class, 'generate'])->name('attendance-photo-archives.generate');
     Route::get('/attendance-photo-archives/{archive}/download', [AttendancePhotoArchiveController::class, 'download'])->name('attendance-photo-archives.download');
     Route::post('/attendance-photo-archives/{archive}/mark-uploaded', [AttendancePhotoArchiveController::class, 'markUploaded'])->name('attendance-photo-archives.mark-uploaded');
+
+    // Leave Types (master data)
+    Route::get('/leave-types', [LeaveTypeController::class, 'index'])->name('leave-types.index');
+    Route::post('/leave-types', [LeaveTypeController::class, 'store'])->name('leave-types.store');
+    Route::put('/leave-types/{leaveType}', [LeaveTypeController::class, 'update'])->name('leave-types.update');
+    Route::delete('/leave-types/{leaveType}', [LeaveTypeController::class, 'destroy'])->name('leave-types.destroy');
 
     // Leave Requests
     Route::get('/leaves', [LeaveRequestController::class, 'index'])->name('leaves.index');
