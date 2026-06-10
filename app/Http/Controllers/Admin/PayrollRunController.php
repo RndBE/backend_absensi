@@ -25,6 +25,8 @@ use Illuminate\Support\Facades\Log;
 
 class PayrollRunController extends Controller
 {
+    private const ALPHA_PENALTY_PER_DAY = 100000;
+
     public function index()
     {
         $runs = PayrollRun::with(['creator:id,full_name'])
@@ -846,29 +848,65 @@ class PayrollRunController extends Controller
     }
 
     /**
-     * Hitung potongan alpha: (gaji pokok / 30) per hari absent
+     * Hitung potongan alpha: Rp 100.000 per hari absent
      * Exclude hari libur, cuti, dan hari off shift
      */
     private function calculateAlphaPenalty(int $empId, $periodStart, $periodEnd, array $holidayDates, float $basicSalary): array
     {
-        $perDay = round($basicSalary / 30, 0);
+        $perDay = self::ALPHA_PENALTY_PER_DAY;
+        $periodStart = Carbon::parse($periodStart)->startOfDay();
+        $periodEnd = Carbon::parse($periodEnd)->startOfDay();
+        $countUntil = $periodEnd->copy()->min(Carbon::today());
         $leaveDates = $this->getApprovedLeaveDates($empId, $periodStart, $periodEnd);
 
         // Get off-shift dates
         $offDates = ScheduleAssignment::where('employee_id', $empId)
-            ->whereBetween('date', [$periodStart, $periodEnd])
+            ->whereBetween('date', [$periodStart, $countUntil])
             ->whereHas('shift', fn ($q) => $q->where('is_off', true))
             ->pluck('date')
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
 
-        $absentDays = Attendance::where('employee_id', $empId)
-            ->whereBetween('date', [$periodStart, $periodEnd])
+        $excludedDates = array_flip(array_merge($holidayDates, $leaveDates, $offDates));
+
+        $explicitAbsentDates = Attendance::where('employee_id', $empId)
+            ->whereBetween('date', [$periodStart, $countUntil])
             ->where('status', 'absent')
-            ->whereNotIn('date', $holidayDates)
-            ->whereNotIn('date', $leaveDates)
-            ->whereNotIn('date', $offDates)
-            ->count();
+            ->pluck('date')
+            ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
+            ->reject(fn ($date) => isset($excludedDates[$date]))
+            ->values();
+
+        $attendanceDates = Attendance::where('employee_id', $empId)
+            ->whereBetween('date', [$periodStart, $countUntil])
+            ->pluck('date')
+            ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
+            ->flip();
+
+        $employee = Employee::with(['scheduleTemplate.days.shift'])->find($empId);
+        $templateDays = $employee?->scheduleTemplate?->days?->keyBy('day_of_week') ?? collect();
+        $overrides = ScheduleAssignment::with('shift')
+            ->where('employee_id', $empId)
+            ->whereBetween('date', [$periodStart, $countUntil])
+            ->get()
+            ->keyBy(fn ($assignment) => Carbon::parse($assignment->date)->format('Y-m-d'));
+
+        $inferredAbsentDates = collect();
+        for ($date = $periodStart->copy(); $date->lte($countUntil); $date->addDay()) {
+            $dateString = $date->format('Y-m-d');
+            if (isset($excludedDates[$dateString]) || isset($attendanceDates[$dateString])) {
+                continue;
+            }
+
+            $shift = $overrides->get($dateString)?->shift
+                ?? $templateDays->get($date->dayOfWeekIso)?->shift;
+
+            if ($shift && ! $shift->is_off) {
+                $inferredAbsentDates->push($dateString);
+            }
+        }
+
+        $absentDays = $explicitAbsentDates->merge($inferredAbsentDates)->unique()->count();
 
         return [
             'days' => $absentDays,

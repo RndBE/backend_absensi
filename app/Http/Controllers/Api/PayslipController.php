@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Company;
 use App\Models\PayrollRunDetail;
+use App\Services\BpjsCalculator;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class PayslipController extends Controller
@@ -93,8 +96,9 @@ class PayslipController extends Controller
         $employee = $request->user();
 
         $detail = PayrollRunDetail::with([
-            'employee:id,full_name,employee_code,department_id,position',
+            'employee',
             'employee.department:id,name',
+            'employee.activePayroll',
             'payrollRun:id,period,status',
         ])->where('employee_id', $employee->id)
           ->whereHas('payrollRun', function ($q) {
@@ -102,11 +106,79 @@ class PayslipController extends Controller
           })
           ->findOrFail($id);
 
-        $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail'));
+        $company = Company::find($detail->employee->company_id);
+        $bpjsData = $this->buildBpjsData($detail);
+        $logoBase64 = $this->buildLogoBase64($company);
+
+        $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail', 'company', 'logoBase64', 'bpjsData'));
         $pdf->setPaper('A4', 'portrait');
 
         $filename = 'Payslip_' . $detail->employee->employee_code . '_' . $detail->payrollRun->period . '.pdf';
 
         return $pdf->download($filename);
+    }
+
+    private function buildLogoBase64(?Company $company): ?string
+    {
+        if (! $company?->logo) {
+            return null;
+        }
+
+        $logoPath = storage_path('app/public/' . $company->logo);
+        if (! file_exists($logoPath)) {
+            return null;
+        }
+
+        $logoMime = mime_content_type($logoPath);
+
+        return 'data:' . $logoMime . ';base64,' . base64_encode(file_get_contents($logoPath));
+    }
+
+    private function buildBpjsData(PayrollRunDetail $detail): array
+    {
+        $payroll = $detail->employee->activePayroll;
+        if (! $payroll) {
+            return ['items' => [], 'total' => 0];
+        }
+
+        $periodDate = Carbon::parse($detail->payrollRun->period . '-01');
+        $bpjs = (new BpjsCalculator($periodDate->format('Y-m-d')))->calculate((float) $payroll->basic_salary);
+
+        $items = [[
+            'label' => 'Rate BPJS Kesehatan',
+            'amount' => $bpjs['kesehatan']['basis'],
+            'is_basis' => true,
+        ]];
+
+        $tkHasContrib = $bpjs['jht']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'] + $bpjs['jp']['company'] > 0;
+        if ($tkHasContrib) {
+            $items[] = [
+                'label' => 'Rate BPJS Ketenagakerjaan',
+                'amount' => $bpjs['jht']['basis'],
+                'is_basis' => true,
+            ];
+        }
+
+        if ($bpjs['jkk']['company'] > 0) {
+            $items[] = ['label' => 'JKK (Jaminan Kecelakaan Kerja)', 'amount' => $bpjs['jkk']['company'], 'is_basis' => false];
+        }
+        if ($bpjs['jkm']['company'] > 0) {
+            $items[] = ['label' => 'JKM (Jaminan Kematian)', 'amount' => $bpjs['jkm']['company'], 'is_basis' => false];
+        }
+        if ($bpjs['jht']['company'] > 0) {
+            $items[] = ['label' => 'JHT Perusahaan (Jaminan Hari Tua)', 'amount' => $bpjs['jht']['company'], 'is_basis' => false];
+        }
+        if ($bpjs['jp']['company'] > 0) {
+            $items[] = ['label' => 'JP Perusahaan (Jaminan Pensiun)', 'amount' => $bpjs['jp']['company'], 'is_basis' => false];
+        }
+        if ($bpjs['kesehatan']['company'] > 0) {
+            $items[] = ['label' => 'BPJS Kesehatan Perusahaan', 'amount' => $bpjs['kesehatan']['company'], 'is_basis' => false];
+        }
+
+        return [
+            'raw' => $bpjs,
+            'items' => $items,
+            'total' => collect($items)->sum('amount'),
+        ];
     }
 }

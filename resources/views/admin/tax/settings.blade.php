@@ -234,16 +234,25 @@
             </table>
         </div>
 
-        {{-- NPP --}}
-        <div class="px-5 py-3 border-t border-gray-100">
-            <div class="flex items-center gap-4">
+        {{-- Identitas Pelaporan BPJS --}}
+        <div class="px-5 py-4 border-t border-gray-100 bg-gray-50/40">
+            <div class="max-w-[520px]">
                 <div>
-                    <label class="block text-[11px] font-semibold text-gray-500 uppercase mb-1">NPP BPJS Ketenagakerjaan</label>
-                    <input type="text" name="npp" value="{{ $bpjsSettings->first()?->npp }}" placeholder="Contoh: 12345678" class="px-3 py-2 text-[12px] border border-gray-300 rounded-lg w-[200px] focus:ring-2 focus:ring-indigo-500">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-symbols-outlined text-[17px] text-blue-500">badge</span>
+                        <div>
+                            <h4 class="text-[13px] font-bold text-gray-800">Identitas Pelaporan BPJS</h4>
+                            <p class="text-[11.5px] text-gray-500">Data referensi perusahaan untuk dokumen atau export BPJS.</p>
+                        </div>
+                    </div>
+                    <label class="block text-[11px] font-semibold text-gray-500 uppercase mb-1">NPP Perusahaan BPJS Ketenagakerjaan</label>
+                    <input type="text" name="npp" value="{{ $bpjsSettings->first()?->npp }}" placeholder="Contoh: 12345678" class="px-3 py-2 text-[12px] border border-gray-300 rounded-lg w-full focus:ring-2 focus:ring-indigo-500">
+                    <p class="text-[11px] text-gray-500 mt-1.5">Tidak memengaruhi perhitungan payroll. Nominal BPJS tetap mengikuti tarif dan batas gaji di tabel.</p>
                 </div>
-                <div class="flex-1"></div>
-                <button type="submit" class="px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">Simpan Semua BPJS</button>
             </div>
+        </div>
+        <div class="px-5 py-3 border-t border-gray-100 flex justify-end bg-white">
+            <button type="submit" class="inline-flex items-center justify-center min-h-[36px] px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">Simpan Semua BPJS</button>
         </div>
     </form>
 </div>

@@ -60,6 +60,9 @@ class EmployeePayrollController extends Controller
             'bpjs_kesehatan' => 'nullable|string',
             'bpjs_ketenagakerjaan' => 'nullable|string',
             'effective_date' => 'required|date',
+            'is_exempt_penalty' => 'nullable|boolean',
+            'late_penalty_per_day' => 'nullable|numeric|min:0',
+            'overtime_multiplier' => 'nullable|numeric|min:0|max:5',
         ]);
 
         // Deactivate old payroll records
@@ -71,7 +74,7 @@ class EmployeePayrollController extends Controller
                 'basic_salary', 'payment_schedule', 'payment_method',
                 'bank_name', 'bank_account_number', 'bank_account_name',
                 'npwp', 'ptkp_status', 'bpjs_kesehatan', 'bpjs_ketenagakerjaan',
-                'effective_date',
+                'effective_date', 'is_exempt_penalty', 'late_penalty_per_day', 'overtime_multiplier',
             ]),
             ['employee_id' => $id, 'is_active' => true]
         ));
