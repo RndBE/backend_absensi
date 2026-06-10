@@ -705,9 +705,11 @@ class PayrollRunController extends Controller
                             .'Pajak Jan-Nov: Rp '.number_format($taxJanToNov, 0, ',', '.').' | '
                             .'PKP Aktual: Rp '.number_format($tax['pkp'], 0, ',', '.');
             } else {
-                // ── Jan-Nov: annualized × 12 (metode normal) ──
-                $tax = $pph21Calc->calculateMonthly($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
-                $detailNote = "Metode: {$taxMethod}, PTKP: {$ptkpStatus}, PKP: Rp ".number_format($tax['pkp'], 0, ',', '.');
+                // ── Jan-Nov: Metode TER (Tarif Efektif Rata-rata) — PP 58/2023 ──
+                $tax = $pph21Calc->calculateMonthlyTER($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
+                $detailNote = "Metode: {$taxMethod}, PTKP: {$ptkpStatus}, TER {$tax['ter_category']} "
+                            .rtrim(rtrim(number_format($tax['ter_rate'], 2, ',', '.'), '0'), ',')."% "
+                            .'x Rp '.number_format($totalEarning, 0, ',', '.');
             }
 
             // Gross-up: add tunjangan pajak as earning

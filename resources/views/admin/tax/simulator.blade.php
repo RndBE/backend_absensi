@@ -57,23 +57,22 @@
             <div class="text-[12px] opacity-70 mt-1">Per bulan · Metode: {{ strtoupper(str_replace('_', ' ', $result['tax_method'])) }}</div>
         </div>
 
-        {{-- PPh 21 Detail --}}
+        {{-- PPh 21 Detail (Metode TER — PP 58/2023, Masa Jan–Nov) --}}
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-            <div class="text-[12px] font-bold text-gray-500 uppercase tracking-wider mb-3">PPh 21</div>
+            <div class="flex items-center justify-between mb-3">
+                <div class="text-[12px] font-bold text-gray-500 uppercase tracking-wider">PPh 21 — Metode TER</div>
+                <span class="text-[10.5px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Kategori {{ $result['ter_category'] }}</span>
+            </div>
             <table class="w-full text-[12px]">
                 <tr><td class="py-1.5 text-gray-600">Bruto Bulanan</td><td class="py-1.5 text-right font-semibold text-gray-800">Rp {{ number_format($result['bruto_monthly'], 0, ',', '.') }}</td></tr>
-                <tr><td class="py-1.5 text-gray-600">Biaya Jabatan (5%)</td><td class="py-1.5 text-right font-semibold text-red-600">- Rp {{ number_format($result['biaya_jabatan'], 0, ',', '.') }}</td></tr>
-                <tr><td class="py-1.5 text-gray-600">BPJS Karyawan</td><td class="py-1.5 text-right font-semibold text-red-600">- Rp {{ number_format($result['bpjs_employee'], 0, ',', '.') }}</td></tr>
-                <tr class="border-t border-gray-100"><td class="py-1.5 text-gray-600">Netto Bulanan</td><td class="py-1.5 text-right font-bold text-gray-800">Rp {{ number_format($result['netto_monthly'], 0, ',', '.') }}</td></tr>
-                <tr><td class="py-1.5 text-gray-600">Netto Tahunan</td><td class="py-1.5 text-right font-semibold text-gray-700">Rp {{ number_format($result['netto_annual'], 0, ',', '.') }}</td></tr>
-                <tr><td class="py-1.5 text-gray-600">PTKP ({{ $result['ptkp_status'] }})</td><td class="py-1.5 text-right font-semibold text-red-600">- Rp {{ number_format($result['ptkp_annual'], 0, ',', '.') }}</td></tr>
-                <tr class="border-t border-gray-100"><td class="py-1.5 text-gray-600">PKP</td><td class="py-1.5 text-right font-bold text-gray-800">Rp {{ number_format($result['pkp'], 0, ',', '.') }}</td></tr>
-                <tr><td class="py-1.5 text-gray-600">PPh 21 Tahunan</td><td class="py-1.5 text-right font-semibold text-gray-700">Rp {{ number_format($result['tax_annual'], 0, ',', '.') }}</td></tr>
-                <tr class="border-t border-gray-200 bg-gray-50"><td class="py-2 font-bold text-gray-800">PPh 21 / Bulan</td><td class="py-2 text-right font-bold text-red-700 text-[14px]">Rp {{ number_format($result['tax_monthly'], 0, ',', '.') }}</td></tr>
                 @if($result['tunjangan_pajak'] > 0)
-                <tr class="bg-emerald-50"><td class="py-2 font-bold text-emerald-700">Tunjangan Pajak</td><td class="py-2 text-right font-bold text-emerald-700">Rp {{ number_format($result['tunjangan_pajak'], 0, ',', '.') }}</td></tr>
+                <tr><td class="py-1.5 text-gray-600">Tunjangan Pajak (Gross Up)</td><td class="py-1.5 text-right font-semibold text-emerald-600">+ Rp {{ number_format($result['tunjangan_pajak'], 0, ',', '.') }}</td></tr>
                 @endif
+                <tr><td class="py-1.5 text-gray-600">Status PTKP</td><td class="py-1.5 text-right font-semibold text-gray-800">{{ $result['ptkp_status'] }}</td></tr>
+                <tr><td class="py-1.5 text-gray-600">Tarif Efektif (TER)</td><td class="py-1.5 text-right font-semibold text-gray-800">{{ rtrim(rtrim(number_format($result['ter_rate'], 2, ',', '.'), '0'), ',') }}%</td></tr>
+                <tr class="border-t border-gray-200 bg-gray-50"><td class="py-2 font-bold text-gray-800">PPh 21 / Bulan</td><td class="py-2 text-right font-bold text-red-700 text-[14px]">Rp {{ number_format($result['tax_monthly'], 0, ',', '.') }}</td></tr>
             </table>
+            <p class="text-[10.5px] text-gray-400 mt-3 leading-relaxed">PPh 21 = Bruto × Tarif Efektif (TER) sesuai PP No. 58 Tahun 2023, berlaku Masa Pajak Jan–Nov. Perhitungan tahunan progresif dilakukan pada Masa Desember.</p>
         </div>
 
         {{-- BPJS Detail --}}

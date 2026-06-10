@@ -310,8 +310,42 @@ class TaxController extends Controller
         $bpjsCalc = new BpjsCalculator();
         $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
 
-        $pph21Calc = new Pph21Calculator();
-        $tax = $pph21Calc->calculateMonthly($bruto, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
+        $pph21Calc = new Pph21Calculator($request->period . '-01');
+        $month = (int) substr($request->period, 5, 2);
+
+        if ($month === 12) {
+            // Desember — Penghitungan Kembali Tahunan berdasarkan penghasilan riil Jan-Nov
+            $year = (int) substr($request->period, 0, 4);
+            $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year) {
+                $q->whereYear('period', $year)
+                    ->whereMonth('period', '<=', 11)
+                    ->where('status', '!=', 'draft');
+            })->where('employee_id', $request->employee_id)->get();
+
+            $brutoJanToNov = 0;
+            $taxJanToNov = 0;
+            foreach ($prevDetails as $pd) {
+                $brutoJanToNov += (float) $pd->total_earning;
+                $pcomps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
+                foreach ($pcomps as $pc) {
+                    if (str_contains($pc['name'] ?? '', 'PPh') && ($pc['type'] ?? '') === 'deduction') {
+                        $taxJanToNov += (float) ($pc['amount'] ?? 0);
+                    }
+                }
+            }
+
+            $tax = $pph21Calc->calculateDecember(
+                brutoDecember      : $bruto,
+                brutoJanToNov      : $brutoJanToNov,
+                bpjsEmployeeMonthly: $bpjs['employee_total'],
+                ptkpStatus         : $ptkpStatus,
+                taxMethod          : $taxMethod,
+                taxJanToNov        : $taxJanToNov
+            );
+        } else {
+            // Jan-Nov — Metode TER (PP 58/2023)
+            $tax = $pph21Calc->calculateMonthlyTER($bruto, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
+        }
 
         $totalEarning = $bruto;
         $totalDeduction = 0;
