@@ -261,6 +261,9 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::post('/tax/simulator', [TaxController::class, 'simulate'])->name('tax.simulate');
     Route::get('/tax/bukti-potong', [TaxController::class, 'buktiPotong'])->name('tax.bukti-potong');
     Route::post('/tax/bukti-potong/generate', [TaxController::class, 'generateBuktiPotong'])->name('tax.generate-bukti-potong');
+    Route::get('/tax/bukti-potong/{id}', [TaxController::class, 'showBuktiPotong'])->name('tax.show-bukti-potong');
+    Route::get('/tax/bukti-potong/{id}/download', [TaxController::class, 'downloadBuktiPotong'])->name('tax.download-bukti-potong');
+    Route::post('/tax/bukti-potong/{id}/finalize', [TaxController::class, 'finalizeBuktiPotong'])->name('tax.finalize-bukti-potong');
     Route::post('/tax/recalculate', [TaxController::class, 'recalculate'])->name('tax.recalculate');
     Route::get('/tax/export-efiling', [TaxController::class, 'exportEfiling'])->name('tax.export-efiling');
 

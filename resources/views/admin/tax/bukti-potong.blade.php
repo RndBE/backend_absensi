@@ -2,6 +2,13 @@
 @section('title', 'Bukti Potong PPh 21')
 
 @section('content')
+@if(session('success'))
+<div class="mb-4 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[13px] rounded-lg">{{ session('success') }}</div>
+@endif
+@if(session('error'))
+<div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-[13px] rounded-lg">{{ session('error') }}</div>
+@endif
+
 <div class="flex items-center justify-between mb-5">
     <div>
         <h2 class="text-[20px] font-bold text-gray-900">Bukti Potong 1721-A1</h2>
@@ -48,6 +55,7 @@
                     <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">BPJS</th>
                     <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Netto</th>
                     <th class="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Status</th>
+                    <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -65,9 +73,27 @@
                     <td class="px-4 py-3 border-b border-gray-100 text-center">
                         <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold {{ $cert->status === 'final' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700' }}">{{ ucfirst($cert->status) }}</span>
                     </td>
+                    <td class="px-4 py-3 border-b border-gray-100">
+                        <div class="flex items-center justify-end gap-2">
+                            <a href="{{ route('admin.tax.show-bukti-potong', $cert->id) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                                <span class="material-symbols-outlined text-[14px]">visibility</span> Review
+                            </a>
+                            <a href="{{ route('admin.tax.download-bukti-potong', $cert->id) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100">
+                                <span class="material-symbols-outlined text-[14px]">download</span> PDF
+                            </a>
+                            @if($cert->status !== 'final')
+                            <form action="{{ route('admin.tax.finalize-bukti-potong', $cert->id) }}" method="POST" data-confirm="Finalisasi bukti potong ini? Data final tidak bisa digenerate ulang.">
+                                @csrf
+                                <button type="submit" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg hover:bg-emerald-100 cursor-pointer">
+                                    <span class="material-symbols-outlined text-[14px]">task_alt</span> Finalisasi
+                                </button>
+                            </form>
+                            @endif
+                        </div>
+                    </td>
                 </tr>
                 @empty
-                <tr><td colspan="7" class="text-center py-12 text-gray-400 text-sm">Belum ada bukti potong untuk tahun {{ $year }}</td></tr>
+                <tr><td colspan="8" class="text-center py-12 text-gray-400 text-sm">Belum ada bukti potong untuk tahun {{ $year }}</td></tr>
                 @endforelse
             </tbody>
         </table>

@@ -10,6 +10,7 @@ use App\Models\TaxCertificate;
 use App\Models\PayrollRunDetail;
 use App\Services\Pph21Calculator;
 use App\Services\BpjsCalculator;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 
 class TaxController extends Controller
@@ -119,7 +120,7 @@ class TaxController extends Controller
 
         $certificates = TaxCertificate::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
             ->where('tax_year', $year)
-            ->with('employee')
+            ->with('employee.activePayroll')
             ->orderBy('certificate_number')
             ->get();
 
@@ -137,6 +138,18 @@ class TaxController extends Controller
 
         $empId = $request->employee_id;
         $year = $request->tax_year;
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::with('activePayroll')
+            ->where('company_id', $admin->company_id)
+            ->findOrFail($empId);
+
+        $existing = TaxCertificate::where('employee_id', $empId)
+            ->where('tax_year', $year)
+            ->first();
+
+        if ($existing?->status === 'final') {
+            return back()->with('error', 'Bukti potong sudah final dan tidak bisa digenerate ulang.');
+        }
 
         // Get all payroll run details for this employee in the year
         $details = PayrollRunDetail::where('employee_id', $empId)
@@ -162,12 +175,23 @@ class TaxController extends Controller
 
             $tax = 0;
             $bpjs = 0;
+            $taxComponents = [];
+            $bpjsComponents = [];
             foreach ($comps as $comp) {
-                if (str_contains($comp['name'] ?? '', 'PPh 21') && ($comp['type'] ?? '') === 'deduction') {
-                    $tax += (float) ($comp['amount'] ?? 0);
+                $amount = (float) ($comp['amount'] ?? 0);
+                if ($this->isPph21Deduction($comp)) {
+                    $tax += $amount;
+                    $taxComponents[] = [
+                        'name' => $comp['name'] ?? 'PPh 21',
+                        'amount' => $amount,
+                    ];
                 }
-                if (str_contains($comp['name'] ?? '', 'BPJS (Karyawan)')) {
-                    $bpjs += (float) ($comp['amount'] ?? 0);
+                if ($this->isEmployeeBpjsDeduction($comp)) {
+                    $bpjs += $amount;
+                    $bpjsComponents[] = [
+                        'name' => $comp['name'] ?? 'BPJS Karyawan',
+                        'amount' => $amount,
+                    ];
                 }
             }
 
@@ -179,10 +203,29 @@ class TaxController extends Controller
                 'tax' => $tax,
                 'bpjs' => $bpjs,
                 'net' => (float) $detail->net_salary,
+                'tax_components' => $taxComponents,
+                'bpjs_components' => $bpjsComponents,
             ];
         }
 
         $certNumber = '1.1-' . str_pad($empId, 6, '0', STR_PAD_LEFT) . '-' . $year;
+        $certificateDetails = [
+            'employee' => [
+                'nik' => $employee->nik,
+                'npwp' => $employee->activePayroll?->npwp ?: $employee->npwp_16 ?: $employee->npwp_15,
+                'ptkp' => $employee->activePayroll?->ptkp_status ?: $employee->ptkp,
+                'position' => $employee->position,
+                'join_date' => optional($employee->join_date)->format('Y-m-d'),
+                'resign_date' => optional($employee->resign_date)->format('Y-m-d'),
+            ],
+            'tax' => [
+                'object_code' => '21-100-01',
+                'year' => (int) $year,
+                'period_start' => array_key_first($monthlyDetails),
+                'period_end' => array_key_last($monthlyDetails),
+            ],
+            'months' => $monthlyDetails,
+        ];
 
         $cert = TaxCertificate::updateOrCreate(
             ['employee_id' => $empId, 'tax_year' => $year],
@@ -192,12 +235,38 @@ class TaxController extends Controller
                 'tax_annual' => $taxAnnual,
                 'bpjs_annual' => $bpjsAnnual,
                 'nett_annual' => $grossAnnual - $taxAnnual - $bpjsAnnual,
-                'monthly_details' => $monthlyDetails,
+                'monthly_details' => $certificateDetails,
                 'status' => 'draft',
             ]
         );
 
         return back()->with('success', "Bukti potong {$certNumber} berhasil digenerate.");
+    }
+
+    public function showBuktiPotong($id)
+    {
+        $certificate = $this->findCompanyCertificate($id);
+
+        return view('admin.tax.bukti-potong-show', compact('certificate'));
+    }
+
+    public function finalizeBuktiPotong($id)
+    {
+        $certificate = $this->findCompanyCertificate($id);
+        $certificate->update(['status' => 'final']);
+
+        return back()->with('success', "Bukti potong {$certificate->certificate_number} berhasil difinalisasi.");
+    }
+
+    public function downloadBuktiPotong($id)
+    {
+        $certificate = $this->findCompanyCertificate($id);
+        $company = $certificate->employee->company;
+
+        $pdf = Pdf::loadView('admin.tax.bukti-potong-pdf', compact('certificate', 'company'));
+        $pdf->setPaper('A4', 'portrait');
+
+        return $pdf->download("Bukti_Potong_{$certificate->certificate_number}.pdf");
     }
 
     // === Tax Recalculate ===
@@ -285,7 +354,7 @@ class TaxController extends Controller
 
         $certs = TaxCertificate::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
             ->where('tax_year', $year)
-            ->with('employee')
+            ->with('employee.activePayroll')
             ->get();
 
         $filename = "efiling_pph21_{$year}.csv";
@@ -297,12 +366,14 @@ class TaxController extends Controller
 
             foreach ($certs as $i => $cert) {
                 $emp = $cert->employee;
-                $payroll = \App\Models\EmployeePayroll::where('employee_id', $emp->id)->where('is_active', true)->first();
+                $payroll = $emp->activePayroll;
+                $details = $cert->monthly_details ?? [];
+                $tax = $details['tax'] ?? [];
                 fputcsv($file, [
                     $i + 1,
-                    $payroll->npwp ?? '-',
+                    $payroll?->npwp ?? $emp->npwp_16 ?? $emp->npwp_15 ?? $emp->nik ?? '-',
                     $emp->full_name,
-                    '21-100-01', // Kode objek pajak pegawai tetap
+                    $tax['object_code'] ?? '21-100-01', // Kode objek pajak pegawai tetap
                     $cert->gross_annual,
                     $cert->tax_annual,
                     'ID',
@@ -312,5 +383,35 @@ class TaxController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    private function findCompanyCertificate($id): TaxCertificate
+    {
+        $admin = Employee::find(session('admin_id'));
+
+        return TaxCertificate::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+            ->with(['employee.company', 'employee.activePayroll'])
+            ->findOrFail($id);
+    }
+
+    private function isPph21Deduction(array $component): bool
+    {
+        return ($component['type'] ?? null) === 'deduction'
+            && str_contains(strtolower($component['name'] ?? ''), 'pph 21');
+    }
+
+    private function isEmployeeBpjsDeduction(array $component): bool
+    {
+        if (($component['type'] ?? null) !== 'deduction') {
+            return false;
+        }
+
+        $name = strtolower($component['name'] ?? '');
+        if (str_contains($name, 'perusahaan')) {
+            return false;
+        }
+
+        return str_contains($name, 'bpjs')
+            || preg_match('/\b(jht|jkk|jkm|jp)\b/i', $name) === 1;
     }
 }
