@@ -431,13 +431,22 @@
         <form action="{{ route('admin.employee-payrolls.assign-component', $employee->id) }}" method="POST" class="p-6 space-y-4">
             @csrf
             <div>
+                <label class="block text-[12px] font-semibold text-gray-600 mb-1.5">Tipe Komponen</label>
+                <select id="assignComponentType" onchange="filterAssignComponentsByType()"
+                        class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="all">Semua Tipe</option>
+                    <option value="earning">Earning (Pendapatan)</option>
+                    <option value="deduction">Deduction (Potongan)</option>
+                </select>
+            </div>
+            <div>
                 <label class="block text-[12px] font-semibold text-gray-600 mb-1.5">Komponen *</label>
-                <select name="payroll_component_id" required
+                <select name="payroll_component_id" id="assignComponentSelect" required
                         class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                         onchange="updateDefaultAmount(this)">
                     <option value="">— Pilih Komponen —</option>
                     @foreach($components as $c)
-                        <option value="{{ $c->id }}" data-amount="{{ $c->default_amount }}">
+                        <option value="{{ $c->id }}" data-type="{{ $c->type }}" data-amount="{{ $c->default_amount }}">
                             {{ $c->name }} ({{ ucfirst($c->type) }})
                         </option>
                     @endforeach
@@ -531,11 +540,45 @@ function syncFromEmployee() {
 
 function updateDefaultAmount(select) {
     const opt = select.options[select.selectedIndex];
-    const amount = opt.dataset.amount || 0;
     const el = document.getElementById('assignAmount');
     const hidden = document.getElementById('assignAmountHidden');
+    if (!opt || !opt.value) {
+        if (hidden) hidden.value = 0;
+        if (el) el.value = '0';
+        return;
+    }
+
+    const amount = opt.dataset.amount || 0;
     hidden.value = amount;
     el.value = String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+function filterAssignComponentsByType() {
+    const typeSelect = document.getElementById('assignComponentType');
+    const componentSelect = document.getElementById('assignComponentSelect');
+    if (!typeSelect || !componentSelect) return;
+
+    const selectedType = typeSelect.value;
+    let selectedOptionStillVisible = false;
+
+    Array.from(componentSelect.options).forEach((option, index) => {
+        if (index === 0) {
+            option.hidden = false;
+            return;
+        }
+
+        const matches = selectedType === 'all' || option.dataset.type === selectedType;
+        option.hidden = !matches;
+
+        if (option.selected && matches) {
+            selectedOptionStillVisible = true;
+        }
+    });
+
+    if (!selectedOptionStillVisible) {
+        componentSelect.selectedIndex = 0;
+        updateDefaultAmount(componentSelect);
+    }
 }
 
 // ── Currency input initialisation ──────────────────────────────────────────
@@ -551,6 +594,8 @@ function rawNum(formatted) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    filterAssignComponentsByType();
+
     document.querySelectorAll('.currency-input').forEach(function (el) {
         // On load: format the initial raw value
         const initial = rawNum(el.value);

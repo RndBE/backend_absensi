@@ -203,6 +203,12 @@ class AdminFilterViewTest extends TestCase
             'views/admin/travel-reports/index.blade.php' => [
                 "can(\$currentAdmin, 'travel.reports.manage')",
             ],
+            'views/admin/loan-requests/index.blade.php' => [
+                "can(\$currentAdmin, 'payroll.loans.manage')",
+            ],
+            'views/admin/loan-requests/show.blade.php' => [
+                "can(\$currentAdmin, 'payroll.loans.manage')",
+            ],
             'views/admin/schedules/index.blade.php' => [
                 "can(\$currentAdmin, 'schedule.manage')",
                 "can(\$currentAdmin, 'schedule.master.manage')",

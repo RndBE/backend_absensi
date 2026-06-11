@@ -242,11 +242,11 @@
         <form action="{{ route('admin.payroll-runs.update-detail', [$run->id, $detail->id]) }}" method="POST">
             @csrf
             @method('PUT')
-            <div class="p-4">
+            <div class="p-4 pb-32">
                 <div class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-800">
                     Perubahan manual akan menghitung ulang total earning, deduction, dan net salary karyawan ini.
                 </div>
-                <div class="overflow-x-auto rounded-lg border border-gray-200">
+                <div class="overflow-x-auto overflow-y-visible rounded-lg border border-gray-200 pb-32">
                     <table class="w-full min-w-[600px]">
                         <thead>
                             <tr>

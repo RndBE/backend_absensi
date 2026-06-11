@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Http\Middleware\AdminPermissionMiddleware;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
@@ -82,5 +84,44 @@ class AdminPermissionMiddlewareTest extends TestCase
         );
 
         $this->assertSame(403, $response->getStatusCode());
+    }
+
+    public function test_all_protected_admin_routes_are_mapped_to_permissions(): void
+    {
+        $routePermissions = config('admin_permissions.route_permissions');
+        $missing = [];
+
+        foreach (Route::getRoutes() as $route) {
+            $routeName = $route->getName();
+            if (! $routeName || ! str_starts_with($routeName, 'admin.')) {
+                continue;
+            }
+
+            if (in_array($routeName, ['admin.login', 'admin.logout'], true)) {
+                continue;
+            }
+
+            $middleware = $route->gatherMiddleware();
+            $isProtectedAdminRoute = collect($middleware)->contains(
+                fn ($item) => str_contains($item, 'AdminPermissionMiddleware')
+            );
+            if (! $isProtectedAdminRoute) {
+                continue;
+            }
+
+            $hasMapping = false;
+            foreach ($routePermissions as $pattern => $permission) {
+                if (Str::is($pattern, $routeName)) {
+                    $hasMapping = true;
+                    break;
+                }
+            }
+
+            if (! $hasMapping) {
+                $missing[] = $routeName;
+            }
+        }
+
+        $this->assertSame([], $missing);
     }
 }

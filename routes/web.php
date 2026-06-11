@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\LeavePolicyController;
 use App\Http\Controllers\Admin\LeaveRequestController;
 use App\Http\Controllers\Admin\LeaveTypeController;
+use App\Http\Controllers\Admin\LoanRequestController;
 use App\Http\Controllers\Admin\MonitorApprovalController;
 use App\Http\Controllers\Admin\PayrollAdjustmentController;
 use App\Http\Controllers\Admin\PayrollComponentController;
@@ -158,6 +159,15 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::get('/budget-requests', [BudgetRequestController::class, 'index'])->name('budget-requests.index');
     Route::get('/budget-requests/{id}', [BudgetRequestController::class, 'show'])->name('budget-requests.show');
     Route::delete('/budget-requests/{id}', [BudgetRequestController::class, 'destroy'])->name('budget-requests.destroy');
+
+    // Pinjaman
+    Route::get('/loan-requests', [LoanRequestController::class, 'index'])->name('loan-requests.index');
+    Route::get('/loan-requests/create', [LoanRequestController::class, 'create'])->name('loan-requests.create');
+    Route::post('/loan-requests', [LoanRequestController::class, 'store'])->name('loan-requests.store');
+    Route::get('/loan-requests/{id}', [LoanRequestController::class, 'show'])->name('loan-requests.show');
+    Route::get('/loan-requests/{id}/edit', [LoanRequestController::class, 'edit'])->name('loan-requests.edit');
+    Route::put('/loan-requests/{id}', [LoanRequestController::class, 'update'])->name('loan-requests.update');
+    Route::delete('/loan-requests/{id}', [LoanRequestController::class, 'destroy'])->name('loan-requests.destroy');
 
     // Travel Reports (LHP)
     Route::get('/travel-reports', [TravelReportController::class, 'index'])->name('travel-reports.index');

@@ -9,6 +9,7 @@ use App\Models\EmployeePayroll;
 use App\Models\EmployeePayrollComponent;
 use App\Models\Holiday;
 use App\Models\LeaveRequest;
+use App\Models\LoanRequest;
 use App\Models\OvertimeRequest;
 use App\Models\PayrollAdjustment;
 use App\Models\PayrollLog;
@@ -105,7 +106,7 @@ class PayrollRunController extends Controller
         foreach ($components as $comp) {
             if ($comp['type'] === 'earning') {
                 $totalEarning += (float) $comp['amount'];
-            } else {
+            } elseif ($comp['type'] === 'deduction') {
                 $totalDeduction += (float) $comp['amount'];
             }
         }
@@ -133,6 +134,7 @@ class PayrollRunController extends Controller
         }
 
         $run->update(['status' => 'finalized', 'finalized_at' => now()]);
+        $this->applyLoanDeductions($run);
         $this->logAction($run, 'finalized', $admin->id);
 
         return back()->with('success', 'Payroll berhasil di-finalize.');
@@ -608,7 +610,13 @@ class PayrollRunController extends Controller
                 $adj->update(['status' => 'applied', 'payroll_run_id' => $run->id]);
             }
 
-            // 5. Auto-calculate: BPJS (tiap program jadi komponen terpisah)
+            // 5. Auto-calculate: Pinjaman karyawan
+            foreach ($this->loanDeductionComponents($empId, $run->period) as $loanComponent) {
+                $components[] = $loanComponent;
+                $totalDeduction += (float) $loanComponent['amount'];
+            }
+
+            // 6. Auto-calculate: BPJS (tiap program jadi komponen terpisah)
             $bpjsCalc = new BpjsCalculator($periodStart->format('Y-m-d'));
             $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
 
@@ -659,7 +667,7 @@ class PayrollRunController extends Controller
                     'detail' => '2% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
             }
 
-            // 6. Auto-calculate: PPh 21
+            // 7. Auto-calculate: PPh 21
             $ptkpStatus = $payroll->employee->ptkp_status ?? $payroll->ptkp_status ?? 'TK/0';
             if (! $ptkpStatus) {
                 $ptkpStatus = 'TK/0';
@@ -705,11 +713,12 @@ class PayrollRunController extends Controller
                             .'Pajak Jan-Nov: Rp '.number_format($taxJanToNov, 0, ',', '.').' | '
                             .'PKP Aktual: Rp '.number_format($tax['pkp'], 0, ',', '.');
             } else {
-                // ── Jan-Nov: Metode TER (Tarif Efektif Rata-rata) — PP 58/2023 ──
-                $tax = $pph21Calc->calculateMonthlyTER($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
-                $detailNote = "Metode: {$taxMethod}, PTKP: {$ptkpStatus}, TER {$tax['ter_category']} "
-                            .rtrim(rtrim(number_format($tax['ter_rate'], 2, ',', '.'), '0'), ',')."% "
-                            .'x Rp '.number_format($totalEarning, 0, ',', '.');
+                // ── Jan-Nov: annualized × 12 (metode normal) ──
+                $tax = $pph21Calc->calculateMonthly($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
+                $detailNote = 'Jan-Nov - TER bulanan PP 58/2023 | '
+                    ."Metode: {$taxMethod}, PTKP: {$ptkpStatus}, "
+                    .'Kategori TER: '.($tax['ter_category'] ?? '-').', '
+                    .'Tarif: '.number_format((float) ($tax['ter_rate'] ?? 0), 2, ',', '.').'%';
             }
 
             // Gross-up: add tunjangan pajak as earning
@@ -757,6 +766,122 @@ class PayrollRunController extends Controller
         }
 
         $this->recalculateRunTotals($run);
+    }
+
+    private function loanDeductionComponents(int $employeeId, string $period): array
+    {
+        $loans = LoanRequest::where('employee_id', $employeeId)
+            ->where('status', 'active')
+            ->where('remaining_amount', '>', 0)
+            ->where(function ($query) use ($period) {
+                $query->whereNull('start_period')
+                    ->orWhere('start_period', '<=', $period);
+            })
+            ->orderBy('id')
+            ->get();
+
+        $components = [];
+
+        foreach ($loans as $loan) {
+            $remainingBefore = (float) $loan->remaining_amount;
+            $deductionAmount = min((float) $loan->monthly_installment, $remainingBefore);
+
+            if ($deductionAmount <= 0) {
+                continue;
+            }
+
+            $remainingAfter = max($remainingBefore - $deductionAmount, 0);
+            $paidAfter = max((float) $loan->amount - $remainingAfter, 0);
+
+            $components[] = [
+                'id' => null,
+                'name' => 'Potongan Pinjaman',
+                'type' => 'deduction',
+                'category' => 'recurring',
+                'amount' => $deductionAmount,
+                'is_taxable' => false,
+                'is_auto' => true,
+                'detail' => 'Cicilan pinjaman periode '.$period,
+                'loan' => [
+                    'id' => $loan->id,
+                    'principal_amount' => (float) $loan->amount,
+                    'installment_amount' => (float) $loan->monthly_installment,
+                    'installment_number' => $this->loanInstallmentNumber($loan, $remainingAfter),
+                    'installment_count' => (int) $loan->installment_count,
+                    'paid_amount' => $paidAfter,
+                    'remaining_amount' => $remainingAfter,
+                    'status' => $remainingAfter <= 0 ? 'lunas' : 'berjalan',
+                ],
+            ];
+        }
+
+        return $components;
+    }
+
+    private function loanInstallmentNumber(LoanRequest $loan, float $remainingAfter): int
+    {
+        $installment = (float) $loan->monthly_installment;
+        if ($installment <= 0) {
+            return 1;
+        }
+
+        $paidAfter = max((float) $loan->amount - $remainingAfter, 0);
+
+        return min((int) $loan->installment_count, max(1, (int) ceil($paidAfter / $installment)));
+    }
+
+    private function applyLoanDeductions(PayrollRun $run): void
+    {
+        $run->loadMissing('details');
+
+        foreach ($run->details as $detail) {
+            $components = is_array($detail->components)
+                ? $detail->components
+                : (json_decode((string) $detail->components, true) ?: []);
+
+            $changed = false;
+
+            foreach ($components as &$component) {
+                $loanData = $component['loan'] ?? null;
+                if (! is_array($loanData) || ! empty($loanData['balance_applied'])) {
+                    continue;
+                }
+
+                $loanId = $loanData['id'] ?? null;
+                if (! $loanId) {
+                    continue;
+                }
+
+                $loan = LoanRequest::find($loanId);
+                if (! $loan || $loan->status !== 'active') {
+                    continue;
+                }
+
+                $deductionAmount = min((float) ($component['amount'] ?? 0), (float) $loan->remaining_amount);
+                if ($deductionAmount <= 0) {
+                    continue;
+                }
+
+                $remainingAfter = max((float) $loan->remaining_amount - $deductionAmount, 0);
+                $loan->update([
+                    'remaining_amount' => $remainingAfter,
+                    'status' => $remainingAfter <= 0 ? 'paid' : 'active',
+                    'paid_at' => $remainingAfter <= 0 ? now() : null,
+                ]);
+
+                $component['loan']['remaining_amount'] = $remainingAfter;
+                $component['loan']['paid_amount'] = max((float) $loan->amount - $remainingAfter, 0);
+                $component['loan']['status'] = $remainingAfter <= 0 ? 'lunas' : 'berjalan';
+                $component['loan']['balance_applied'] = true;
+                $changed = true;
+            }
+
+            unset($component);
+
+            if ($changed) {
+                $detail->update(['components' => $components]);
+            }
+        }
     }
 
     /**

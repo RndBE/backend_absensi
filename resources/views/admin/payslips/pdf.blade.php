@@ -14,29 +14,24 @@
         padding: 28px 30px;
     }
 
-    /* ── UTILITIES ── */
     .w100 { width: 100%; }
     .bold { font-weight: bold; }
     .right { text-align: right; }
     .muted { color: #6b7280; }
     .red { color: #dc2626; font-weight: bold; font-size: 9px; letter-spacing: 0.5px; }
 
-    /* ── COMPANY TITLE ── */
     .company-name { font-size: 16px; font-weight: bold; color: #111; }
     .company-addr { font-size: 8px; color: #6b7280; margin-top: 2px; }
-    .doc-title    { font-size: 15px; font-weight: bold; letter-spacing: 3px; color: #111; }
+    .doc-title { font-size: 15px; font-weight: bold; letter-spacing: 3px; color: #111; }
 
-    /* ── DIVIDER ── */
     .divider-top { border-top: 2px solid #111; padding-top: 10px; margin-bottom: 12px; }
 
-    /* ── INFO TABLE ── */
     .info-tbl td { padding: 2px 0; font-size: 9.5px; vertical-align: top; }
-    .info-key  { color: #6b7280; width: 130px; }
-    .info-sep  { width: 10px; color: #6b7280; }
-    .info-val  { font-weight: 600; }
-    .info-gap  { width: 30px; }
+    .info-key { color: #6b7280; width: 130px; }
+    .info-sep { width: 10px; color: #6b7280; }
+    .info-val { font-weight: 600; }
+    .info-gap { width: 30px; }
 
-    /* ── MAIN PAYROLL TABLE ── */
     .main-tbl { border-collapse: collapse; margin-top: 14px; }
     .main-tbl th {
         background: #f3f4f6;
@@ -54,6 +49,7 @@
     }
     .main-tbl td.divider { border-left: 1px solid #d1d5db; }
     .main-tbl .num { text-align: right; white-space: nowrap; }
+    .loan-detail { margin-top: 2px; font-size: 8px; line-height: 1.25; color: #6b7280; }
     .main-tbl .total-row td {
         border-top: 1.5px solid #d1d5db;
         border-bottom: none;
@@ -62,7 +58,6 @@
         font-size: 9.5px;
     }
 
-    /* ── TAKE HOME PAY ── */
     .thp-tbl { border-collapse: collapse; margin-top: 0; }
     .thp-tbl td {
         padding: 9px 10px;
@@ -73,7 +68,6 @@
     }
     .thp-tbl td.thp-right { text-align: right; }
 
-    /* ── BENEFITS ── */
     .benefits-section { margin-top: 18px; }
     .benefits-title { font-size: 10px; font-weight: bold; margin-bottom: 7px; }
     .ben-tbl { border-collapse: collapse; }
@@ -87,40 +81,40 @@
         font-weight: bold;
     }
 
-    /* ── FOOTER ── */
     .footer { margin-top: 24px; text-align: center; font-size: 8px; color: #9ca3af; }
 </style>
 </head>
 <body>
 
 @php
-    $emp     = $detail->employee;
-    $run     = $detail->payrollRun;
+    $emp = $detail->employee;
+    $run = $detail->payrollRun;
     $payroll = $emp->activePayroll;
 
-    $periodDate  = \Carbon\Carbon::parse($run->period . '-01');
+    $periodDate = \Carbon\Carbon::parse($run->period . '-01');
     $periodStart = $periodDate->copy()->startOfMonth()->format('d');
-    $periodEnd   = $periodDate->copy()->endOfMonth()->format('d M Y');
+    $periodEnd = $periodDate->copy()->endOfMonth()->format('d M Y');
 
-    $earnings    = [];
-    $deductions  = [];
+    $earnings = [];
+    $deductions = [];
 
     $comps = is_array($detail->components)
-           ? $detail->components
-           : (json_decode($detail->components, true) ?? []);
+        ? $detail->components
+        : (json_decode($detail->components, true) ?? []);
 
     foreach ($comps as $c) {
-        if (($c['type'] ?? '') === 'earning')       $earnings[]   = $c;
-        elseif (($c['type'] ?? '') === 'deduction') $deductions[] = $c;
+        if (($c['type'] ?? '') === 'earning') {
+            $earnings[] = $c;
+        } elseif (($c['type'] ?? '') === 'deduction') {
+            $deductions[] = $c;
+        }
     }
 
-    // Total rows = max of (earnings+1 for basic) vs deductions
-    $earningRows   = count($earnings) + 1;  // +1 for Basic Salary
+    $earningRows = count($earnings) + 1;
     $deductionRows = count($deductions);
-    $maxRows       = max($earningRows, $deductionRows);
+    $maxRows = max($earningRows, $deductionRows);
 @endphp
 
-{{-- ══ HEADER: Logo  +  *CONFIDENTIAL ══ --}}
 <table class="w100" style="margin-bottom:14px;">
     <tr>
         <td style="width:50%; vertical-align:bottom;">
@@ -136,7 +130,6 @@
     </tr>
 </table>
 
-{{-- ══ COMPANY NAME + PAYSLIP TITLE ══ --}}
 <div class="divider-top">
     <table class="w100">
         <tr>
@@ -151,7 +144,6 @@
     </table>
 </div>
 
-{{-- ══ INFO GRID (2 columns) ══ --}}
 <table class="w100 info-tbl" style="margin-top:10px; margin-bottom:14px;">
     <tr>
         <td class="info-key">Payroll cut off</td>
@@ -191,7 +183,6 @@
     </tr>
 </table>
 
-{{-- ══ MAIN TABLE: Earnings | Deductions (50% | 50%) ══ --}}
 <table class="w100 main-tbl" style="border:1px solid #d1d5db;">
     <thead>
         <tr>
@@ -204,36 +195,41 @@
     <tbody>
         @for($i = 0; $i < $maxRows; $i++)
         @php
-            // Earnings column
             if ($i === 0) {
-                $eName  = 'Basic Salary';
-                $eAmt   = $detail->basic_salary;
-                $hasE   = true;
+                $eName = 'Basic Salary';
+                $eAmt = $detail->basic_salary;
+                $hasE = true;
             } elseif (isset($earnings[$i - 1])) {
-                $eName  = $earnings[$i - 1]['name'];
-                $eAmt   = $earnings[$i - 1]['amount'];
-                $hasE   = true;
+                $eName = $earnings[$i - 1]['name'];
+                $eAmt = $earnings[$i - 1]['amount'];
+                $hasE = true;
             } else {
-                $eName  = '';
-                $eAmt   = null;
-                $hasE   = false;
+                $eName = '';
+                $eAmt = null;
+                $hasE = false;
             }
 
-            // Deductions column
             if (isset($deductions[$i])) {
-                $dName  = $deductions[$i]['name'];
-                $dAmt   = $deductions[$i]['amount'];
-                $hasD   = true;
+                $dName = $deductions[$i]['name'];
+                $dAmt = $deductions[$i]['amount'];
+                $hasD = true;
+                $dLoanLines = \App\Support\PayslipLoanSummary::detailLinesForComponent($deductions[$i]);
             } else {
-                $dName  = '';
-                $dAmt   = null;
-                $hasD   = false;
+                $dName = '';
+                $dAmt = null;
+                $hasD = false;
+                $dLoanLines = [];
             }
         @endphp
         <tr>
             <td>{{ $eName }}</td>
             <td class="num">{{ $hasE && $eAmt !== null ? number_format($eAmt, 0, ',', '.') : '' }}</td>
-            <td class="divider">{{ $dName }}</td>
+            <td class="divider">
+                {{ $dName }}
+                @foreach($dLoanLines as $line)
+                    <div class="loan-detail">{{ $line }}</div>
+                @endforeach
+            </td>
             <td class="num">{{ $hasD && $dAmt !== null ? number_format($dAmt, 0, ',', '.') : '' }}</td>
         </tr>
         @endfor
@@ -248,7 +244,6 @@
     </tfoot>
 </table>
 
-{{-- ══ TAKE HOME PAY ══ --}}
 <table class="w100 thp-tbl">
     <tr>
         <td style="width:50%;">Take Home Pay</td>
@@ -256,7 +251,6 @@
     </tr>
 </table>
 
-{{-- ══ BENEFITS ══ --}}
 @if(!empty($bpjsData['items']))
 <div class="benefits-section">
     <div class="benefits-title">Benefits* <span style="font-weight:normal; color:#9ca3af; font-size:8.5px;">(ditanggung perusahaan)</span></div>
@@ -275,9 +269,8 @@
 </div>
 @endif
 
-{{-- ══ FOOTER ══ --}}
 <div class="footer">
-    Dokumen ini bersifat rahasia — hanya untuk penerima yang bersangkutan<br>
+    Dokumen ini bersifat rahasia, hanya untuk penerima yang bersangkutan<br>
     {{ $company->name ?? '' }}
     @if($company->phone ?? null) &bull; {{ $company->phone }} @endif
     @if($company->email ?? null) &bull; {{ $company->email }} @endif

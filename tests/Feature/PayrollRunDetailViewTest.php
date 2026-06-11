@@ -24,4 +24,20 @@ class PayrollRunDetailViewTest extends TestCase
         $this->assertStringContainsString('@unless($isAutoComponent)', $view);
         $this->assertStringContainsString('@disabled($isAutoComponent)', $view);
     }
+
+    public function test_update_detail_only_counts_deduction_components_as_deductions(): void
+    {
+        $controller = file_get_contents(app_path('Http/Controllers/Admin/PayrollRunController.php'));
+
+        $this->assertStringContainsString("} elseif (\$comp['type'] === 'deduction') {", $controller);
+    }
+
+    public function test_edit_detail_component_table_keeps_dropdown_room(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/payroll-runs/show.blade.php'));
+
+        $this->assertStringContainsString('min-w-[600px]', $view);
+        $this->assertStringContainsString('pb-32', $view);
+        $this->assertStringContainsString('overflow-x-auto overflow-y-visible', $view);
+    }
 }

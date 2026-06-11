@@ -316,6 +316,7 @@ class ApprovalController extends Controller
                 }
             }
         }
+
     }
 
     private function resolveModel(string $type): string

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\PayrollRunDetail;
 use App\Services\BpjsCalculator;
+use App\Support\PayslipLoanSummary;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -66,7 +67,11 @@ class PayslipController extends Controller
                 if ($comp['type'] === 'earning') {
                     $earnings[] = ['name' => $comp['name'], 'amount' => (float) $comp['amount']];
                 } else {
-                    $deductions[] = ['name' => $comp['name'], 'amount' => (float) $comp['amount']];
+                    $deductions[] = [
+                        'name' => $comp['name'],
+                        'amount' => (float) $comp['amount'],
+                        'loan' => PayslipLoanSummary::forComponent($comp),
+                    ];
                 }
             }
         }
@@ -84,6 +89,7 @@ class PayslipController extends Controller
                 'basic_salary' => (float) $detail->basic_salary,
                 'earnings' => $earnings,
                 'deductions' => $deductions,
+                'loan_summary' => PayslipLoanSummary::fromComponents($detail->components),
                 'total_earning' => (float) $detail->total_earning,
                 'total_deduction' => (float) $detail->total_deduction,
                 'net_salary' => (float) $detail->net_salary,
@@ -108,9 +114,10 @@ class PayslipController extends Controller
 
         $company = Company::find($detail->employee->company_id);
         $bpjsData = $this->buildBpjsData($detail);
+        $loanSummary = PayslipLoanSummary::fromComponents($detail->components);
         $logoBase64 = $this->buildLogoBase64($company);
 
-        $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail', 'company', 'logoBase64', 'bpjsData'));
+        $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail', 'company', 'logoBase64', 'bpjsData', 'loanSummary'));
         $pdf->setPaper('A4', 'portrait');
 
         $filename = 'Payslip_' . $detail->employee->employee_code . '_' . $detail->payrollRun->period . '.pdf';

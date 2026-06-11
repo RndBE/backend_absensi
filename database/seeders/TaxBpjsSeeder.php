@@ -26,6 +26,14 @@ class TaxBpjsSeeder extends Seeder
             ]
         );
 
+        TaxSetting::firstOrCreate(
+            ['key' => 'pph21_ter_monthly', 'effective_date' => '2024-01-01'],
+            [
+                'value' => Pph21Calculator::defaultTerMonthly(),
+                'description' => 'Tarif Efektif Rata-rata (TER) bulanan PPh 21 sesuai PP No. 58/2023',
+            ]
+        );
+
         // === PTKP 2024 ===
         TaxSetting::firstOrCreate(
             ['key' => 'ptkp_values', 'effective_date' => '2024-01-01'],
@@ -36,16 +44,6 @@ class TaxBpjsSeeder extends Seeder
                     'K/I/0' => 112500000, 'K/I/1' => 117000000, 'K/I/2' => 121500000, 'K/I/3' => 126000000,
                 ],
                 'description' => 'PTKP sesuai PMK 101/PMK.010/2016 (masih berlaku 2024)',
-            ]
-        );
-
-        // === TER Bulanan (Tarif Efektif Rata-rata) — PP No. 58 Tahun 2023 ===
-        // Berlaku untuk Masa Pajak Jan-Nov sejak 1 Januari 2024.
-        TaxSetting::firstOrCreate(
-            ['key' => 'ter_monthly', 'effective_date' => '2024-01-01'],
-            [
-                'value' => Pph21Calculator::defaultTerTable(),
-                'description' => 'Tarif Efektif Rata-rata (TER) Bulanan, Lampiran PP No. 58 Tahun 2023 (Kategori A/B/C)',
             ]
         );
 

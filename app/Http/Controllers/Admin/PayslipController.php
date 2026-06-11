@@ -8,6 +8,7 @@ use App\Models\PayrollRunDetail;
 use App\Models\PayrollRun;
 use App\Models\Company;
 use App\Services\BpjsCalculator;
+use App\Support\PayslipLoanSummary;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -55,8 +56,9 @@ class PayslipController extends Controller
 
         $company  = Company::find($detail->employee->company_id);
         $bpjsData = $this->buildBpjsData($detail);
+        $loanSummary = PayslipLoanSummary::fromComponents($detail->components);
 
-        return view('admin.payslips.show', compact('detail', 'company', 'bpjsData'));
+        return view('admin.payslips.show', compact('detail', 'company', 'bpjsData', 'loanSummary'));
     }
 
     public function downloadPdf($id)
@@ -70,6 +72,7 @@ class PayslipController extends Controller
 
         $company  = Company::find($detail->employee->company_id);
         $bpjsData = $this->buildBpjsData($detail);
+        $loanSummary = PayslipLoanSummary::fromComponents($detail->components);
 
         // Convert logo to base64 for DomPDF inline embedding
         $logoBase64 = null;
@@ -81,7 +84,7 @@ class PayslipController extends Controller
             }
         }
 
-        $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail', 'company', 'logoBase64', 'bpjsData'));
+        $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail', 'company', 'logoBase64', 'bpjsData', 'loanSummary'));
         $pdf->setPaper('A4', 'portrait');
 
         $filename = 'Payslip_' . $detail->employee->employee_code . '_' . $detail->payrollRun->period . '.pdf';

@@ -91,7 +91,9 @@ class TaxController extends Controller
     // === Salary Tax Calculator / Simulator ===
     public function simulator()
     {
-        return view('admin.tax.simulator');
+        return view('admin.tax.simulator', [
+            'period_month' => now()->format('Y-m'),
+        ]);
     }
 
     public function simulate(Request $request)
@@ -100,16 +102,20 @@ class TaxController extends Controller
             'gross_salary' => 'required|numeric|min:0',
             'ptkp_status' => 'required|string',
             'tax_method' => 'required|in:gross,gross_up,nett',
+            'period_month' => 'nullable|date_format:Y-m',
         ]);
 
-        $calc = new Pph21Calculator();
+        $periodMonth = $request->input('period_month', now()->format('Y-m'));
+        $calc = new Pph21Calculator($periodMonth.'-01');
         $result = $calc->simulate(
             (float) $request->gross_salary,
             $request->ptkp_status,
             $request->tax_method
         );
 
-        return view('admin.tax.simulator', compact('result') + $request->only(['gross_salary', 'ptkp_status', 'tax_method']));
+        return view('admin.tax.simulator', compact('result') + $request->only(['gross_salary', 'ptkp_status', 'tax_method']) + [
+            'period_month' => $periodMonth,
+        ]);
     }
 
     // === Bukti Potong (1721-A1) ===
@@ -310,11 +316,10 @@ class TaxController extends Controller
         $bpjsCalc = new BpjsCalculator();
         $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
 
-        $pph21Calc = new Pph21Calculator($request->period . '-01');
-        $month = (int) substr($request->period, 5, 2);
+        $pph21Calc = new Pph21Calculator($request->period.'-01');
+        $periodMonth = (int) substr($request->period, 5, 2);
 
-        if ($month === 12) {
-            // Desember — Penghitungan Kembali Tahunan berdasarkan penghasilan riil Jan-Nov
+        if ($periodMonth === 12) {
             $year = (int) substr($request->period, 0, 4);
             $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year) {
                 $q->whereYear('period', $year)
@@ -324,27 +329,26 @@ class TaxController extends Controller
 
             $brutoJanToNov = 0;
             $taxJanToNov = 0;
-            foreach ($prevDetails as $pd) {
-                $brutoJanToNov += (float) $pd->total_earning;
-                $pcomps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
-                foreach ($pcomps as $pc) {
-                    if (str_contains($pc['name'] ?? '', 'PPh') && ($pc['type'] ?? '') === 'deduction') {
-                        $taxJanToNov += (float) ($pc['amount'] ?? 0);
+            foreach ($prevDetails as $prevDetail) {
+                $brutoJanToNov += (float) $prevDetail->total_earning;
+                $prevComps = is_array($prevDetail->components) ? $prevDetail->components : json_decode($prevDetail->components, true) ?? [];
+                foreach ($prevComps as $prevComp) {
+                    if (str_contains($prevComp['name'] ?? '', 'PPh') && ($prevComp['type'] ?? '') === 'deduction') {
+                        $taxJanToNov += (float) ($prevComp['amount'] ?? 0);
                     }
                 }
             }
 
             $tax = $pph21Calc->calculateDecember(
-                brutoDecember      : $bruto,
-                brutoJanToNov      : $brutoJanToNov,
+                brutoDecember: $bruto,
+                brutoJanToNov: $brutoJanToNov,
                 bpjsEmployeeMonthly: $bpjs['employee_total'],
-                ptkpStatus         : $ptkpStatus,
-                taxMethod          : $taxMethod,
-                taxJanToNov        : $taxJanToNov
+                ptkpStatus: $ptkpStatus,
+                taxMethod: $taxMethod,
+                taxJanToNov: $taxJanToNov
             );
         } else {
-            // Jan-Nov — Metode TER (PP 58/2023)
-            $tax = $pph21Calc->calculateMonthlyTER($bruto, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
+            $tax = $pph21Calc->calculateMonthly($bruto, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
         }
 
         $totalEarning = $bruto;

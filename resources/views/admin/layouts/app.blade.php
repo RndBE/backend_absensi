@@ -90,6 +90,7 @@
                     ['label' => 'Payroll', 'icon' => 'payments', 'key' => 'payroll', 'items' => [
                         ['route' => 'admin.payroll-components.index', 'icon' => 'list_alt', 'label' => 'Komponen Gaji', 'match' => 'admin.payroll-components.*'],
                         ['route' => 'admin.employee-payrolls.index', 'icon' => 'account_balance', 'label' => 'Master Payroll', 'match' => 'admin.employee-payrolls.*'],
+                        ['route' => 'admin.loan-requests.index', 'icon' => 'payments', 'label' => 'Pinjaman', 'match' => 'admin.loan-requests.*'],
                         ['route' => 'admin.payroll-runs.index', 'icon' => 'payments', 'label' => 'Run Payroll', 'match' => 'admin.payroll-runs.*'],
                         ['route' => 'admin.payslips.index', 'icon' => 'receipt', 'label' => 'Payslip', 'match' => 'admin.payslips.*'],
                         ['route' => 'admin.payroll-adjustments.index', 'icon' => 'tune', 'label' => 'Adjustment', 'match' => 'admin.payroll-adjustments.*'],

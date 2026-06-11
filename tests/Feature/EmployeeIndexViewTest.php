@@ -27,6 +27,15 @@ class EmployeeIndexViewTest extends TestCase
         $this->assertStringContainsString('employeePayrollFuseEmpty', $view);
     }
 
+    public function test_employee_payroll_edit_assign_modal_has_component_type_filter(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/employee-payrolls/edit.blade.php'));
+
+        $this->assertStringContainsString('id="assignComponentType"', $view);
+        $this->assertStringContainsString('filterAssignComponentsByType', $view);
+        $this->assertStringContainsString('data-type="{{ $c->type }}"', $view);
+    }
+
     public function test_internship_supervisor_field_is_marked_optional(): void
     {
         foreach ([
