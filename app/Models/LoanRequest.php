@@ -10,6 +10,9 @@ class LoanRequest extends Model
     protected $fillable = [
         'employee_id',
         'amount',
+        'interest_rate',
+        'interest_amount',
+        'total_repayable',
         'installment_count',
         'monthly_installment',
         'remaining_amount',
@@ -24,6 +27,9 @@ class LoanRequest extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'interest_rate' => 'decimal:2',
+            'interest_amount' => 'decimal:2',
+            'total_repayable' => 'decimal:2',
             'installment_count' => 'integer',
             'monthly_installment' => 'decimal:2',
             'remaining_amount' => 'decimal:2',

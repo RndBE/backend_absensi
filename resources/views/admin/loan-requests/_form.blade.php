@@ -34,6 +34,13 @@
     </div>
 
     <div>
+        <label class="block text-[12px] font-semibold text-gray-700 mb-1.5">Bunga (%)</label>
+        <input type="number" name="interest_rate" min="0" max="100" step="0.01" value="{{ old('interest_rate', $loanRequest->interest_rate ?? 0) }}" placeholder="0" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+        <p class="text-[11px] text-gray-400 mt-1">Kosongkan atau isi 0 untuk tanpa bunga.</p>
+        @error('interest_rate') <div class="text-[11px] text-red-600 mt-1">{{ $message }}</div> @enderror
+    </div>
+
+    <div>
         <label class="block text-[12px] font-semibold text-gray-700 mb-1.5">Tenor</label>
         <input type="number" name="installment_count" min="1" max="120" step="1" required value="{{ old('installment_count', $loanRequest->installment_count ?? '') }}" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
         @error('installment_count') <div class="text-[11px] text-red-600 mt-1">{{ $message }}</div> @enderror

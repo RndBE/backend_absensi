@@ -16,6 +16,9 @@ class PayslipLoanSummaryTest extends TestCase
                 'amount' => 250000,
                 'loan' => [
                     'principal_amount' => 1000000,
+                    'interest_rate' => 2.5,
+                    'interest_amount' => 25000,
+                    'total_repayable' => 1025000,
                     'installment_number' => 2,
                     'installment_count' => 4,
                     'paid_amount' => 500000,
@@ -26,6 +29,9 @@ class PayslipLoanSummaryTest extends TestCase
         ]);
 
         $this->assertSame(1000000.0, $summary['principal_amount']);
+        $this->assertSame(2.5, $summary['interest_rate']);
+        $this->assertSame(25000.0, $summary['interest_amount']);
+        $this->assertSame(1025000.0, $summary['total_repayable']);
         $this->assertSame(250000.0, $summary['current_deduction']);
         $this->assertSame(2, $summary['installment_number']);
         $this->assertSame(4, $summary['installment_count']);
@@ -41,6 +47,8 @@ class PayslipLoanSummaryTest extends TestCase
             'name' => 'Potongan Pinjaman A',
             'amount' => 500000,
             'loan' => [
+                'interest_rate' => 5,
+                'interest_amount' => 250000,
                 'installment_number' => 8,
                 'installment_count' => 10,
                 'remaining_amount' => 2500000,
@@ -49,6 +57,7 @@ class PayslipLoanSummaryTest extends TestCase
 
         $this->assertSame([
             'cicilan ke 8 dari 10',
+            'bunga 5% Rp250.000',
             'sisa pinjaman Rp2.500.000',
         ], $lines);
     }

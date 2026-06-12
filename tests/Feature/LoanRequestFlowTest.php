@@ -17,8 +17,11 @@ class LoanRequestFlowTest extends TestCase
 
         $apiRoutes = file_get_contents(base_path('routes/api.php'));
         $webRoutes = file_get_contents(base_path('routes/web.php'));
+        $model = file_get_contents(app_path('Models/LoanRequest.php'));
         $controller = file_get_contents(app_path('Http/Controllers/Admin/LoanRequestController.php'));
         $index = file_get_contents(resource_path('views/admin/loan-requests/index.blade.php'));
+        $form = file_get_contents(resource_path('views/admin/loan-requests/_form.blade.php'));
+        $show = file_get_contents(resource_path('views/admin/loan-requests/show.blade.php'));
 
         $this->assertStringNotContainsString('/loan-requests', $apiRoutes);
         $this->assertStringNotContainsString('Api\LoanRequestController', $apiRoutes);
@@ -34,6 +37,14 @@ class LoanRequestFlowTest extends TestCase
         $this->assertStringContainsString('function edit', $controller);
         $this->assertStringContainsString('function update', $controller);
         $this->assertStringContainsString('function destroy', $controller);
+        $this->assertStringContainsString("'interest_rate'", $model);
+        $this->assertStringContainsString("'interest_amount'", $model);
+        $this->assertStringContainsString("'total_repayable'", $model);
+        $this->assertStringContainsString("'interest_rate' =>", $controller);
+        $this->assertStringContainsString('total_repayable', $controller);
+        $this->assertStringContainsString('name="interest_rate"', $form);
+        $this->assertStringContainsString('Bunga', $index);
+        $this->assertStringContainsString('Total Pinjaman', $show);
         $this->assertStringContainsString('Tambah Pinjaman', $index);
         $this->assertStringNotContainsString('Pengajuan Pinjaman', $index);
         $this->assertStringNotContainsString('Persetujuan Pinjaman', $index);

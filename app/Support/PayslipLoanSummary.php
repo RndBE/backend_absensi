@@ -48,6 +48,14 @@ class PayslipLoanSummary
             );
         }
 
+        if ($summary['interest_rate'] > 0 || $summary['interest_amount'] > 0) {
+            $lines[] = sprintf(
+                'bunga %s%% Rp%s',
+                self::formatPercent($summary['interest_rate']),
+                number_format($summary['interest_amount'], 0, ',', '.')
+            );
+        }
+
         if ($summary['remaining_amount'] !== null) {
             $lines[] = 'sisa pinjaman Rp' . number_format($summary['remaining_amount'], 0, ',', '.');
         }
@@ -103,9 +111,15 @@ class PayslipLoanSummary
     private static function summaryForComponent(array $component): array
     {
         $loan = self::loanPayload($component);
+        $principalAmount = self::nullableFloatValue($loan, ['principal_amount', 'total_loan', 'total_pinjaman']) ?? 0.0;
+        $interestRate = self::nullableFloatValue($loan, ['interest_rate', 'bunga_persen']) ?? 0.0;
+        $interestAmount = self::nullableFloatValue($loan, ['interest_amount', 'total_bunga']) ?? 0.0;
 
         return [
-            'principal_amount' => self::nullableFloatValue($loan, ['principal_amount', 'total_loan', 'total_pinjaman']) ?? 0.0,
+            'principal_amount' => $principalAmount,
+            'interest_rate' => $interestRate,
+            'interest_amount' => $interestAmount,
+            'total_repayable' => self::nullableFloatValue($loan, ['total_repayable', 'total_tagihan', 'total_pembayaran']) ?? ($principalAmount + $interestAmount),
             'current_deduction' => (float) ($component['amount'] ?? 0),
             'installment_number' => self::intValue($loan, ['installment_number', 'cicilan_ke']),
             'installment_count' => self::intValue($loan, ['installment_count', 'total_installments', 'tenor']),
@@ -115,9 +129,9 @@ class PayslipLoanSummary
         ];
     }
 
-    private static function floatValue(array $payload, array $keys): float
+    private static function formatPercent(float $rate): string
     {
-        return self::nullableFloatValue($payload, $keys) ?? 0.0;
+        return rtrim(rtrim(number_format($rate, 2, ',', '.'), '0'), ',');
     }
 
     private static function intValue(array $payload, array $keys): ?int

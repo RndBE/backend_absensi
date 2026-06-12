@@ -791,7 +791,8 @@ class PayrollRunController extends Controller
             }
 
             $remainingAfter = max($remainingBefore - $deductionAmount, 0);
-            $paidAfter = max((float) $loan->amount - $remainingAfter, 0);
+            $totalRepayable = $this->loanTotalRepayable($loan);
+            $paidAfter = max($totalRepayable - $remainingAfter, 0);
 
             $components[] = [
                 'id' => null,
@@ -805,6 +806,9 @@ class PayrollRunController extends Controller
                 'loan' => [
                     'id' => $loan->id,
                     'principal_amount' => (float) $loan->amount,
+                    'interest_rate' => (float) ($loan->interest_rate ?? 0),
+                    'interest_amount' => (float) ($loan->interest_amount ?? 0),
+                    'total_repayable' => $totalRepayable,
                     'installment_amount' => (float) $loan->monthly_installment,
                     'installment_number' => $this->loanInstallmentNumber($loan, $remainingAfter),
                     'installment_count' => (int) $loan->installment_count,
@@ -825,9 +829,16 @@ class PayrollRunController extends Controller
             return 1;
         }
 
-        $paidAfter = max((float) $loan->amount - $remainingAfter, 0);
+        $paidAfter = max($this->loanTotalRepayable($loan) - $remainingAfter, 0);
 
         return min((int) $loan->installment_count, max(1, (int) ceil($paidAfter / $installment)));
+    }
+
+    private function loanTotalRepayable(LoanRequest $loan): float
+    {
+        $totalRepayable = (float) ($loan->total_repayable ?? 0);
+
+        return $totalRepayable > 0 ? $totalRepayable : (float) $loan->amount;
     }
 
     private function applyLoanDeductions(PayrollRun $run): void
@@ -863,6 +874,7 @@ class PayrollRunController extends Controller
                 }
 
                 $remainingAfter = max((float) $loan->remaining_amount - $deductionAmount, 0);
+                $totalRepayable = $this->loanTotalRepayable($loan);
                 $loan->update([
                     'remaining_amount' => $remainingAfter,
                     'status' => $remainingAfter <= 0 ? 'paid' : 'active',
@@ -870,7 +882,8 @@ class PayrollRunController extends Controller
                 ]);
 
                 $component['loan']['remaining_amount'] = $remainingAfter;
-                $component['loan']['paid_amount'] = max((float) $loan->amount - $remainingAfter, 0);
+                $component['loan']['paid_amount'] = max($totalRepayable - $remainingAfter, 0);
+                $component['loan']['total_repayable'] = $totalRepayable;
                 $component['loan']['status'] = $remainingAfter <= 0 ? 'lunas' : 'berjalan';
                 $component['loan']['balance_applied'] = true;
                 $changed = true;

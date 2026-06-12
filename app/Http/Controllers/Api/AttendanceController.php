@@ -230,6 +230,12 @@ class AttendanceController extends Controller
         $rules = [
             'latitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'longitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
+            'location_accuracy' => 'nullable|numeric|min:0',
+            'accuracy' => 'nullable|numeric|min:0',
+            'is_mock_location' => 'nullable|boolean',
+            'is_mocked' => 'nullable|boolean',
+            'location_is_mocked' => 'nullable|boolean',
+            'location_timestamp' => 'nullable|date',
             'photo' => 'nullable|image|max:5120',
             'photo_base64' => 'nullable|string',
             'notes' => 'nullable|string|max:500',
@@ -244,6 +250,10 @@ class AttendanceController extends Controller
         }
 
         $request->validate($rules);
+
+        if ($locationError = $this->validateLocationIntegrity($request, $requireGps)) {
+            return $locationError;
+        }
 
         $employee = $request->user();
         $today = Carbon::today();
@@ -264,14 +274,7 @@ class AttendanceController extends Controller
         $isRemote = false;
         $distance = null;
         if ($requireGps && $request->latitude && $request->longitude) {
-            $officeLat = (float) Setting::getValue('office_latitude', '0');
-            $officeLng = (float) Setting::getValue('office_longitude', '0');
-            $radius = (int) Setting::getValue('office_radius_meters', '100');
-
-            $distance = $this->haversineDistance(
-                $request->latitude, $request->longitude,
-                $officeLat, $officeLng
-            );
+            ['distance' => $distance, 'radius' => $radius] = $this->officeDistance($request);
 
             if ($distance > $radius) {
                 if (!$allowRemote) {
@@ -344,6 +347,7 @@ class AttendanceController extends Controller
                 'clock_in' => now()->format('H:i:s'),
                 'clock_in_lat' => $request->latitude,
                 'clock_in_lng' => $request->longitude,
+                ...$this->locationAuditAttributes($request, 'clock_in'),
                 'clock_in_photo' => $photoPath,
                 'status' => 'present',
                 'is_late' => $isLate,
@@ -381,6 +385,77 @@ class AttendanceController extends Controller
         return $earthRadius * $c;
     }
 
+    private function validateLocationIntegrity(Request $request, bool $requireGps)
+    {
+        if (!$requireGps) {
+            return null;
+        }
+
+        if ($this->locationIsMocked($request)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terdeteksi penggunaan lokasi palsu. Matikan Fake GPS untuk melanjutkan.',
+                'is_mock_location' => true,
+            ], 422);
+        }
+
+        $accuracy = $this->locationAccuracy($request);
+        $maxAccuracy = (float) Setting::getValue('max_gps_accuracy_meters', '100');
+
+        if ($accuracy !== null && $maxAccuracy > 0 && $accuracy > $maxAccuracy) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akurasi lokasi terlalu rendah (' . round($accuracy) . "m). Maksimal {$maxAccuracy}m.",
+                'accuracy' => round($accuracy),
+                'max_accuracy' => $maxAccuracy,
+            ], 422);
+        }
+
+        return null;
+    }
+
+    private function locationIsMocked(Request $request): bool
+    {
+        return $request->boolean('is_mock_location')
+            || $request->boolean('is_mocked')
+            || $request->boolean('location_is_mocked');
+    }
+
+    private function locationAccuracy(Request $request): ?float
+    {
+        $accuracy = $request->input('location_accuracy', $request->input('accuracy'));
+
+        return $accuracy === null || $accuracy === '' ? null : (float) $accuracy;
+    }
+
+    private function officeDistance(Request $request): array
+    {
+        $officeLat = (float) Setting::getValue('office_latitude', '0');
+        $officeLng = (float) Setting::getValue('office_longitude', '0');
+        $radius = (int) Setting::getValue('office_radius_meters', '100');
+
+        return [
+            'distance' => $this->haversineDistance(
+                $request->latitude,
+                $request->longitude,
+                $officeLat,
+                $officeLng
+            ),
+            'radius' => $radius,
+        ];
+    }
+
+    private function locationAuditAttributes(Request $request, string $prefix): array
+    {
+        return [
+            "{$prefix}_accuracy_meters" => $this->locationAccuracy($request),
+            "{$prefix}_is_mocked" => $this->locationIsMocked($request),
+            "{$prefix}_location_recorded_at" => $request->location_timestamp
+                ? Carbon::parse($request->location_timestamp)
+                : null,
+        ];
+    }
+
     public function clockOut(Request $request)
     {
         $requirePhoto = Setting::getValue('require_photo', '1') === '1';
@@ -389,9 +464,19 @@ class AttendanceController extends Controller
         $request->validate([
             'latitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
             'longitude' => $requireGps ? 'required|numeric' : 'nullable|numeric',
+            'location_accuracy' => 'nullable|numeric|min:0',
+            'accuracy' => 'nullable|numeric|min:0',
+            'is_mock_location' => 'nullable|boolean',
+            'is_mocked' => 'nullable|boolean',
+            'location_is_mocked' => 'nullable|boolean',
+            'location_timestamp' => 'nullable|date',
             'photo' => 'nullable|image|max:5120',
             'photo_base64' => 'nullable|string',
         ]);
+
+        if ($locationError = $this->validateLocationIntegrity($request, $requireGps)) {
+            return $locationError;
+        }
 
         if ($requirePhoto && !$request->hasFile('photo') && !$request->photo_base64) {
             return response()->json([
@@ -414,6 +499,19 @@ class AttendanceController extends Controller
                 'success' => false,
                 'message' => 'Anda belum clock in atau sudah clock out.',
             ], 422);
+        }
+
+        if ($requireGps && $request->latitude && $request->longitude) {
+            ['distance' => $distance, 'radius' => $radius] = $this->officeDistance($request);
+
+            if ($distance > $radius && Setting::getValue('allow_remote_clockin', '0') !== '1') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Anda berada di luar radius kantor ({$radius}m). Clock-out remote tidak diizinkan.",
+                    'distance' => round($distance),
+                    'radius' => $radius,
+                ], 422);
+            }
         }
 
         $photoPath = null;
@@ -444,6 +542,7 @@ class AttendanceController extends Controller
             'clock_out' => $clockOutTime->format('H:i:s'),
             'clock_out_lat' => $request->latitude,
             'clock_out_lng' => $request->longitude,
+            ...$this->locationAuditAttributes($request, 'clock_out'),
             'clock_out_photo' => $photoPath,
         ]);
 
@@ -671,4 +770,3 @@ class AttendanceController extends Controller
         return null;
     }
 }
-

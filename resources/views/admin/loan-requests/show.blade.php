@@ -10,6 +10,8 @@
     ];
     $meta = $statusMeta[$loanRequest->status] ?? ['label' => ucfirst($loanRequest->status), 'class' => 'bg-gray-100 text-gray-700'];
     $canManageLoans = app(\App\Support\AdminPermission::class)->can($currentAdmin, 'payroll.loans.manage');
+    $interestRate = rtrim(rtrim(number_format((float) $loanRequest->interest_rate, 2, ',', '.'), '0'), ',');
+    $totalRepayable = (float) ($loanRequest->total_repayable ?: $loanRequest->amount);
 @endphp
 
 <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -56,6 +58,14 @@
         <div>
             <div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Nominal Pinjaman</div>
             <div class="text-[22px] font-black text-gray-900 mt-1">Rp {{ number_format($loanRequest->amount, 0, ',', '.') }}</div>
+        </div>
+        <div>
+            <div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Bunga</div>
+            <div class="text-[14px] font-bold text-gray-900 mt-1">{{ $interestRate }}% - Rp {{ number_format($loanRequest->interest_amount, 0, ',', '.') }}</div>
+        </div>
+        <div>
+            <div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Total Pinjaman</div>
+            <div class="text-[22px] font-black text-gray-900 mt-1">Rp {{ number_format($totalRepayable, 0, ',', '.') }}</div>
         </div>
         <div>
             <div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Tenor & Cicilan</div>

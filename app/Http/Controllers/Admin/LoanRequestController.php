@@ -47,9 +47,7 @@ class LoanRequestController extends Controller
 
     public function store(Request $request)
     {
-        $data = $this->validatedData($request);
-        $data['monthly_installment'] = $this->monthlyInstallment($data);
-        $data['remaining_amount'] = $data['remaining_amount'] ?? $data['amount'];
+        $data = $this->prepareLoanData($this->validatedData($request));
 
         LoanRequest::create($data);
 
@@ -75,9 +73,7 @@ class LoanRequestController extends Controller
     public function update(Request $request, int $id)
     {
         $loanRequest = $this->findLoanForCurrentCompany($id);
-        $data = $this->validatedData($request);
-        $data['monthly_installment'] = $this->monthlyInstallment($data);
-        $data['remaining_amount'] = $data['remaining_amount'] ?? $data['amount'];
+        $data = $this->prepareLoanData($this->validatedData($request));
 
         $loanRequest->update($data);
 
@@ -104,6 +100,7 @@ class LoanRequestController extends Controller
                 Rule::exists('employees', 'id')->where('company_id', $admin->company_id),
             ],
             'amount' => ['required', 'numeric', 'min:1'],
+            'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'installment_count' => ['required', 'integer', 'min:1', 'max:120'],
             'monthly_installment' => ['nullable', 'numeric', 'min:0'],
             'remaining_amount' => ['nullable', 'numeric', 'min:0'],
@@ -113,13 +110,36 @@ class LoanRequestController extends Controller
         ]);
     }
 
-    private function monthlyInstallment(array $data): float
+    private function prepareLoanData(array $data): array
     {
-        if (! empty($data['monthly_installment'])) {
+        $amount = (float) $data['amount'];
+        $interestRate = (float) ($data['interest_rate'] ?? 0);
+        $interestAmount = round($amount * ($interestRate / 100), 2);
+        $totalRepayable = round($amount + $interestAmount, 2);
+
+        $data['interest_rate'] = $interestRate;
+        $data['interest_amount'] = $interestAmount;
+        $data['total_repayable'] = $totalRepayable;
+        $data['monthly_installment'] = $this->monthlyInstallment($data, $totalRepayable);
+        $data['remaining_amount'] = $this->hasInputAmount($data, 'remaining_amount')
+            ? (float) $data['remaining_amount']
+            : $totalRepayable;
+
+        return $data;
+    }
+
+    private function monthlyInstallment(array $data, float $totalRepayable): float
+    {
+        if ($this->hasInputAmount($data, 'monthly_installment')) {
             return (float) $data['monthly_installment'];
         }
 
-        return round((float) $data['amount'] / max((int) $data['installment_count'], 1), 2);
+        return round($totalRepayable / max((int) $data['installment_count'], 1), 2);
+    }
+
+    private function hasInputAmount(array $data, string $key): bool
+    {
+        return array_key_exists($key, $data) && $data[$key] !== null && $data[$key] !== '';
     }
 
     private function employeeOptions()

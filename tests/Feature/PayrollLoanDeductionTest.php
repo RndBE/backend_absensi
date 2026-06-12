@@ -160,6 +160,78 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertSame(0.0, (float) $loanComponent['loan']['remaining_amount']);
     }
 
+    public function test_payroll_loan_deduction_uses_total_repayable_when_interest_exists(): void
+    {
+        $company = Company::create(['name' => 'PT Payroll Loan Interest']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-004',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll Interest',
+            'email' => 'admin4@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-004',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Loan Interest',
+            'email' => 'employee4@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        $loan = LoanRequest::create([
+            'employee_id' => $employee->id,
+            'amount' => 4000000,
+            'interest_rate' => 10,
+            'interest_amount' => 400000,
+            'total_repayable' => 4400000,
+            'installment_count' => 4,
+            'monthly_installment' => 1100000,
+            'remaining_amount' => 4400000,
+            'start_period' => '2026-06',
+            'status' => 'active',
+        ]);
+
+        $run = PayrollRun::create([
+            'period' => '2026-06',
+            'created_by' => $admin->id,
+        ]);
+
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+        $loanComponent = collect($detail->components)->firstWhere('name', 'Potongan Pinjaman');
+
+        $this->assertSame(1100000.0, (float) $loanComponent['amount']);
+        $this->assertSame($loan->id, $loanComponent['loan']['id']);
+        $this->assertSame(4000000.0, (float) $loanComponent['loan']['principal_amount']);
+        $this->assertSame(10.0, (float) $loanComponent['loan']['interest_rate']);
+        $this->assertSame(400000.0, (float) $loanComponent['loan']['interest_amount']);
+        $this->assertSame(4400000.0, (float) $loanComponent['loan']['total_repayable']);
+        $this->assertSame(1, $loanComponent['loan']['installment_number']);
+        $this->assertSame(1100000.0, (float) $loanComponent['loan']['paid_amount']);
+        $this->assertSame(3300000.0, (float) $loanComponent['loan']['remaining_amount']);
+    }
+
     public function test_finalize_payroll_applies_loan_deductions_to_remaining_balance(): void
     {
         $company = Company::create(['name' => 'PT Payroll Loan Finalize']);
@@ -351,6 +423,9 @@ class PayrollLoanDeductionTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('employee_id');
             $table->decimal('amount', 15, 2);
+            $table->decimal('interest_rate', 5, 2)->default(0);
+            $table->decimal('interest_amount', 15, 2)->default(0);
+            $table->decimal('total_repayable', 15, 2)->default(0);
             $table->unsignedSmallInteger('installment_count');
             $table->decimal('monthly_installment', 15, 2);
             $table->decimal('remaining_amount', 15, 2)->default(0);

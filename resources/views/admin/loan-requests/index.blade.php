@@ -50,11 +50,13 @@
     </div>
 
     <div class="overflow-x-auto">
-        <table class="w-full min-w-[900px]">
+        <table class="w-full min-w-[1080px]">
             <thead class="bg-gray-50">
                 <tr>
                     <th class="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Karyawan</th>
                     <th class="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Nominal</th>
+                    <th class="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Bunga</th>
+                    <th class="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total</th>
                     <th class="px-4 py-3 text-center text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tenor</th>
                     <th class="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Cicilan/Bulan</th>
                     <th class="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Sisa Pinjaman</th>
@@ -64,13 +66,22 @@
             </thead>
             <tbody>
                 @forelse($loanRequests as $loan)
-                    @php $meta = $statusMeta[$loan->status] ?? ['label' => ucfirst($loan->status), 'class' => 'bg-gray-100 text-gray-700']; @endphp
+                    @php
+                        $meta = $statusMeta[$loan->status] ?? ['label' => ucfirst($loan->status), 'class' => 'bg-gray-100 text-gray-700'];
+                        $interestRate = rtrim(rtrim(number_format((float) $loan->interest_rate, 2, ',', '.'), '0'), ',');
+                        $totalRepayable = (float) ($loan->total_repayable ?: $loan->amount);
+                    @endphp
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="px-4 py-3 border-b border-gray-100">
                             <div class="text-[13px] font-semibold text-gray-900">{{ $loan->employee->full_name ?? '-' }}</div>
                             <div class="text-[11px] text-gray-400">{{ $loan->employee->employee_code ?? '-' }} - {{ $loan->employee->department->name ?? '-' }}</div>
                         </td>
                         <td class="px-4 py-3 border-b border-gray-100 text-right text-[13px] font-bold text-gray-900">Rp {{ number_format($loan->amount, 0, ',', '.') }}</td>
+                        <td class="px-4 py-3 border-b border-gray-100 text-right">
+                            <div class="text-[13px] font-semibold text-gray-700">{{ $interestRate }}%</div>
+                            <div class="text-[11px] text-gray-400">Rp {{ number_format($loan->interest_amount, 0, ',', '.') }}</div>
+                        </td>
+                        <td class="px-4 py-3 border-b border-gray-100 text-right text-[13px] font-bold text-gray-900">Rp {{ number_format($totalRepayable, 0, ',', '.') }}</td>
                         <td class="px-4 py-3 border-b border-gray-100 text-center text-[13px] text-gray-600">{{ $loan->installment_count }}x</td>
                         <td class="px-4 py-3 border-b border-gray-100 text-right text-[13px] text-gray-600">Rp {{ number_format($loan->monthly_installment, 0, ',', '.') }}</td>
                         <td class="px-4 py-3 border-b border-gray-100 text-right text-[13px] text-gray-600">Rp {{ number_format($loan->remaining_amount, 0, ',', '.') }}</td>
@@ -92,7 +103,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="7" class="text-center py-12 text-gray-400 text-sm">Belum ada data pinjaman</td></tr>
+                    <tr><td colspan="9" class="text-center py-12 text-gray-400 text-sm">Belum ada data pinjaman</td></tr>
                 @endforelse
             </tbody>
         </table>
