@@ -22,7 +22,11 @@ class EmployeePortalTest extends TestCase
         Schema::dropIfExists('schedule_assignments');
         Schema::dropIfExists('schedule_template_days');
         Schema::dropIfExists('schedule_templates');
+        Schema::dropIfExists('employee_approvers');
         Schema::dropIfExists('notifications');
+        Schema::dropIfExists('leave_requests');
+        Schema::dropIfExists('leave_balances');
+        Schema::dropIfExists('leave_types');
         Schema::dropIfExists('attendances');
         Schema::dropIfExists('overtime_requests');
         Schema::dropIfExists('shifts');
@@ -88,6 +92,47 @@ class EmployeePortalTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('employee_approvers', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->string('request_type');
+            $table->unsignedTinyInteger('step_order');
+            $table->unsignedBigInteger('approver_id');
+            $table->timestamps();
+        });
+
+        Schema::create('leave_types', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->integer('max_days')->default(12);
+            $table->timestamps();
+        });
+
+        Schema::create('leave_balances', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->unsignedBigInteger('leave_type_id');
+            $table->integer('year');
+            $table->integer('total_days')->default(12);
+            $table->integer('used_days')->default(0);
+            $table->integer('remaining_days')->default(12);
+            $table->timestamps();
+        });
+
+        Schema::create('leave_requests', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->unsignedBigInteger('leave_type_id');
+            $table->date('start_date');
+            $table->date('end_date');
+            $table->decimal('total_days', 4, 1)->default(1);
+            $table->text('reason');
+            $table->unsignedBigInteger('delegate_to')->nullable();
+            $table->string('status')->default('pending');
+            $table->unsignedTinyInteger('current_step')->default(1);
+            $table->timestamps();
+        });
+
         Schema::create('attendances', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('employee_id');
@@ -124,14 +169,23 @@ class EmployeePortalTest extends TestCase
             $table->unsignedBigInteger('employee_id');
             $table->date('date');
             $table->string('overtime_type')->default('workday');
+            $table->time('planned_start')->nullable();
+            $table->time('planned_end')->nullable();
             $table->integer('total_duration')->default(0);
             $table->integer('break_duration')->default(0);
+            $table->integer('pre_shift_duration')->default(0);
+            $table->integer('pre_shift_break')->default(0);
+            $table->integer('post_shift_duration')->default(0);
+            $table->integer('post_shift_break')->default(0);
             $table->integer('approved_duration')->nullable();
             $table->integer('approved_break')->nullable();
             $table->integer('actual_duration')->nullable();
+            $table->time('shift_end_time')->nullable();
             $table->time('actual_clock_in')->nullable();
             $table->time('actual_clock_out')->nullable();
             $table->string('status')->default('pending');
+            $table->text('reason')->nullable();
+            $table->unsignedTinyInteger('current_step')->default(1);
             $table->timestamps();
         });
 
@@ -188,6 +242,8 @@ class EmployeePortalTest extends TestCase
             ->assertOk()
             ->assertSee('Employee One')
             ->assertSee('Clock In Sekarang')
+            ->assertSee('Pengajuan Cuti')
+            ->assertSee('Pengajuan Lembur')
             ->assertSee('Verifikasi Wajah')
             ->assertSee('/employee/face-photo', false);
     }
@@ -307,6 +363,78 @@ class EmployeePortalTest extends TestCase
         Storage::disk('public')->assertExists($path);
     }
 
+    public function test_employee_can_open_leave_request_page(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/leaves')
+            ->assertOk()
+            ->assertSee('Pengajuan Cuti')
+            ->assertSee('Cuti Tahunan')
+            ->assertSee('/employee/leaves/create', false);
+    }
+
+    public function test_employee_can_submit_leave_request_from_web_portal(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/leaves', [
+                'leave_type_id' => 1,
+                'start_date' => '2026-06-20',
+                'end_date' => '2026-06-21',
+                'total_days' => '2',
+                'reason' => 'Keperluan keluarga',
+            ])
+            ->assertRedirect(route('employee.leaves.index'));
+
+        $this->assertDatabaseHas('leave_requests', [
+            'employee_id' => 1,
+            'leave_type_id' => 1,
+            'status' => 'pending',
+            'current_step' => 1,
+        ]);
+    }
+
+    public function test_employee_can_open_overtime_request_page(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/overtimes')
+            ->assertOk()
+            ->assertSee('Pengajuan Lembur')
+            ->assertSee('/employee/overtimes/create', false);
+    }
+
+    public function test_employee_can_submit_overtime_request_from_web_portal(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/overtimes', [
+                'date' => '2026-06-20',
+                'overtime_type' => 'workday',
+                'post_shift_duration' => 120,
+                'post_shift_break' => 15,
+                'reason' => 'Closing laporan',
+            ])
+            ->assertRedirect(route('employee.overtimes.index'));
+
+        $this->assertDatabaseHas('overtime_requests', [
+            'employee_id' => 1,
+            'date' => '2026-06-20 00:00:00',
+            'overtime_type' => 'workday',
+            'total_duration' => 120,
+            'break_duration' => 15,
+            'status' => 'pending',
+            'current_step' => 1,
+        ]);
+    }
+
     private function seedEmployee(bool $isActive = true): void
     {
         DB::table('employees')->insert([
@@ -319,6 +447,28 @@ class EmployeePortalTest extends TestCase
             'role' => 'employee',
             'position' => 'Staff',
             'is_active' => $isActive,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function seedLeaveTypeAndBalance(): void
+    {
+        DB::table('leave_types')->insert([
+            'id' => 1,
+            'name' => 'Cuti Tahunan',
+            'max_days' => 12,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_balances')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 1,
+            'year' => 2026,
+            'total_days' => 12,
+            'used_days' => 0,
+            'remaining_days' => 12,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

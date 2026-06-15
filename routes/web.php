@@ -41,6 +41,8 @@ use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceCont
 use App\Http\Controllers\Employee\AuthController as EmployeeAuthController;
 use App\Http\Controllers\Employee\DashboardController as EmployeeDashboardController;
 use App\Http\Controllers\Employee\FacePhotoController as EmployeeFacePhotoController;
+use App\Http\Controllers\Employee\LeaveController as EmployeeLeaveController;
+use App\Http\Controllers\Employee\OvertimeController as EmployeeOvertimeController;
 use App\Http\Middleware\AdminActivityLogger;
 use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\AdminPermissionMiddleware;
@@ -58,6 +60,12 @@ Route::post('/employee/logout', [EmployeeAuthController::class, 'logout'])->name
 // Employee Portal Protected
 Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->group(function () {
     Route::get('/dashboard', [EmployeeDashboardController::class, 'index'])->name('dashboard');
+    Route::get('/leaves', [EmployeeLeaveController::class, 'index'])->name('leaves.index');
+    Route::get('/leaves/create', [EmployeeLeaveController::class, 'create'])->name('leaves.create');
+    Route::post('/leaves', [EmployeeLeaveController::class, 'store'])->name('leaves.store');
+    Route::get('/overtimes', [EmployeeOvertimeController::class, 'index'])->name('overtimes.index');
+    Route::get('/overtimes/create', [EmployeeOvertimeController::class, 'create'])->name('overtimes.create');
+    Route::post('/overtimes', [EmployeeOvertimeController::class, 'store'])->name('overtimes.store');
     Route::get('/face-photo', [EmployeeFacePhotoController::class, 'show'])->name('face-photo.show');
     Route::post('/face-photo', [EmployeeFacePhotoController::class, 'store'])->name('face-photo.store');
     Route::delete('/face-photo', [EmployeeFacePhotoController::class, 'destroy'])->name('face-photo.destroy');

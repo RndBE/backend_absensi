@@ -59,6 +59,37 @@
         </div>
     </section>
 
+    <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <a href="{{ route('employee.leaves.index') }}" class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-[20px]">event_available</span>
+                    </div>
+                    <div>
+                        <div class="text-[14px] font-black text-gray-900">Pengajuan Cuti</div>
+                        <div class="text-[12px] text-gray-500 mt-1">Ajukan cuti atau izin</div>
+                    </div>
+                </div>
+                <span class="material-symbols-outlined text-[18px] text-gray-400">chevron_right</span>
+            </div>
+        </a>
+        <a href="{{ route('employee.overtimes.index') }}" class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-[20px]">more_time</span>
+                    </div>
+                    <div>
+                        <div class="text-[14px] font-black text-gray-900">Pengajuan Lembur</div>
+                        <div class="text-[12px] text-gray-500 mt-1">Ajukan lembur kerja/libur</div>
+                    </div>
+                </div>
+                <span class="material-symbols-outlined text-[18px] text-gray-400">chevron_right</span>
+            </div>
+        </a>
+    </section>
+
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 stat-border-blue">
             <div class="flex items-center gap-2 text-[12px] font-bold text-gray-500 uppercase tracking-wide">
