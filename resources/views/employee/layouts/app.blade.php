@@ -17,7 +17,9 @@
     <header class="sticky top-0 z-40 h-14 bg-white/95 backdrop-blur-sm border-b border-gray-200">
         <div class="max-w-5xl mx-auto h-full px-4 sm:px-5 flex items-center justify-between gap-3">
             <a href="{{ route('employee.dashboard') }}" class="flex items-center gap-2.5 min-w-0">
-                <div class="w-9 h-9 bg-gradient-to-br from-indigo-600 to-cyan-500 rounded-lg flex items-center justify-center text-white text-[14px] font-extrabold shrink-0">AB</div>
+                <div class="w-9 h-9 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img src="{{ asset('images/logo_be2.png') }}" alt="HRIS Beacon" class="w-full h-full object-contain">
+                </div>
                 <div class="min-w-0">
                     <div class="text-[14px] font-extrabold text-gray-900 leading-tight truncate">HRIS Beacon</div>
                     <div class="text-[11px] text-gray-400 leading-tight">Employee Portal</div>

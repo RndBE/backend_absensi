@@ -241,6 +241,7 @@ class EmployeePortalTest extends TestCase
         $this->get('/employee/dashboard')
             ->assertOk()
             ->assertSee('HRIS Beacon')
+            ->assertSee('images/logo_be2.png', false)
             ->assertSee('Senin, 15 Juni 2026')
             ->assertSee('Employee One')
             ->assertSee('Clock In Sekarang')
@@ -248,6 +249,14 @@ class EmployeePortalTest extends TestCase
             ->assertSee('Pengajuan Lembur')
             ->assertSee('Verifikasi Wajah')
             ->assertSee('/employee/face-photo', false);
+    }
+
+    public function test_employee_login_page_uses_hris_beacon_logo(): void
+    {
+        $this->get('/employee/login')
+            ->assertOk()
+            ->assertSee('HRIS Beacon')
+            ->assertSee('images/logo_be2.png', false);
     }
 
     public function test_inactive_employee_cannot_login_to_employee_portal(): void

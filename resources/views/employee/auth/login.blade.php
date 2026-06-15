@@ -14,7 +14,9 @@
 
         <div class="bg-white/95 backdrop-blur-xl rounded-2xl p-8 sm:p-10 w-full max-w-[420px] shadow-2xl relative z-10">
             <div class="text-center mb-8">
-                <div class="w-14 h-14 bg-gradient-to-br from-indigo-600 to-cyan-500 rounded-xl inline-flex items-center justify-center text-2xl text-white font-extrabold mb-3.5">AB</div>
+                <div class="w-14 h-14 rounded-xl bg-white border border-gray-200 inline-flex items-center justify-center mb-3.5 overflow-hidden">
+                    <img src="{{ asset('images/logo_be2.png') }}" alt="HRIS Beacon" class="w-full h-full object-contain">
+                </div>
                 <h1 class="text-[22px] font-extrabold text-gray-900 tracking-tight">HRIS Beacon</h1>
                 <p class="text-gray-500 text-[13.5px] mt-1">Employee Portal Login</p>
             </div>
