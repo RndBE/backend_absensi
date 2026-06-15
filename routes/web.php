@@ -37,13 +37,32 @@ use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\Admin\TaxController;
 use App\Http\Controllers\Admin\TravelReportController;
 use App\Http\Controllers\Admin\TravelZoneController;
+use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceController;
+use App\Http\Controllers\Employee\AuthController as EmployeeAuthController;
+use App\Http\Controllers\Employee\DashboardController as EmployeeDashboardController;
 use App\Http\Middleware\AdminActivityLogger;
 use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\AdminPermissionMiddleware;
+use App\Http\Middleware\EmployeeAuth;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root to admin
 Route::get('/', fn () => redirect()->route('admin.login'));
+
+// Employee Portal Auth
+Route::get('/employee/login', [EmployeeAuthController::class, 'showLogin'])->name('employee.login');
+Route::post('/employee/login', [EmployeeAuthController::class, 'login']);
+Route::post('/employee/logout', [EmployeeAuthController::class, 'logout'])->name('employee.logout');
+
+// Employee Portal Protected
+Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->group(function () {
+    Route::get('/dashboard', [EmployeeDashboardController::class, 'index'])->name('dashboard');
+    Route::get('/attendance/{type}', [EmployeeAttendanceController::class, 'show'])
+        ->whereIn('type', ['clock-in', 'clock-out'])
+        ->name('attendance.show');
+    Route::post('/attendance/clock-in', [EmployeeAttendanceController::class, 'clockIn'])->name('attendance.clock-in');
+    Route::post('/attendance/clock-out', [EmployeeAttendanceController::class, 'clockOut'])->name('attendance.clock-out');
+});
 
 // Admin Auth
 Route::get('/admin/login', [AuthController::class, 'showLogin'])->name('admin.login');
