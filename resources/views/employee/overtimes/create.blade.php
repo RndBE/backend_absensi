@@ -2,6 +2,18 @@
 @section('title', 'Ajukan Lembur')
 
 @section('content')
+@php
+    $durationValue = function (string $field, int $default = 0): string {
+        $value = old($field, $default);
+
+        if (is_numeric($value)) {
+            return sprintf('%02d:%02d', intdiv((int) $value, 60), (int) $value % 60);
+        }
+
+        return $value ?: '00:00';
+    };
+@endphp
+
 <div class="max-w-2xl mx-auto space-y-4">
     <div>
         <a href="{{ route('employee.overtimes.index') }}" class="inline-flex items-center gap-1 text-[12px] font-semibold text-gray-500 hover:text-indigo-600 mb-2">
@@ -46,11 +58,11 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jam Lembur</label>
-                            <input type="number" name="pre_shift_duration" value="{{ old('pre_shift_duration', 0) }}" min="0" inputmode="numeric" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                            <input type="time" name="pre_shift_duration" value="{{ $durationValue('pre_shift_duration') }}" step="60" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
                         </div>
                         <div>
                             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Waktu Istirahat</label>
-                            <input type="number" name="pre_shift_break" value="{{ old('pre_shift_break', 0) }}" min="0" inputmode="numeric" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                            <input type="time" name="pre_shift_break" value="{{ $durationValue('pre_shift_break') }}" step="60" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
                         </div>
                     </div>
                 </section>
@@ -63,11 +75,11 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jam Lembur</label>
-                            <input type="number" name="post_shift_duration" value="{{ old('post_shift_duration', 0) }}" min="0" inputmode="numeric" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                            <input type="time" name="post_shift_duration" value="{{ $durationValue('post_shift_duration') }}" step="60" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
                         </div>
                         <div>
                             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Waktu Istirahat</label>
-                            <input type="number" name="post_shift_break" value="{{ old('post_shift_break', 0) }}" min="0" inputmode="numeric" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                            <input type="time" name="post_shift_break" value="{{ $durationValue('post_shift_break') }}" step="60" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
                         </div>
                     </div>
                 </section>
@@ -84,8 +96,8 @@
                 <input type="time" name="planned_end" value="{{ old('planned_end') }}" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
             </div>
             <div>
-                <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Istirahat (menit)</label>
-                <input type="number" name="break_duration" value="{{ old('break_duration', 0) }}" min="0" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Istirahat</label>
+                <input type="time" name="break_duration" value="{{ $durationValue('break_duration') }}" step="60" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
             </div>
         </div>
 

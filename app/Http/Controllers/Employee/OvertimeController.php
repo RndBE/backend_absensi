@@ -39,16 +39,18 @@ class OvertimeController extends Controller
 
     public function store(Request $request)
     {
+        $durationRule = ['nullable', 'regex:/^(?:\d+|(?:[01]\d|2[0-3]):[0-5]\d)$/'];
+
         $validated = $request->validate([
             'date' => 'required|date',
             'overtime_type' => 'required|in:workday,holiday',
             'planned_start' => 'nullable|date_format:H:i',
             'planned_end' => 'nullable|date_format:H:i',
-            'pre_shift_duration' => 'nullable|integer|min:0',
-            'pre_shift_break' => 'nullable|integer|min:0',
-            'post_shift_duration' => 'nullable|integer|min:0',
-            'post_shift_break' => 'nullable|integer|min:0',
-            'break_duration' => 'nullable|integer|min:0',
+            'pre_shift_duration' => $durationRule,
+            'pre_shift_break' => $durationRule,
+            'post_shift_duration' => $durationRule,
+            'post_shift_break' => $durationRule,
+            'break_duration' => $durationRule,
             'reason' => 'required|string|max:1000',
         ]);
 
@@ -66,7 +68,7 @@ class OvertimeController extends Controller
             $start = Carbon::parse($validated['planned_start']);
             $end = Carbon::parse($validated['planned_end']);
             $totalDuration = max(0, $end->diffInMinutes($start));
-            $breakDuration = (int) ($validated['break_duration'] ?? 0);
+            $breakDuration = $this->durationToMinutes($validated['break_duration'] ?? 0);
 
             OvertimeRequest::create([
                 'employee_id' => $employee->id,
@@ -81,10 +83,10 @@ class OvertimeController extends Controller
                 'current_step' => 1,
             ]);
         } else {
-            $preDuration = (int) ($validated['pre_shift_duration'] ?? 0);
-            $preBreak = (int) ($validated['pre_shift_break'] ?? 0);
-            $postDuration = (int) ($validated['post_shift_duration'] ?? 0);
-            $postBreak = (int) ($validated['post_shift_break'] ?? 0);
+            $preDuration = $this->durationToMinutes($validated['pre_shift_duration'] ?? 0);
+            $preBreak = $this->durationToMinutes($validated['pre_shift_break'] ?? 0);
+            $postDuration = $this->durationToMinutes($validated['post_shift_duration'] ?? 0);
+            $postBreak = $this->durationToMinutes($validated['post_shift_break'] ?? 0);
 
             OvertimeRequest::create([
                 'employee_id' => $employee->id,
@@ -105,5 +107,22 @@ class OvertimeController extends Controller
         return redirect()
             ->route('employee.overtimes.index')
             ->with('success', 'Pengajuan lembur berhasil dikirim.');
+    }
+
+    private function durationToMinutes($value): int
+    {
+        if ($value === null || $value === '') {
+            return 0;
+        }
+
+        if (is_numeric($value)) {
+            return max(0, (int) $value);
+        }
+
+        if (is_string($value) && preg_match('/^(\d{1,2}):([0-5]\d)$/', $value, $matches)) {
+            return ((int) $matches[1] * 60) + (int) $matches[2];
+        }
+
+        return 0;
     }
 }

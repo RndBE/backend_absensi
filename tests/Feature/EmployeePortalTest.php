@@ -431,6 +431,10 @@ class EmployeePortalTest extends TestCase
             ->assertSee('Durasi Lembur Hari Kerja')
             ->assertSee('Jam Lembur')
             ->assertSee('Waktu Istirahat')
+            ->assertSee('type="time" name="pre_shift_duration"', false)
+            ->assertSee('type="time" name="pre_shift_break"', false)
+            ->assertSee('type="time" name="post_shift_duration"', false)
+            ->assertSee('type="time" name="post_shift_break"', false)
             ->assertSee('data-overtime-section="before-shift"', false)
             ->assertSee('data-overtime-section="after-shift"', false);
     }
@@ -443,8 +447,10 @@ class EmployeePortalTest extends TestCase
             ->post('/employee/overtimes', [
                 'date' => '2026-06-20',
                 'overtime_type' => 'workday',
-                'post_shift_duration' => 120,
-                'post_shift_break' => 15,
+                'pre_shift_duration' => '01:30',
+                'pre_shift_break' => '00:15',
+                'post_shift_duration' => '02:00',
+                'post_shift_break' => '00:30',
                 'reason' => 'Closing laporan',
             ])
             ->assertRedirect(route('employee.overtimes.index'));
@@ -453,8 +459,8 @@ class EmployeePortalTest extends TestCase
             'employee_id' => 1,
             'date' => '2026-06-20 00:00:00',
             'overtime_type' => 'workday',
-            'total_duration' => 120,
-            'break_duration' => 15,
+            'total_duration' => 210,
+            'break_duration' => 45,
             'status' => 'pending',
             'current_step' => 1,
         ]);
