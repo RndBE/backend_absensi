@@ -43,6 +43,7 @@ class DashboardController extends Controller
                 'require_photo' => Setting::getValue('require_photo', '1') === '1',
                 'require_gps' => Setting::getValue('require_gps', '1') === '1',
                 'allow_remote_clockin' => Setting::getValue('allow_remote_clockin', '0') === '1',
+                'face_verification_enabled' => Setting::getValue('face_verification_enabled', '1') === '1',
             ],
         ]);
     }

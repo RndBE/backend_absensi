@@ -32,6 +32,33 @@
         </div>
     </section>
 
+    <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <div class="w-10 h-10 rounded-lg {{ $employee->face_photo ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600' }} flex items-center justify-center shrink-0">
+                    <span class="material-symbols-outlined text-[20px]">{{ $employee->face_photo ? 'verified_user' : 'face' }}</span>
+                </div>
+                <div>
+                    <div class="text-[14px] font-black text-gray-900">Verifikasi Wajah</div>
+                    <div class="text-[12px] text-gray-500 mt-1">
+                        @if($employee->face_photo)
+                            Foto referensi sudah terdaftar.
+                        @elseif($settings['face_verification_enabled'])
+                            Daftarkan wajah sebelum presensi.
+                        @else
+                            Verifikasi wajah belum diwajibkan.
+                        @endif
+                    </div>
+                </div>
+            </div>
+            <a href="{{ route('employee.face-photo.show') }}"
+               class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[12px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">
+                <span class="material-symbols-outlined text-[17px]">photo_camera</span>
+                {{ $employee->face_photo ? 'Update Foto Wajah' : 'Daftarkan Wajah' }}
+            </a>
+        </div>
+    </section>
+
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 stat-border-blue">
             <div class="flex items-center gap-2 text-[12px] font-bold text-gray-500 uppercase tracking-wide">

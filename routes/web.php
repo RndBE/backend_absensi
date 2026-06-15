@@ -40,6 +40,7 @@ use App\Http\Controllers\Admin\TravelZoneController;
 use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceController;
 use App\Http\Controllers\Employee\AuthController as EmployeeAuthController;
 use App\Http\Controllers\Employee\DashboardController as EmployeeDashboardController;
+use App\Http\Controllers\Employee\FacePhotoController as EmployeeFacePhotoController;
 use App\Http\Middleware\AdminActivityLogger;
 use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\AdminPermissionMiddleware;
@@ -57,6 +58,9 @@ Route::post('/employee/logout', [EmployeeAuthController::class, 'logout'])->name
 // Employee Portal Protected
 Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->group(function () {
     Route::get('/dashboard', [EmployeeDashboardController::class, 'index'])->name('dashboard');
+    Route::get('/face-photo', [EmployeeFacePhotoController::class, 'show'])->name('face-photo.show');
+    Route::post('/face-photo', [EmployeeFacePhotoController::class, 'store'])->name('face-photo.store');
+    Route::delete('/face-photo', [EmployeeFacePhotoController::class, 'destroy'])->name('face-photo.destroy');
     Route::get('/attendance/{type}', [EmployeeAttendanceController::class, 'show'])
         ->whereIn('type', ['clock-in', 'clock-out'])
         ->name('attendance.show');
@@ -102,6 +106,12 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Attendance
     Route::get('/attendance/realtime', [AttendanceController::class, 'realtime'])->name('attendance.realtime');
     Route::get('/attendance/history', [AttendanceController::class, 'history'])->name('attendance.history');
+    Route::post('/attendance/{id}/security-review/approve', [AttendanceController::class, 'approveSecurityReview'])
+        ->middleware(AdminPermissionMiddleware::class.':attendance.manage')
+        ->name('attendance.security-review.approve');
+    Route::post('/attendance/{id}/security-review/reject', [AttendanceController::class, 'rejectSecurityReview'])
+        ->middleware(AdminPermissionMiddleware::class.':attendance.manage')
+        ->name('attendance.security-review.reject');
     Route::get('/attendance-photo-archives', [AttendancePhotoArchiveController::class, 'index'])->name('attendance-photo-archives.index');
     Route::post('/attendance-photo-archives/generate', [AttendancePhotoArchiveController::class, 'generate'])->name('attendance-photo-archives.generate');
     Route::get('/attendance-photo-archives/{archive}/download', [AttendancePhotoArchiveController::class, 'download'])->name('attendance-photo-archives.download');

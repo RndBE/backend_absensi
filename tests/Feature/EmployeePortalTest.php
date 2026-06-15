@@ -7,6 +7,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class EmployeePortalTest extends TestCase
@@ -186,7 +187,9 @@ class EmployeePortalTest extends TestCase
         $this->get('/employee/dashboard')
             ->assertOk()
             ->assertSee('Employee One')
-            ->assertSee('Clock In Sekarang');
+            ->assertSee('Clock In Sekarang')
+            ->assertSee('Verifikasi Wajah')
+            ->assertSee('/employee/face-photo', false);
     }
 
     public function test_inactive_employee_cannot_login_to_employee_portal(): void
@@ -256,6 +259,41 @@ class EmployeePortalTest extends TestCase
             ->assertOk()
             ->assertSee('id="cameraPreview"', false)
             ->assertSee('transform: scaleX(-1)', false);
+    }
+
+    public function test_employee_can_open_face_photo_registration_page(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/face-photo')
+            ->assertOk()
+            ->assertSee('Daftarkan Wajah')
+            ->assertSee('cameraPreview')
+            ->assertSee('/employee/face-photo', false);
+    }
+
+    public function test_employee_can_save_face_photo_from_web_portal(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee();
+
+        $response = $this->withSession(['employee_id' => 1])
+            ->postJson('/employee/face-photo', [
+                'photo_base64' => base64_encode('fake-reference-photo'),
+            ]);
+
+        $response->assertOk()
+            ->assertJson([
+                'success' => true,
+                'message' => 'Foto verifikasi wajah berhasil disimpan.',
+            ]);
+
+        $path = DB::table('employees')->where('id', 1)->value('face_photo');
+
+        $this->assertNotNull($path);
+        $this->assertStringStartsWith('employees/face-photos/', $path);
+        Storage::disk('public')->assertExists($path);
     }
 
     private function seedEmployee(bool $isActive = true): void
