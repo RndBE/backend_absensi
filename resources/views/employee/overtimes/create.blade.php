@@ -3,19 +3,34 @@
 
 @section('content')
 @php
-    $durationValue = function (string $field): string {
-        if (! old($field)) {
-            return '';
-        }
-
-        $value = old($field);
+    $durationMinutes = function (string $field): int {
+        $value = old($field, 0);
 
         if (is_numeric($value)) {
-            return sprintf('%02d:%02d', intdiv((int) $value, 60), (int) $value % 60);
+            return max(0, (int) $value);
         }
 
-        return $value;
+        if (is_string($value) && preg_match('/^(\d{1,2}):([0-5]\d)$/', $value, $matches)) {
+            return ((int) $matches[1] * 60) + (int) $matches[2];
+        }
+
+        return 0;
     };
+
+    $durationParts = function (string $field) use ($durationMinutes): array {
+        $total = $durationMinutes($field);
+
+        return [
+            'total' => $total,
+            'hours' => intdiv($total, 60),
+            'minutes' => $total % 60,
+        ];
+    };
+
+    $preShiftDuration = $durationParts('pre_shift_duration');
+    $preShiftBreak = $durationParts('pre_shift_break');
+    $postShiftDuration = $durationParts('post_shift_duration');
+    $postShiftBreak = $durationParts('post_shift_break');
 @endphp
 
 <div class="max-w-2xl mx-auto space-y-4">
@@ -48,42 +63,132 @@
             <div class="flex items-center justify-between gap-3">
                 <div>
                     <div class="text-[13px] font-black text-gray-900">Durasi Lembur Hari Kerja</div>
-                    <div class="text-[12px] text-gray-500 mt-0.5">Isi durasi sebelum atau setelah shift.</div>
+                    <div class="text-[12px] text-gray-500 mt-0.5">Atur jam dan menit dengan tombol plus-minus.</div>
                 </div>
                 <span class="material-symbols-outlined text-[20px] text-indigo-500">schedule</span>
             </div>
 
             <div class="space-y-3">
-                <section data-overtime-section="before-shift" class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
-                    <div class="flex items-center gap-2">
-                        <span class="material-symbols-outlined text-[18px] text-emerald-600">first_page</span>
-                        <h2 class="text-[13px] font-black text-gray-900">Sebelum Shift</h2>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jam Lembur</label>
-                            <input type="time" name="pre_shift_duration" value="{{ $durationValue('pre_shift_duration') }}" step="60" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                <section data-overtime-section="before-shift" class="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="material-symbols-outlined text-[18px] text-emerald-600">arrow_upward</span>
+                            <h2 class="text-[13px] font-black text-gray-900 truncate">Lembur Pre-Shift</h2>
                         </div>
-                        <div>
-                            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Waktu Istirahat</label>
-                            <input type="time" name="pre_shift_break" value="{{ $durationValue('pre_shift_break') }}" step="60" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                        <span class="text-[11px] font-semibold text-gray-500 whitespace-nowrap">Sebelum Shift</span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div data-duration-control class="rounded-lg border border-gray-200 bg-white p-3">
+                            <input type="hidden" name="pre_shift_duration" value="{{ $preShiftDuration['total'] }}" data-duration-total>
+                            <div class="grid grid-cols-[22px_1fr_10px_1fr_52px] items-center gap-2">
+                                <span class="material-symbols-outlined text-[18px] text-gray-500">timer</span>
+                                <div class="flex items-center justify-center gap-1">
+                                    <button type="button" data-step-action data-step-target="pre_shift_duration_hours" data-step="-1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
+                                    <div class="min-w-10 text-center">
+                                        <input id="pre_shift_duration_hours" type="number" min="0" value="{{ $preShiftDuration['hours'] }}" data-duration-hours class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
+                                        <div class="text-[10px] text-gray-500 leading-none">Jam</div>
+                                    </div>
+                                    <button type="button" data-step-action data-step-target="pre_shift_duration_hours" data-step="1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                </div>
+                                <div class="text-center text-[14px] font-black text-gray-400">-</div>
+                                <div class="flex items-center justify-center gap-1">
+                                    <button type="button" data-step-action data-step-target="pre_shift_duration_minutes" data-step="-5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
+                                    <div class="min-w-10 text-center">
+                                        <input id="pre_shift_duration_minutes" type="number" min="0" max="59" value="{{ $preShiftDuration['minutes'] }}" data-duration-minutes class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
+                                        <div class="text-[10px] text-gray-500 leading-none">Menit</div>
+                                    </div>
+                                    <button type="button" data-step-action data-step-target="pre_shift_duration_minutes" data-step="5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                </div>
+                                <div data-duration-summary class="text-right text-[12px] font-black text-gray-900">{{ $preShiftDuration['hours'] }}j {{ $preShiftDuration['minutes'] }}m</div>
+                            </div>
+                        </div>
+
+                        <div data-duration-control class="rounded-lg border border-amber-100 bg-white p-3">
+                            <input type="hidden" name="pre_shift_break" value="{{ $preShiftBreak['total'] }}" data-duration-total>
+                            <div class="grid grid-cols-[22px_1fr_10px_1fr_52px] items-center gap-2">
+                                <span class="material-symbols-outlined text-[18px] text-gray-500">free_breakfast</span>
+                                <div class="flex items-center justify-center gap-1">
+                                    <button type="button" data-step-action data-step-target="pre_shift_break_hours" data-step="-1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
+                                    <div class="min-w-10 text-center">
+                                        <input id="pre_shift_break_hours" type="number" min="0" value="{{ $preShiftBreak['hours'] }}" data-duration-hours class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
+                                        <div class="text-[10px] text-gray-500 leading-none">Jam</div>
+                                    </div>
+                                    <button type="button" data-step-action data-step-target="pre_shift_break_hours" data-step="1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                </div>
+                                <div class="text-center text-[14px] font-black text-gray-400">-</div>
+                                <div class="flex items-center justify-center gap-1">
+                                    <button type="button" data-step-action data-step-target="pre_shift_break_minutes" data-step="-5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
+                                    <div class="min-w-10 text-center">
+                                        <input id="pre_shift_break_minutes" type="number" min="0" max="59" value="{{ $preShiftBreak['minutes'] }}" data-duration-minutes class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
+                                        <div class="text-[10px] text-gray-500 leading-none">Menit</div>
+                                    </div>
+                                    <button type="button" data-step-action data-step-target="pre_shift_break_minutes" data-step="5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                </div>
+                                <div data-duration-summary class="text-right text-[12px] font-black text-amber-600">{{ $preShiftBreak['hours'] }}j {{ $preShiftBreak['minutes'] }}m</div>
+                            </div>
                         </div>
                     </div>
                 </section>
 
-                <section data-overtime-section="after-shift" class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
-                    <div class="flex items-center gap-2">
-                        <span class="material-symbols-outlined text-[18px] text-indigo-600">last_page</span>
-                        <h2 class="text-[13px] font-black text-gray-900">Setelah Shift</h2>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jam Lembur</label>
-                            <input type="time" name="post_shift_duration" value="{{ $durationValue('post_shift_duration') }}" step="60" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                <section data-overtime-section="after-shift" class="rounded-xl border border-rose-100 bg-rose-50/40 p-4 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="material-symbols-outlined text-[18px] text-rose-600">arrow_downward</span>
+                            <h2 class="text-[13px] font-black text-gray-900 truncate">Lembur Post-Shift</h2>
                         </div>
-                        <div>
-                            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Waktu Istirahat</label>
-                            <input type="time" name="post_shift_break" value="{{ $durationValue('post_shift_break') }}" step="60" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                        <span class="text-[11px] font-semibold text-gray-500 whitespace-nowrap">Setelah Shift</span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div data-duration-control class="rounded-lg border border-gray-200 bg-white p-3">
+                            <input type="hidden" name="post_shift_duration" value="{{ $postShiftDuration['total'] }}" data-duration-total>
+                            <div class="grid grid-cols-[22px_1fr_10px_1fr_52px] items-center gap-2">
+                                <span class="material-symbols-outlined text-[18px] text-gray-500">timer</span>
+                                <div class="flex items-center justify-center gap-1">
+                                    <button type="button" data-step-action data-step-target="post_shift_duration_hours" data-step="-1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
+                                    <div class="min-w-10 text-center">
+                                        <input id="post_shift_duration_hours" type="number" min="0" value="{{ $postShiftDuration['hours'] }}" data-duration-hours class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
+                                        <div class="text-[10px] text-gray-500 leading-none">Jam</div>
+                                    </div>
+                                    <button type="button" data-step-action data-step-target="post_shift_duration_hours" data-step="1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                </div>
+                                <div class="text-center text-[14px] font-black text-gray-400">-</div>
+                                <div class="flex items-center justify-center gap-1">
+                                    <button type="button" data-step-action data-step-target="post_shift_duration_minutes" data-step="-5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
+                                    <div class="min-w-10 text-center">
+                                        <input id="post_shift_duration_minutes" type="number" min="0" max="59" value="{{ $postShiftDuration['minutes'] }}" data-duration-minutes class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
+                                        <div class="text-[10px] text-gray-500 leading-none">Menit</div>
+                                    </div>
+                                    <button type="button" data-step-action data-step-target="post_shift_duration_minutes" data-step="5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                </div>
+                                <div data-duration-summary class="text-right text-[12px] font-black text-gray-900">{{ $postShiftDuration['hours'] }}j {{ $postShiftDuration['minutes'] }}m</div>
+                            </div>
+                        </div>
+
+                        <div data-duration-control class="rounded-lg border border-amber-100 bg-white p-3">
+                            <input type="hidden" name="post_shift_break" value="{{ $postShiftBreak['total'] }}" data-duration-total>
+                            <div class="grid grid-cols-[22px_1fr_10px_1fr_52px] items-center gap-2">
+                                <span class="material-symbols-outlined text-[18px] text-gray-500">free_breakfast</span>
+                                <div class="flex items-center justify-center gap-1">
+                                    <button type="button" data-step-action data-step-target="post_shift_break_hours" data-step="-1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
+                                    <div class="min-w-10 text-center">
+                                        <input id="post_shift_break_hours" type="number" min="0" value="{{ $postShiftBreak['hours'] }}" data-duration-hours class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
+                                        <div class="text-[10px] text-gray-500 leading-none">Jam</div>
+                                    </div>
+                                    <button type="button" data-step-action data-step-target="post_shift_break_hours" data-step="1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                </div>
+                                <div class="text-center text-[14px] font-black text-gray-400">-</div>
+                                <div class="flex items-center justify-center gap-1">
+                                    <button type="button" data-step-action data-step-target="post_shift_break_minutes" data-step="-5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
+                                    <div class="min-w-10 text-center">
+                                        <input id="post_shift_break_minutes" type="number" min="0" max="59" value="{{ $postShiftBreak['minutes'] }}" data-duration-minutes class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
+                                        <div class="text-[10px] text-gray-500 leading-none">Menit</div>
+                                    </div>
+                                    <button type="button" data-step-action data-step-target="post_shift_break_minutes" data-step="5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                </div>
+                                <div data-duration-summary class="text-right text-[12px] font-black text-amber-600">{{ $postShiftBreak['hours'] }}j {{ $postShiftBreak['minutes'] }}m</div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -100,8 +205,8 @@
                 <input type="time" name="planned_end" value="{{ old('planned_end') }}" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
             </div>
             <div>
-                <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Istirahat</label>
-                <input type="time" name="break_duration" value="{{ $durationValue('break_duration') }}" step="60" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Istirahat (menit)</label>
+                <input type="number" name="break_duration" value="{{ old('break_duration', 0) }}" min="0" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
             </div>
         </div>
 
@@ -120,6 +225,48 @@
 
 @push('scripts')
 <script>
+function normalizeDurationInput(input, min, max = null) {
+    let value = parseInt(input.value || '0', 10);
+    value = Number.isNaN(value) ? 0 : Math.max(min, value);
+    if (max !== null) {
+        value = Math.min(max, value);
+    }
+    input.value = value;
+    return value;
+}
+
+function syncDurationControl(control) {
+    const hoursInput = control.querySelector('[data-duration-hours]');
+    const minutesInput = control.querySelector('[data-duration-minutes]');
+    const totalInput = control.querySelector('[data-duration-total]');
+    const summary = control.querySelector('[data-duration-summary]');
+    const hours = normalizeDurationInput(hoursInput, 0);
+    const minutes = normalizeDurationInput(minutesInput, 0, 59);
+
+    totalInput.value = (hours * 60) + minutes;
+    summary.textContent = `${hours}j ${minutes}m`;
+}
+
+document.querySelectorAll('[data-step-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const input = document.getElementById(button.dataset.stepTarget);
+        if (!input) {
+            return;
+        }
+
+        const nextValue = parseInt(input.value || '0', 10) + parseInt(button.dataset.step || '0', 10);
+        input.value = Number.isNaN(nextValue) ? 0 : nextValue;
+        syncDurationControl(input.closest('[data-duration-control]'));
+    });
+});
+
+document.querySelectorAll('[data-duration-control]').forEach((control) => {
+    control.querySelectorAll('[data-duration-hours], [data-duration-minutes]').forEach((input) => {
+        input.addEventListener('input', () => syncDurationControl(control));
+    });
+    syncDurationControl(control);
+});
+
 function toggleOvertimeType() {
     const isHoliday = document.getElementById('overtimeType').value === 'holiday';
     document.getElementById('workdayFields').classList.toggle('hidden', isHoliday);

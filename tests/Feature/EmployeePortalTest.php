@@ -429,16 +429,15 @@ class EmployeePortalTest extends TestCase
             ->get('/employee/overtimes/create')
             ->assertOk()
             ->assertSee('Durasi Lembur Hari Kerja')
-            ->assertSee('Jam Lembur')
-            ->assertSee('Waktu Istirahat')
-            ->assertSee('type="time" name="pre_shift_duration"', false)
-            ->assertSee('type="time" name="pre_shift_break"', false)
-            ->assertSee('type="time" name="post_shift_duration"', false)
-            ->assertSee('type="time" name="post_shift_break"', false)
-            ->assertSee('name="pre_shift_duration" value=""', false)
-            ->assertSee('name="pre_shift_break" value=""', false)
-            ->assertSee('name="post_shift_duration" value=""', false)
-            ->assertSee('name="post_shift_break" value=""', false)
+            ->assertSee('Lembur Pre-Shift')
+            ->assertSee('Lembur Post-Shift')
+            ->assertSee('0j 0m')
+            ->assertSee('type="hidden" name="pre_shift_duration" value="0"', false)
+            ->assertSee('type="hidden" name="pre_shift_break" value="0"', false)
+            ->assertSee('type="number"', false)
+            ->assertSee('data-duration-control', false)
+            ->assertSee('data-step-action', false)
+            ->assertDontSee('type="time" name="pre_shift_duration"', false)
             ->assertSee('data-overtime-section="before-shift"', false)
             ->assertSee('data-overtime-section="after-shift"', false);
     }
@@ -451,10 +450,10 @@ class EmployeePortalTest extends TestCase
             ->post('/employee/overtimes', [
                 'date' => '2026-06-20',
                 'overtime_type' => 'workday',
-                'pre_shift_duration' => '01:30',
-                'pre_shift_break' => '00:15',
-                'post_shift_duration' => '02:00',
-                'post_shift_break' => '00:30',
+                'pre_shift_duration' => 90,
+                'pre_shift_break' => 15,
+                'post_shift_duration' => 120,
+                'post_shift_break' => 30,
                 'reason' => 'Closing laporan',
             ])
             ->assertRedirect(route('employee.overtimes.index'));
