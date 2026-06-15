@@ -306,6 +306,18 @@ class EmployeePortalTest extends TestCase
             ->assertSee('retryLocationBtn');
     }
 
+    public function test_attendance_success_redirect_shows_employee_portal_alert(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/attendance/clock-in')
+            ->assertOk()
+            ->assertSee('employeePortalFlash', false)
+            ->assertSee('sessionStorage.setItem', false)
+            ->assertSee('employee-attendance-alert', false);
+    }
+
     public function test_attendance_photo_capture_unmirrors_front_camera_photo(): void
     {
         $this->seedEmployee();

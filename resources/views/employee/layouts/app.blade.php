@@ -53,10 +53,49 @@
                 <span class="material-symbols-outlined text-[18px]">error</span> {{ session('error') }}
             </div>
         @endif
+        <div id="employeePortalFlash" class="hidden mb-4"></div>
 
         @yield('content')
     </main>
 
+    <script>
+        (function () {
+            const flash = document.getElementById('employeePortalFlash');
+            if (!flash) return;
+
+            const rawMessage = sessionStorage.getItem('employee-attendance-alert');
+            if (!rawMessage) return;
+
+            sessionStorage.removeItem('employee-attendance-alert');
+
+            let payload = { type: 'success', message: rawMessage };
+            try {
+                payload = JSON.parse(rawMessage);
+            } catch (error) {
+                payload = { type: 'success', message: rawMessage };
+            }
+
+            const isError = payload.type === 'error';
+            flash.className = [
+                'flex items-center gap-2.5 px-4 py-3.5 rounded-lg text-[13.5px] font-medium mb-4 animate-slide-down',
+                isError ? 'bg-red-50 text-red-800 border border-red-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200',
+            ].join(' ');
+            flash.replaceChildren();
+
+            const icon = document.createElement('span');
+            icon.className = 'material-symbols-outlined text-[18px]';
+            icon.textContent = isError ? 'error' : 'check_circle';
+
+            const message = document.createElement('span');
+            message.textContent = payload.message || 'Presensi berhasil diproses.';
+
+            flash.append(icon, message);
+
+            window.setTimeout(() => {
+                flash.classList.add('hidden');
+            }, 5000);
+        })();
+    </script>
     @stack('scripts')
 </body>
 </html>

@@ -363,6 +363,10 @@ async function submitAttendance() {
         }
 
         stopCamera();
+        sessionStorage.setItem('employee-attendance-alert', JSON.stringify({
+            type: 'success',
+            message: body.message || (attendanceType === 'clock-out' ? 'Clock Out berhasil.' : 'Clock In berhasil.'),
+        }));
         window.location.href = @json(route('employee.dashboard'));
     } catch (error) {
         cameraAlert.className = 'rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800';
