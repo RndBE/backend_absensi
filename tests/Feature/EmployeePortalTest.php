@@ -435,6 +435,10 @@ class EmployeePortalTest extends TestCase
             ->assertSee('type="time" name="pre_shift_break"', false)
             ->assertSee('type="time" name="post_shift_duration"', false)
             ->assertSee('type="time" name="post_shift_break"', false)
+            ->assertSee('name="pre_shift_duration" value=""', false)
+            ->assertSee('name="pre_shift_break" value=""', false)
+            ->assertSee('name="post_shift_duration" value=""', false)
+            ->assertSee('name="post_shift_break" value=""', false)
             ->assertSee('data-overtime-section="before-shift"', false)
             ->assertSee('data-overtime-section="after-shift"', false);
     }

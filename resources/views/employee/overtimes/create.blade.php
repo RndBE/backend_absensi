@@ -3,14 +3,18 @@
 
 @section('content')
 @php
-    $durationValue = function (string $field, int $default = 0): string {
-        $value = old($field, $default);
+    $durationValue = function (string $field): string {
+        if (! old($field)) {
+            return '';
+        }
+
+        $value = old($field);
 
         if (is_numeric($value)) {
             return sprintf('%02d:%02d', intdiv((int) $value, 60), (int) $value % 60);
         }
 
-        return $value ?: '00:00';
+        return $value;
     };
 @endphp
 
