@@ -1,6 +1,77 @@
 @extends('employee.layouts.app')
 @section('title', 'Ajukan Lembur')
 
+@push('head')
+<style>
+    .overtime-stepper-row {
+        display: grid;
+        grid-template-columns: 18px minmax(78px, 1fr) 8px minmax(78px, 1fr) 46px;
+        align-items: center;
+        gap: 6px;
+        min-height: 48px;
+    }
+
+    .overtime-stepper-group {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    .overtime-stepper-button {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        background: #f1f5f9;
+        color: #0f172a;
+        font-size: 14px;
+        font-weight: 900;
+        line-height: 1;
+    }
+
+    .overtime-stepper-value {
+        width: 28px;
+        background: transparent;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 900;
+        color: #0f172a;
+        outline: none;
+        -moz-appearance: textfield;
+    }
+
+    .overtime-stepper-value::-webkit-outer-spin-button,
+    .overtime-stepper-value::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    .overtime-stepper-label {
+        margin-top: 1px;
+        color: #64748b;
+        font-size: 9px;
+        line-height: 1;
+    }
+
+    @media (max-width: 380px) {
+        .overtime-stepper-row {
+            grid-template-columns: 16px minmax(66px, 1fr) 6px minmax(66px, 1fr) 40px;
+            gap: 4px;
+        }
+
+        .overtime-stepper-button {
+            width: 22px;
+            height: 22px;
+        }
+
+        .overtime-stepper-value {
+            width: 24px;
+        }
+    }
+</style>
+@endpush
+
 @section('content')
 @php
     $durationMinutes = function (string $field): int {
@@ -69,7 +140,7 @@
             </div>
 
             <div class="space-y-3">
-                <section data-overtime-section="before-shift" class="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 space-y-3">
+                <section data-overtime-section="before-shift" class="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-2">
                     <div class="flex items-center justify-between gap-3">
                         <div class="flex items-center gap-2 min-w-0">
                             <span class="material-symbols-outlined text-[18px] text-emerald-600">arrow_upward</span>
@@ -79,59 +150,59 @@
                     </div>
 
                     <div class="space-y-2">
-                        <div data-duration-control class="rounded-lg border border-gray-200 bg-white p-3">
+                        <div data-duration-control class="rounded-lg border border-gray-200 bg-white px-2.5 py-2">
                             <input type="hidden" name="pre_shift_duration" value="{{ $preShiftDuration['total'] }}" data-duration-total>
-                            <div class="grid grid-cols-[22px_1fr_10px_1fr_52px] items-center gap-2">
-                                <span class="material-symbols-outlined text-[18px] text-gray-500">timer</span>
-                                <div class="flex items-center justify-center gap-1">
-                                    <button type="button" data-step-action data-step-target="pre_shift_duration_hours" data-step="-1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
-                                    <div class="min-w-10 text-center">
-                                        <input id="pre_shift_duration_hours" type="number" min="0" value="{{ $preShiftDuration['hours'] }}" data-duration-hours class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
-                                        <div class="text-[10px] text-gray-500 leading-none">Jam</div>
+                            <div class="overtime-stepper-row">
+                                <span class="material-symbols-outlined text-[16px] text-gray-500">timer</span>
+                                <div class="overtime-stepper-group">
+                                    <button type="button" data-step-action data-step-target="pre_shift_duration_hours" data-step="-1" class="overtime-stepper-button">-</button>
+                                    <div class="text-center">
+                                        <input id="pre_shift_duration_hours" type="number" min="0" value="{{ $preShiftDuration['hours'] }}" data-duration-hours class="overtime-stepper-value">
+                                        <div class="overtime-stepper-label">Jam</div>
                                     </div>
-                                    <button type="button" data-step-action data-step-target="pre_shift_duration_hours" data-step="1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                    <button type="button" data-step-action data-step-target="pre_shift_duration_hours" data-step="1" class="overtime-stepper-button">+</button>
                                 </div>
-                                <div class="text-center text-[14px] font-black text-gray-400">-</div>
-                                <div class="flex items-center justify-center gap-1">
-                                    <button type="button" data-step-action data-step-target="pre_shift_duration_minutes" data-step="-5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
-                                    <div class="min-w-10 text-center">
-                                        <input id="pre_shift_duration_minutes" type="number" min="0" max="59" value="{{ $preShiftDuration['minutes'] }}" data-duration-minutes class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
-                                        <div class="text-[10px] text-gray-500 leading-none">Menit</div>
+                                <div class="text-center text-[12px] font-black text-gray-400">-</div>
+                                <div class="overtime-stepper-group">
+                                    <button type="button" data-step-action data-step-target="pre_shift_duration_minutes" data-step="-5" class="overtime-stepper-button">-</button>
+                                    <div class="text-center">
+                                        <input id="pre_shift_duration_minutes" type="number" min="0" max="59" value="{{ $preShiftDuration['minutes'] }}" data-duration-minutes class="overtime-stepper-value">
+                                        <div class="overtime-stepper-label">Menit</div>
                                     </div>
-                                    <button type="button" data-step-action data-step-target="pre_shift_duration_minutes" data-step="5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                    <button type="button" data-step-action data-step-target="pre_shift_duration_minutes" data-step="5" class="overtime-stepper-button">+</button>
                                 </div>
-                                <div data-duration-summary class="text-right text-[12px] font-black text-gray-900">{{ $preShiftDuration['hours'] }}j {{ $preShiftDuration['minutes'] }}m</div>
+                                <div data-duration-summary class="text-right text-[11px] font-black text-gray-900">{{ $preShiftDuration['hours'] }}j {{ $preShiftDuration['minutes'] }}m</div>
                             </div>
                         </div>
 
-                        <div data-duration-control class="rounded-lg border border-amber-100 bg-white p-3">
+                        <div data-duration-control class="rounded-lg border border-amber-100 bg-white px-2.5 py-2">
                             <input type="hidden" name="pre_shift_break" value="{{ $preShiftBreak['total'] }}" data-duration-total>
-                            <div class="grid grid-cols-[22px_1fr_10px_1fr_52px] items-center gap-2">
-                                <span class="material-symbols-outlined text-[18px] text-gray-500">free_breakfast</span>
-                                <div class="flex items-center justify-center gap-1">
-                                    <button type="button" data-step-action data-step-target="pre_shift_break_hours" data-step="-1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
-                                    <div class="min-w-10 text-center">
-                                        <input id="pre_shift_break_hours" type="number" min="0" value="{{ $preShiftBreak['hours'] }}" data-duration-hours class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
-                                        <div class="text-[10px] text-gray-500 leading-none">Jam</div>
+                            <div class="overtime-stepper-row">
+                                <span class="material-symbols-outlined text-[16px] text-gray-500">free_breakfast</span>
+                                <div class="overtime-stepper-group">
+                                    <button type="button" data-step-action data-step-target="pre_shift_break_hours" data-step="-1" class="overtime-stepper-button">-</button>
+                                    <div class="text-center">
+                                        <input id="pre_shift_break_hours" type="number" min="0" value="{{ $preShiftBreak['hours'] }}" data-duration-hours class="overtime-stepper-value">
+                                        <div class="overtime-stepper-label">Jam</div>
                                     </div>
-                                    <button type="button" data-step-action data-step-target="pre_shift_break_hours" data-step="1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                    <button type="button" data-step-action data-step-target="pre_shift_break_hours" data-step="1" class="overtime-stepper-button">+</button>
                                 </div>
-                                <div class="text-center text-[14px] font-black text-gray-400">-</div>
-                                <div class="flex items-center justify-center gap-1">
-                                    <button type="button" data-step-action data-step-target="pre_shift_break_minutes" data-step="-5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
-                                    <div class="min-w-10 text-center">
-                                        <input id="pre_shift_break_minutes" type="number" min="0" max="59" value="{{ $preShiftBreak['minutes'] }}" data-duration-minutes class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
-                                        <div class="text-[10px] text-gray-500 leading-none">Menit</div>
+                                <div class="text-center text-[12px] font-black text-gray-400">-</div>
+                                <div class="overtime-stepper-group">
+                                    <button type="button" data-step-action data-step-target="pre_shift_break_minutes" data-step="-5" class="overtime-stepper-button">-</button>
+                                    <div class="text-center">
+                                        <input id="pre_shift_break_minutes" type="number" min="0" max="59" value="{{ $preShiftBreak['minutes'] }}" data-duration-minutes class="overtime-stepper-value">
+                                        <div class="overtime-stepper-label">Menit</div>
                                     </div>
-                                    <button type="button" data-step-action data-step-target="pre_shift_break_minutes" data-step="5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                    <button type="button" data-step-action data-step-target="pre_shift_break_minutes" data-step="5" class="overtime-stepper-button">+</button>
                                 </div>
-                                <div data-duration-summary class="text-right text-[12px] font-black text-amber-600">{{ $preShiftBreak['hours'] }}j {{ $preShiftBreak['minutes'] }}m</div>
+                                <div data-duration-summary class="text-right text-[11px] font-black text-amber-600">{{ $preShiftBreak['hours'] }}j {{ $preShiftBreak['minutes'] }}m</div>
                             </div>
                         </div>
                     </div>
                 </section>
 
-                <section data-overtime-section="after-shift" class="rounded-xl border border-rose-100 bg-rose-50/40 p-4 space-y-3">
+                <section data-overtime-section="after-shift" class="rounded-xl border border-rose-100 bg-rose-50/40 p-3 space-y-2">
                     <div class="flex items-center justify-between gap-3">
                         <div class="flex items-center gap-2 min-w-0">
                             <span class="material-symbols-outlined text-[18px] text-rose-600">arrow_downward</span>
@@ -141,53 +212,53 @@
                     </div>
 
                     <div class="space-y-2">
-                        <div data-duration-control class="rounded-lg border border-gray-200 bg-white p-3">
+                        <div data-duration-control class="rounded-lg border border-gray-200 bg-white px-2.5 py-2">
                             <input type="hidden" name="post_shift_duration" value="{{ $postShiftDuration['total'] }}" data-duration-total>
-                            <div class="grid grid-cols-[22px_1fr_10px_1fr_52px] items-center gap-2">
-                                <span class="material-symbols-outlined text-[18px] text-gray-500">timer</span>
-                                <div class="flex items-center justify-center gap-1">
-                                    <button type="button" data-step-action data-step-target="post_shift_duration_hours" data-step="-1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
-                                    <div class="min-w-10 text-center">
-                                        <input id="post_shift_duration_hours" type="number" min="0" value="{{ $postShiftDuration['hours'] }}" data-duration-hours class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
-                                        <div class="text-[10px] text-gray-500 leading-none">Jam</div>
+                            <div class="overtime-stepper-row">
+                                <span class="material-symbols-outlined text-[16px] text-gray-500">timer</span>
+                                <div class="overtime-stepper-group">
+                                    <button type="button" data-step-action data-step-target="post_shift_duration_hours" data-step="-1" class="overtime-stepper-button">-</button>
+                                    <div class="text-center">
+                                        <input id="post_shift_duration_hours" type="number" min="0" value="{{ $postShiftDuration['hours'] }}" data-duration-hours class="overtime-stepper-value">
+                                        <div class="overtime-stepper-label">Jam</div>
                                     </div>
-                                    <button type="button" data-step-action data-step-target="post_shift_duration_hours" data-step="1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                    <button type="button" data-step-action data-step-target="post_shift_duration_hours" data-step="1" class="overtime-stepper-button">+</button>
                                 </div>
-                                <div class="text-center text-[14px] font-black text-gray-400">-</div>
-                                <div class="flex items-center justify-center gap-1">
-                                    <button type="button" data-step-action data-step-target="post_shift_duration_minutes" data-step="-5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
-                                    <div class="min-w-10 text-center">
-                                        <input id="post_shift_duration_minutes" type="number" min="0" max="59" value="{{ $postShiftDuration['minutes'] }}" data-duration-minutes class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
-                                        <div class="text-[10px] text-gray-500 leading-none">Menit</div>
+                                <div class="text-center text-[12px] font-black text-gray-400">-</div>
+                                <div class="overtime-stepper-group">
+                                    <button type="button" data-step-action data-step-target="post_shift_duration_minutes" data-step="-5" class="overtime-stepper-button">-</button>
+                                    <div class="text-center">
+                                        <input id="post_shift_duration_minutes" type="number" min="0" max="59" value="{{ $postShiftDuration['minutes'] }}" data-duration-minutes class="overtime-stepper-value">
+                                        <div class="overtime-stepper-label">Menit</div>
                                     </div>
-                                    <button type="button" data-step-action data-step-target="post_shift_duration_minutes" data-step="5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                    <button type="button" data-step-action data-step-target="post_shift_duration_minutes" data-step="5" class="overtime-stepper-button">+</button>
                                 </div>
-                                <div data-duration-summary class="text-right text-[12px] font-black text-gray-900">{{ $postShiftDuration['hours'] }}j {{ $postShiftDuration['minutes'] }}m</div>
+                                <div data-duration-summary class="text-right text-[11px] font-black text-gray-900">{{ $postShiftDuration['hours'] }}j {{ $postShiftDuration['minutes'] }}m</div>
                             </div>
                         </div>
 
-                        <div data-duration-control class="rounded-lg border border-amber-100 bg-white p-3">
+                        <div data-duration-control class="rounded-lg border border-amber-100 bg-white px-2.5 py-2">
                             <input type="hidden" name="post_shift_break" value="{{ $postShiftBreak['total'] }}" data-duration-total>
-                            <div class="grid grid-cols-[22px_1fr_10px_1fr_52px] items-center gap-2">
-                                <span class="material-symbols-outlined text-[18px] text-gray-500">free_breakfast</span>
-                                <div class="flex items-center justify-center gap-1">
-                                    <button type="button" data-step-action data-step-target="post_shift_break_hours" data-step="-1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
-                                    <div class="min-w-10 text-center">
-                                        <input id="post_shift_break_hours" type="number" min="0" value="{{ $postShiftBreak['hours'] }}" data-duration-hours class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
-                                        <div class="text-[10px] text-gray-500 leading-none">Jam</div>
+                            <div class="overtime-stepper-row">
+                                <span class="material-symbols-outlined text-[16px] text-gray-500">free_breakfast</span>
+                                <div class="overtime-stepper-group">
+                                    <button type="button" data-step-action data-step-target="post_shift_break_hours" data-step="-1" class="overtime-stepper-button">-</button>
+                                    <div class="text-center">
+                                        <input id="post_shift_break_hours" type="number" min="0" value="{{ $postShiftBreak['hours'] }}" data-duration-hours class="overtime-stepper-value">
+                                        <div class="overtime-stepper-label">Jam</div>
                                     </div>
-                                    <button type="button" data-step-action data-step-target="post_shift_break_hours" data-step="1" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                    <button type="button" data-step-action data-step-target="post_shift_break_hours" data-step="1" class="overtime-stepper-button">+</button>
                                 </div>
-                                <div class="text-center text-[14px] font-black text-gray-400">-</div>
-                                <div class="flex items-center justify-center gap-1">
-                                    <button type="button" data-step-action data-step-target="post_shift_break_minutes" data-step="-5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">-</button>
-                                    <div class="min-w-10 text-center">
-                                        <input id="post_shift_break_minutes" type="number" min="0" max="59" value="{{ $postShiftBreak['minutes'] }}" data-duration-minutes class="w-9 bg-transparent text-center text-[15px] font-black text-gray-900 outline-none">
-                                        <div class="text-[10px] text-gray-500 leading-none">Menit</div>
+                                <div class="text-center text-[12px] font-black text-gray-400">-</div>
+                                <div class="overtime-stepper-group">
+                                    <button type="button" data-step-action data-step-target="post_shift_break_minutes" data-step="-5" class="overtime-stepper-button">-</button>
+                                    <div class="text-center">
+                                        <input id="post_shift_break_minutes" type="number" min="0" max="59" value="{{ $postShiftBreak['minutes'] }}" data-duration-minutes class="overtime-stepper-value">
+                                        <div class="overtime-stepper-label">Menit</div>
                                     </div>
-                                    <button type="button" data-step-action data-step-target="post_shift_break_minutes" data-step="5" class="w-7 h-7 rounded-md bg-gray-100 text-gray-700 text-[16px] font-black">+</button>
+                                    <button type="button" data-step-action data-step-target="post_shift_break_minutes" data-step="5" class="overtime-stepper-button">+</button>
                                 </div>
-                                <div data-duration-summary class="text-right text-[12px] font-black text-amber-600">{{ $postShiftBreak['hours'] }}j {{ $postShiftBreak['minutes'] }}m</div>
+                                <div data-duration-summary class="text-right text-[11px] font-black text-amber-600">{{ $postShiftBreak['hours'] }}j {{ $postShiftBreak['minutes'] }}m</div>
                             </div>
                         </div>
                     </div>

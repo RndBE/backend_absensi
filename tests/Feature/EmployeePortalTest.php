@@ -437,6 +437,8 @@ class EmployeePortalTest extends TestCase
             ->assertSee('type="number"', false)
             ->assertSee('data-duration-control', false)
             ->assertSee('data-step-action', false)
+            ->assertSee('overtime-stepper-row', false)
+            ->assertSee('overtime-stepper-button', false)
             ->assertDontSee('type="time" name="pre_shift_duration"', false)
             ->assertSee('data-overtime-section="before-shift"', false)
             ->assertSee('data-overtime-section="after-shift"', false);
