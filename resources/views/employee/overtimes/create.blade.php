@@ -29,23 +29,48 @@
         </div>
 
         <div id="workdayFields" class="space-y-3">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="flex items-center justify-between gap-3">
                 <div>
-                    <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Sebelum Shift (menit)</label>
-                    <input type="number" name="pre_shift_duration" value="{{ old('pre_shift_duration', 0) }}" min="0" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                    <div class="text-[13px] font-black text-gray-900">Durasi Lembur Hari Kerja</div>
+                    <div class="text-[12px] text-gray-500 mt-0.5">Isi durasi sebelum atau setelah shift.</div>
                 </div>
-                <div>
-                    <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Istirahat Sebelum Shift</label>
-                    <input type="number" name="pre_shift_break" value="{{ old('pre_shift_break', 0) }}" min="0" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Setelah Shift (menit)</label>
-                    <input type="number" name="post_shift_duration" value="{{ old('post_shift_duration', 0) }}" min="0" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Istirahat Setelah Shift</label>
-                    <input type="number" name="post_shift_break" value="{{ old('post_shift_break', 0) }}" min="0" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
-                </div>
+                <span class="material-symbols-outlined text-[20px] text-indigo-500">schedule</span>
+            </div>
+
+            <div class="space-y-3">
+                <section data-overtime-section="before-shift" class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[18px] text-emerald-600">first_page</span>
+                        <h2 class="text-[13px] font-black text-gray-900">Sebelum Shift</h2>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jam Lembur</label>
+                            <input type="number" name="pre_shift_duration" value="{{ old('pre_shift_duration', 0) }}" min="0" inputmode="numeric" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Waktu Istirahat</label>
+                            <input type="number" name="pre_shift_break" value="{{ old('pre_shift_break', 0) }}" min="0" inputmode="numeric" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
+                </section>
+
+                <section data-overtime-section="after-shift" class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[18px] text-indigo-600">last_page</span>
+                        <h2 class="text-[13px] font-black text-gray-900">Setelah Shift</h2>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jam Lembur</label>
+                            <input type="number" name="post_shift_duration" value="{{ old('post_shift_duration', 0) }}" min="0" inputmode="numeric" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Waktu Istirahat</label>
+                            <input type="number" name="post_shift_break" value="{{ old('post_shift_break', 0) }}" min="0" inputmode="numeric" class="w-full px-3 py-3 text-[15px] border border-gray-300 rounded-lg bg-white outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
 

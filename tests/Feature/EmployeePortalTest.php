@@ -421,6 +421,20 @@ class EmployeePortalTest extends TestCase
             ->assertSee('/employee/overtimes/create', false);
     }
 
+    public function test_employee_overtime_form_uses_mobile_style_duration_sections(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/overtimes/create')
+            ->assertOk()
+            ->assertSee('Durasi Lembur Hari Kerja')
+            ->assertSee('Jam Lembur')
+            ->assertSee('Waktu Istirahat')
+            ->assertSee('data-overtime-section="before-shift"', false)
+            ->assertSee('data-overtime-section="after-shift"', false);
+    }
+
     public function test_employee_can_submit_overtime_request_from_web_portal(): void
     {
         $this->seedEmployee();
