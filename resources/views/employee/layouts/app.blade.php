@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" type="image/x-icon" href="{{ asset('images/title.ico') }}">
-    <title>@yield('title', 'Employee Portal') - Absensi Beacon</title>
+    <title>@yield('title', 'Employee Portal') - HRIS Beacon</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <style>
@@ -19,7 +19,7 @@
             <a href="{{ route('employee.dashboard') }}" class="flex items-center gap-2.5 min-w-0">
                 <div class="w-9 h-9 bg-gradient-to-br from-indigo-600 to-cyan-500 rounded-lg flex items-center justify-center text-white text-[14px] font-extrabold shrink-0">AB</div>
                 <div class="min-w-0">
-                    <div class="text-[14px] font-extrabold text-gray-900 leading-tight truncate">Absensi Beacon</div>
+                    <div class="text-[14px] font-extrabold text-gray-900 leading-tight truncate">HRIS Beacon</div>
                     <div class="text-[11px] text-gray-400 leading-tight">Employee Portal</div>
                 </div>
             </a>

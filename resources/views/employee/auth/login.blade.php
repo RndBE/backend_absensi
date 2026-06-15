@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="{{ asset('images/title.ico') }}">
-    <title>Login Employee - Absensi Beacon</title>
+    <title>Login Employee - HRIS Beacon</title>
     @vite(['resources/css/app.css'])
 </head>
 <body class="font-sans antialiased">
@@ -15,7 +15,7 @@
         <div class="bg-white/95 backdrop-blur-xl rounded-2xl p-8 sm:p-10 w-full max-w-[420px] shadow-2xl relative z-10">
             <div class="text-center mb-8">
                 <div class="w-14 h-14 bg-gradient-to-br from-indigo-600 to-cyan-500 rounded-xl inline-flex items-center justify-center text-2xl text-white font-extrabold mb-3.5">AB</div>
-                <h1 class="text-[22px] font-extrabold text-gray-900 tracking-tight">Absensi Beacon</h1>
+                <h1 class="text-[22px] font-extrabold text-gray-900 tracking-tight">HRIS Beacon</h1>
                 <p class="text-gray-500 text-[13.5px] mt-1">Employee Portal Login</p>
             </div>
 

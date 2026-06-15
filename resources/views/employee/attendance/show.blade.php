@@ -14,7 +14,7 @@
                 Dashboard
             </a>
             <h1 class="text-[22px] font-black text-gray-900">{{ $title }}</h1>
-            <p class="text-[13px] text-gray-500 mt-1">{{ now()->translatedFormat('l, d F Y') }}</p>
+            <p class="text-[13px] text-gray-500 mt-1">{{ now()->locale('id')->translatedFormat('l, d F Y') }}</p>
         </div>
         <div class="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-200">
             <span class="material-symbols-outlined text-[18px] text-indigo-500">badge</span>

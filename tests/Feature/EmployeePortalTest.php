@@ -240,6 +240,8 @@ class EmployeePortalTest extends TestCase
 
         $this->get('/employee/dashboard')
             ->assertOk()
+            ->assertSee('HRIS Beacon')
+            ->assertSee('Senin, 15 Juni 2026')
             ->assertSee('Employee One')
             ->assertSee('Clock In Sekarang')
             ->assertSee('Pengajuan Cuti')

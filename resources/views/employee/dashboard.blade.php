@@ -13,7 +13,7 @@
     <section class="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
         <div class="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div class="min-w-0">
-                <div class="text-[12px] font-semibold text-gray-400">{{ $today->translatedFormat('l, d F Y') }}</div>
+                <div class="text-[12px] font-semibold text-gray-400">{{ $today->locale('id')->translatedFormat('l, d F Y') }}</div>
                 <h1 class="mt-1 text-[22px] sm:text-[26px] font-black text-gray-900 tracking-tight">Halo, {{ $employee->full_name }}</h1>
                 <p class="text-[13px] text-gray-500 mt-1">{{ $employee->position ?? 'Karyawan' }}</p>
             </div>
