@@ -40,7 +40,7 @@
             </div>
         @endif
 
-        <div class="relative bg-slate-950">
+        <div class="relative bg-slate-950 overflow-hidden">
             <video id="cameraPreview" autoplay playsinline muted class="w-full h-[420px] object-cover bg-slate-950" style="transform: scaleX(-1);"></video>
             <canvas id="photoCanvas" class="hidden"></canvas>
             <div class="absolute inset-0 pointer-events-none flex items-center justify-center">

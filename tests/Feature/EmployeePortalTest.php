@@ -261,6 +261,16 @@ class EmployeePortalTest extends TestCase
             ->assertSee('transform: scaleX(-1)', false);
     }
 
+    public function test_attendance_camera_overlay_is_clipped_to_camera_area(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/attendance/clock-in')
+            ->assertOk()
+            ->assertSee('relative bg-slate-950 overflow-hidden', false);
+    }
+
     public function test_employee_can_open_face_photo_registration_page(): void
     {
         $this->seedEmployee();
@@ -270,7 +280,8 @@ class EmployeePortalTest extends TestCase
             ->assertOk()
             ->assertSee('Daftarkan Wajah')
             ->assertSee('cameraPreview')
-            ->assertSee('/employee/face-photo', false);
+            ->assertSee('/employee/face-photo', false)
+            ->assertSee('relative bg-slate-950 overflow-hidden', false);
     }
 
     public function test_employee_can_save_face_photo_from_web_portal(): void
