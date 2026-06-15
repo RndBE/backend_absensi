@@ -33,37 +33,6 @@
     </section>
 
     <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div class="flex items-start gap-3">
-                <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                    <span class="material-symbols-outlined text-[20px]">install_mobile</span>
-                </div>
-                <div>
-                    <div class="text-[14px] font-black text-gray-900">Mobile Web</div>
-                    <div class="text-[12px] text-gray-500 mt-1">Akses HRIS Beacon dari Home Screen selama aplikasi mobile belum tersedia.</div>
-                </div>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button type="button" id="installEmployeeAppButton"
-                        class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[12px] font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all">
-                    <span class="material-symbols-outlined text-[17px]">add_to_home_screen</span>
-                    Tambahkan ke Home Screen
-                </button>
-                <a href="{{ route('employee.help.attendance') }}"
-                   class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[12px] font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-all">
-                    <span class="material-symbols-outlined text-[17px]">help</span>
-                    Bantuan
-                </a>
-                <a href="{{ route('employee.profile.show') }}"
-                   class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[12px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all">
-                    <span class="material-symbols-outlined text-[17px]">person</span>
-                    Profil
-                </a>
-            </div>
-        </div>
-    </section>
-
-    <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div class="flex items-start gap-3">
                 <div class="w-10 h-10 rounded-lg {{ $employee->face_photo ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600' }} flex items-center justify-center shrink-0">
@@ -226,30 +195,3 @@
     </section>
 </div>
 @endsection
-
-@push('scripts')
-<script>
-    (function () {
-        const installButton = document.getElementById('installEmployeeAppButton');
-        let deferredPrompt = null;
-
-        window.addEventListener('beforeinstallprompt', (event) => {
-            event.preventDefault();
-            deferredPrompt = event;
-        });
-
-        if (!installButton) return;
-
-        installButton.addEventListener('click', async () => {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                await deferredPrompt.userChoice;
-                deferredPrompt = null;
-                return;
-            }
-
-            alert('Android Chrome: buka menu browser lalu pilih Install app. iPhone: buka Share lalu pilih Add to Home Screen.');
-        });
-    })();
-</script>
-@endpush

@@ -44,7 +44,6 @@ use App\Http\Controllers\Employee\FacePhotoController as EmployeeFacePhotoContro
 use App\Http\Controllers\Employee\LeaveController as EmployeeLeaveController;
 use App\Http\Controllers\Employee\OvertimeController as EmployeeOvertimeController;
 use App\Http\Controllers\Employee\ProfileController as EmployeeProfileController;
-use App\Http\Controllers\Employee\SupportController as EmployeeSupportController;
 use App\Http\Middleware\AdminActivityLogger;
 use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\AdminPermissionMiddleware;
@@ -63,7 +62,6 @@ Route::post('/employee/logout', [EmployeeAuthController::class, 'logout'])->name
 Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->group(function () {
     Route::get('/dashboard', [EmployeeDashboardController::class, 'index'])->name('dashboard');
     Route::get('/profile', [EmployeeProfileController::class, 'show'])->name('profile.show');
-    Route::get('/help/attendance', [EmployeeSupportController::class, 'attendance'])->name('help.attendance');
     Route::get('/leaves', [EmployeeLeaveController::class, 'index'])->name('leaves.index');
     Route::get('/leaves/create', [EmployeeLeaveController::class, 'create'])->name('leaves.create');
     Route::post('/leaves', [EmployeeLeaveController::class, 'store'])->name('leaves.store');

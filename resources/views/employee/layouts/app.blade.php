@@ -4,12 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="theme-color" content="#2563eb">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="HRIS Beacon">
     <link rel="icon" type="image/x-icon" href="{{ asset('images/title.ico') }}">
-    <link rel="apple-touch-icon" href="{{ asset('images/logo_be2.png') }}">
-    <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
     <title>@yield('title', 'Employee Portal') - HRIS Beacon</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -36,9 +31,6 @@
                     <div class="text-[12px] font-bold text-gray-800 leading-tight">{{ $currentEmployee->full_name ?? 'Employee' }}</div>
                     <div class="text-[11px] text-gray-400 leading-tight">{{ $currentEmployee->position ?? 'Karyawan' }}</div>
                 </div>
-                <a href="{{ route('employee.help.attendance') }}" title="Bantuan Presensi" class="inline-flex items-center justify-center w-9 h-9 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
-                    <span class="material-symbols-outlined text-[17px]">help</span>
-                </a>
                 <a href="{{ route('employee.profile.show') }}" title="Profil Saya" class="inline-flex items-center justify-center w-9 h-9 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
                     <span class="material-symbols-outlined text-[17px]">person</span>
                 </a>
@@ -106,12 +98,6 @@
                 flash.classList.add('hidden');
             }, 5000);
         })();
-
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('{{ asset('employee-sw.js') }}').catch(() => {});
-            });
-        }
     </script>
     @stack('scripts')
 </body>

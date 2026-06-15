@@ -249,9 +249,9 @@ class EmployeePortalTest extends TestCase
             ->assertSee('Pengajuan Lembur')
             ->assertSee('Verifikasi Wajah')
             ->assertSee('/employee/face-photo', false)
-            ->assertSee('Tambahkan ke Home Screen')
             ->assertSee('/employee/profile', false)
-            ->assertSee('/employee/help/attendance', false);
+            ->assertDontSee('Tambahkan ke Home Screen')
+            ->assertDontSee('/employee/help/attendance', false);
     }
 
     public function test_employee_login_page_uses_hris_beacon_logo(): void
@@ -262,16 +262,17 @@ class EmployeePortalTest extends TestCase
             ->assertSee('images/logo_be2.png', false);
     }
 
-    public function test_employee_portal_layout_includes_mobile_web_app_metadata(): void
+    public function test_employee_portal_layout_does_not_include_pwa_or_help_shortcuts(): void
     {
         $this->seedEmployee();
 
         $this->withSession(['employee_id' => 1])
             ->get('/employee/dashboard')
             ->assertOk()
-            ->assertSee('manifest.webmanifest', false)
-            ->assertSee('apple-mobile-web-app-capable', false)
-            ->assertSee('employee-sw.js', false);
+            ->assertDontSee('manifest.webmanifest', false)
+            ->assertDontSee('apple-mobile-web-app-capable', false)
+            ->assertDontSee('employee-sw.js', false)
+            ->assertDontSee('Bantuan Presensi');
     }
 
     public function test_employee_can_open_profile_page(): void
@@ -286,20 +287,6 @@ class EmployeePortalTest extends TestCase
             ->assertSee('employee@example.test')
             ->assertSee('Verifikasi Wajah')
             ->assertSee('/employee/face-photo', false);
-    }
-
-    public function test_employee_can_open_attendance_help_page(): void
-    {
-        $this->seedEmployee();
-
-        $this->withSession(['employee_id' => 1])
-            ->get('/employee/help/attendance')
-            ->assertOk()
-            ->assertSee('Bantuan Presensi')
-            ->assertSee('Izin Lokasi')
-            ->assertSee('Kamera')
-            ->assertSee('GPS')
-            ->assertSee('ngrok');
     }
 
     public function test_inactive_employee_cannot_login_to_employee_portal(): void
