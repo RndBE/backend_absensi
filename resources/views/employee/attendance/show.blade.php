@@ -380,7 +380,11 @@ function capturePhotoBase64() {
 
     canvas.width = width;
     canvas.height = height;
-    canvas.getContext('2d').drawImage(video, 0, 0, width, height);
+
+    const context = canvas.getContext('2d');
+    context.translate(width, 0);
+    context.scale(-1, 1);
+    context.drawImage(video, 0, 0, width, height);
 
     return canvas.toDataURL('image/jpeg', 0.86).split(',')[1];
 }

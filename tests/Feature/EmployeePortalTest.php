@@ -236,6 +236,17 @@ class EmployeePortalTest extends TestCase
             ->assertSee('retryLocationBtn');
     }
 
+    public function test_attendance_photo_capture_unmirrors_front_camera_photo(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/attendance/clock-in')
+            ->assertOk()
+            ->assertSee("context.translate(width, 0)", false)
+            ->assertSee("context.scale(-1, 1)", false);
+    }
+
     private function seedEmployee(bool $isActive = true): void
     {
         DB::table('employees')->insert([
