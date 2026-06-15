@@ -67,7 +67,7 @@
 
         <div id="cameraStep" class="hidden">
             <div class="relative bg-slate-950">
-                <video id="cameraPreview" autoplay playsinline muted class="w-full h-[420px] object-cover bg-slate-950"></video>
+                <video id="cameraPreview" autoplay playsinline muted class="w-full h-[420px] object-cover bg-slate-950" style="transform: scaleX(-1);"></video>
                 <canvas id="photoCanvas" class="hidden"></canvas>
                 <div id="cameraOverlay" class="absolute inset-0 pointer-events-none flex items-center justify-center">
                     <div class="w-[58%] max-w-[280px] aspect-[3/4] border-2 border-white rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"></div>

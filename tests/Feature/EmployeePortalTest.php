@@ -247,6 +247,17 @@ class EmployeePortalTest extends TestCase
             ->assertSee("context.scale(-1, 1)", false);
     }
 
+    public function test_attendance_camera_preview_is_unmirrored(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/attendance/clock-in')
+            ->assertOk()
+            ->assertSee('id="cameraPreview"', false)
+            ->assertSee('transform: scaleX(-1)', false);
+    }
+
     private function seedEmployee(bool $isActive = true): void
     {
         DB::table('employees')->insert([
