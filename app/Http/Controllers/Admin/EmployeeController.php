@@ -14,6 +14,7 @@ use App\Models\WorkSchedule;
 use App\Services\BpjsCalculator;
 use App\Services\EmployeePortalMagicLinkService;
 use App\Services\Pph21Calculator;
+use App\Services\WhatsAppGatewayService;
 use App\Support\AdminPermission;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -211,6 +212,70 @@ class EmployeeController extends Controller
             ->with('success', 'Link portal employee berhasil dikirim ke '.$employees->count().' karyawan.');
     }
 
+    public function sendPortalLinkWhatsApp($id, EmployeePortalMagicLinkService $magicLinks, WhatsAppGatewayService $whatsApp)
+    {
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)->findOrFail($id);
+
+        if (! $employee->is_active) {
+            return redirect()->back(302, [], route('admin.employees.index'))
+                ->with('error', 'Link portal hanya bisa dikirim ke karyawan aktif.');
+        }
+
+        if (! $employee->phone) {
+            return redirect()->back(302, [], route('admin.employees.index'))
+                ->with('error', 'Karyawan ini belum memiliki nomor WhatsApp.');
+        }
+
+        $magicLink = $magicLinks->create($employee);
+        $phone = $whatsApp->normalizePhone($employee->phone);
+
+        $response = $whatsApp->sendText($employee->phone, $this->portalWhatsAppMessage($employee, $magicLink['url']));
+
+        if (! $response->successful()) {
+            return redirect()->back(302, [], route('admin.employees.index'))
+                ->with('error', 'Gagal mengirim link portal via WhatsApp ke '.$phone.'.');
+        }
+
+        return redirect()->back(302, [], route('admin.employees.index'))
+            ->with('success', 'Link portal employee berhasil dikirim via WhatsApp ke '.$phone.'.');
+    }
+
+    public function sendPortalLinkWhatsAppToAll(EmployeePortalMagicLinkService $magicLinks, WhatsAppGatewayService $whatsApp)
+    {
+        $admin = Employee::find(session('admin_id'));
+        $employees = Employee::where('company_id', $admin->company_id)
+            ->where('is_active', true)
+            ->where('role', 'employee')
+            ->whereNotNull('phone')
+            ->where('phone', '!=', '')
+            ->orderBy('full_name')
+            ->get();
+
+        if ($employees->isEmpty()) {
+            return redirect()->back(302, [], route('admin.employees.index'))
+                ->with('error', 'Tidak ada karyawan aktif dengan nomor WhatsApp untuk dikirimi link portal.');
+        }
+
+        $sent = 0;
+        foreach ($employees as $employee) {
+            $magicLink = $magicLinks->create($employee);
+            $response = $whatsApp->sendText($employee->phone, $this->portalWhatsAppMessage($employee, $magicLink['url']));
+
+            if ($response->successful()) {
+                $sent++;
+            }
+        }
+
+        if ($sent === 0) {
+            return redirect()->back(302, [], route('admin.employees.index'))
+                ->with('error', 'Gagal mengirim link portal via WhatsApp.');
+        }
+
+        return redirect()->back(302, [], route('admin.employees.index'))
+            ->with('success', 'Link portal employee berhasil dikirim via WhatsApp ke '.$sent.' karyawan.');
+    }
+
     public function update(Request $request, $id)
     {
         $employee = Employee::findOrFail($id);
@@ -290,6 +355,15 @@ class EmployeeController extends Controller
         if ($roleId) {
             $employee->roles()->sync([$roleId]);
         }
+    }
+
+    private function portalWhatsAppMessage(Employee $employee, string $magicUrl): string
+    {
+        return "Halo {$employee->full_name},\n\n"
+            ."Berikut link akses Employee Portal HRIS Beacon:\n"
+            ."{$magicUrl}\n\n"
+            ."Link berlaku 30 menit dan hanya bisa digunakan satu kali.\n\n"
+            ."HRIS Beacon";
     }
 
     public function destroy($id)

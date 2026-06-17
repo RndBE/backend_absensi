@@ -19,6 +19,12 @@
                         <span class="material-symbols-outlined text-[16px]">outgoing_mail</span> Kirim Link Portal ke Semua
                     </button>
                 </form>
+                <form method="POST" action="{{ route('admin.employees.portal-link.whatsapp.send-all') }}" class="inline">
+                    @csrf
+                    <button data-confirm="Kirim link portal via WhatsApp ke semua karyawan aktif yang memiliki nomor HP?" data-confirm-text="Kirim WhatsApp" data-confirm-variant="primary" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all duration-200 cursor-pointer">
+                        <span class="material-symbols-outlined text-[16px]">chat</span> Kirim WhatsApp ke Semua
+                    </button>
+                </form>
             @endif
             @if($canCreateEmployee)
             <a href="{{ route('admin.employees.create') }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-[0_2px_8px_rgba(79,70,229,0.3)] hover:shadow-[0_4px_12px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 transition-all duration-200">+ Tambah Karyawan</a>
@@ -104,6 +110,14 @@
                                             @csrf
                                             <button data-confirm="Kirim link portal ke {{ $emp->email }}?" data-confirm-text="Kirim" data-confirm-variant="primary" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition-all duration-200 cursor-pointer" title="Kirim Link Portal">
                                                 <span class="material-symbols-outlined text-[16px]">outgoing_mail</span>
+                                            </button>
+                                        </form>
+                                    @endif
+                                    @if($emp->is_active && $emp->phone)
+                                        <form method="POST" action="{{ route('admin.employees.portal-link.whatsapp.send', $emp->id) }}" class="inline">
+                                            @csrf
+                                            <button data-confirm="Kirim link portal via WhatsApp ke {{ $emp->phone }}?" data-confirm-text="Kirim WhatsApp" data-confirm-variant="primary" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all duration-200 cursor-pointer" title="Kirim Link Portal WhatsApp">
+                                                <span class="material-symbols-outlined text-[16px]">chat</span>
                                             </button>
                                         </form>
                                     @endif

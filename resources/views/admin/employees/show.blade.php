@@ -23,6 +23,15 @@
                 </button>
             </form>
             @endif
+            @if($employee->is_active && $employee->phone && $canUpdateEmployee)
+            <form method="POST" action="{{ route('admin.employees.portal-link.whatsapp.send', $employee->id) }}" class="inline">
+                @csrf
+                <button data-confirm="Kirim link portal via WhatsApp ke {{ $employee->phone }}?" data-confirm-text="Kirim WhatsApp" data-confirm-variant="primary"
+                    class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+                    <span class="material-symbols-outlined text-[15px]">chat</span> Kirim WhatsApp
+                </button>
+            </form>
+            @endif
             @if($employee->is_active && $canDeleteEmployee)
             <a href="{{ route('admin.employees.resign', $employee->id) }}"
                 class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-red-600 to-red-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">

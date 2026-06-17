@@ -429,6 +429,47 @@ class EmployeePortalTest extends TestCase
             ->assertSee('/employee/leaves/create', false);
     }
 
+    public function test_employee_leave_pages_only_show_annual_leave_balance(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+        $this->seedMaternityLeaveTypeAndBalance();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/leaves')
+            ->assertOk()
+            ->assertSee('Cuti Tahunan')
+            ->assertDontSee('Cuti Melahirkan');
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/leaves/create')
+            ->assertOk()
+            ->assertSee('Cuti Tahunan')
+            ->assertDontSee('Cuti Melahirkan');
+    }
+
+    public function test_employee_cannot_submit_non_annual_leave_from_web_portal(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+        $this->seedMaternityLeaveTypeAndBalance();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/leaves', [
+                'leave_type_id' => 2,
+                'start_date' => '2026-06-20',
+                'end_date' => '2026-06-21',
+                'total_days' => '2',
+                'reason' => 'Cuti melahirkan',
+            ])
+            ->assertSessionHasErrors('leave_type_id');
+
+        $this->assertDatabaseMissing('leave_requests', [
+            'employee_id' => 1,
+            'leave_type_id' => 2,
+        ]);
+    }
+
     public function test_employee_can_submit_leave_request_from_web_portal(): void
     {
         $this->seedEmployee();
@@ -547,6 +588,28 @@ class EmployeePortalTest extends TestCase
             'total_days' => 12,
             'used_days' => 0,
             'remaining_days' => 12,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function seedMaternityLeaveTypeAndBalance(): void
+    {
+        DB::table('leave_types')->insert([
+            'id' => 2,
+            'name' => 'Cuti Melahirkan',
+            'max_days' => 90,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_balances')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 2,
+            'year' => 2026,
+            'total_days' => 90,
+            'used_days' => 0,
+            'remaining_days' => 90,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

@@ -65,26 +65,30 @@ class GenerateAnnualLeave extends Command
                         continue;
                     }
 
-                    // Check minimum tenure
-                    $joinDate = Carbon::parse($emp->join_date);
-                    $tenureMonths = $joinDate->diffInMonths(Carbon::create($year, 1, 1));
+                    // Check minimum tenure. Policies with 0 months are eligible immediately,
+                    // including employees who join during the generated year.
+                    if ($policy->min_tenure_months > 0) {
+                        $joinDate = Carbon::parse($emp->join_date);
+                        $tenureMonths = $joinDate->diffInMonths(Carbon::create($year, 1, 1));
 
-                    if ($tenureMonths < $policy->min_tenure_months) {
-                        // Check if prorated applies (employee will reach tenure during this year)
-                        if ($policy->is_prorated) {
-                            $eligibleDate = $joinDate->copy()->addMonths($policy->min_tenure_months);
-                            if ($eligibleDate->year == $year) {
-                                // Prorate: remaining months in the year after becoming eligible
-                                $remainingMonths = 12 - $eligibleDate->month + 1;
-                                $proratedDays = (int) round($policy->days_per_year * $remainingMonths / 12);
+                        if ($tenureMonths < $policy->min_tenure_months) {
+                            // Check if prorated applies (employee will reach tenure during this year)
+                            if ($policy->is_prorated) {
+                                $eligibleDate = $joinDate->copy()->addMonths($policy->min_tenure_months);
+                                if ($eligibleDate->year == $year) {
+                                    // Prorate: remaining months in the year after becoming eligible
+                                    $remainingMonths = 12 - $eligibleDate->month + 1;
+                                    $proratedDays = (int) round($policy->days_per_year * $remainingMonths / 12);
 
-                                if ($proratedDays > 0) {
-                                    $this->createBalance($emp, $policy, $year, $proratedDays);
-                                    $totalGenerated++;
+                                    if ($proratedDays > 0) {
+                                        $this->createBalance($emp, $policy, $year, $proratedDays);
+                                        $totalGenerated++;
+                                    }
                                 }
                             }
+
+                            continue;
                         }
-                        continue;
                     }
 
                     // Calculate carry over from previous year

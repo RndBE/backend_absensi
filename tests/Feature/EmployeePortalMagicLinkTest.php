@@ -6,6 +6,7 @@ use App\Mail\EmployeePortalMagicLinkMail;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -38,6 +39,7 @@ class EmployeePortalMagicLinkTest extends TestCase
             $table->string('employee_code')->unique();
             $table->string('full_name');
             $table->string('email')->nullable()->unique();
+            $table->string('phone')->nullable();
             $table->string('password')->nullable();
             $table->string('role')->default('employee');
             $table->string('position')->nullable();
@@ -92,6 +94,7 @@ class EmployeePortalMagicLinkTest extends TestCase
                 'employee_code' => 'ADM001',
                 'full_name' => 'Admin HR',
                 'email' => 'admin@example.test',
+                'phone' => '081100000001',
                 'role' => 'superadmin',
                 'is_active' => true,
                 'created_at' => now(),
@@ -104,6 +107,7 @@ class EmployeePortalMagicLinkTest extends TestCase
                 'employee_code' => 'EMP001',
                 'full_name' => 'Employee One',
                 'email' => 'employee@example.test',
+                'phone' => '081234567890',
                 'role' => 'employee',
                 'is_active' => true,
                 'created_at' => now(),
@@ -116,6 +120,7 @@ class EmployeePortalMagicLinkTest extends TestCase
                 'employee_code' => 'EMP002',
                 'full_name' => 'Employee Two',
                 'email' => 'employee-two@example.test',
+                'phone' => '+62 812-0000-0002',
                 'role' => 'employee',
                 'is_active' => true,
                 'created_at' => now(),
@@ -128,6 +133,7 @@ class EmployeePortalMagicLinkTest extends TestCase
                 'employee_code' => 'EMP003',
                 'full_name' => 'Employee No Email',
                 'email' => null,
+                'phone' => null,
                 'role' => 'employee',
                 'is_active' => true,
                 'created_at' => now(),
@@ -140,6 +146,7 @@ class EmployeePortalMagicLinkTest extends TestCase
                 'employee_code' => 'EMP004',
                 'full_name' => 'Inactive Employee',
                 'email' => 'inactive@example.test',
+                'phone' => '081200000005',
                 'role' => 'employee',
                 'is_active' => false,
                 'created_at' => now(),
@@ -208,6 +215,69 @@ class EmployeePortalMagicLinkTest extends TestCase
         Mail::assertSent(EmployeePortalMagicLinkMail::class, fn (EmployeePortalMagicLinkMail $mail) => $mail->employee->id === 2);
         Mail::assertSent(EmployeePortalMagicLinkMail::class, fn (EmployeePortalMagicLinkMail $mail) => $mail->employee->id === 3);
         Mail::assertNotSent(EmployeePortalMagicLinkMail::class, fn (EmployeePortalMagicLinkMail $mail) => in_array($mail->employee->id, [1, 4, 5], true));
+
+        $this->assertDatabaseHas('employee_magic_links', ['employee_id' => 2, 'used_at' => null]);
+        $this->assertDatabaseHas('employee_magic_links', ['employee_id' => 3, 'used_at' => null]);
+        $this->assertDatabaseMissing('employee_magic_links', ['employee_id' => 1]);
+        $this->assertDatabaseMissing('employee_magic_links', ['employee_id' => 4]);
+        $this->assertDatabaseMissing('employee_magic_links', ['employee_id' => 5]);
+    }
+
+    public function test_admin_can_send_employee_portal_magic_link_whatsapp_without_api_key(): void
+    {
+        Http::fake([
+            'http://wa-gateway.test/client/sendMessage/beacon' => Http::response(['ok' => true], 200),
+        ]);
+
+        config([
+            'services.whatsapp.endpoint' => 'http://wa-gateway.test/client/sendMessage/beacon',
+            'services.whatsapp.api_key' => null,
+        ]);
+
+        $response = $this->withSession(['admin_id' => 1])
+            ->post(route('admin.employees.portal-link.whatsapp.send', 2));
+
+        $response->assertRedirect(route('admin.employees.index'));
+        $response->assertSessionHas('success', 'Link portal employee berhasil dikirim via WhatsApp ke 6281234567890.');
+
+        Http::assertSent(function ($request) {
+            $this->assertSame('http://wa-gateway.test/client/sendMessage/beacon', $request->url());
+            $this->assertSame('6281234567890@c.us', $request['chatId']);
+            $this->assertSame('string', $request['contentType']);
+            $this->assertStringContainsString('Halo Employee One', $request['content']);
+            $this->assertStringContainsString('/employee/magic-login?token=', $request['content']);
+            $this->assertFalse($request->hasHeader('x-api-key'));
+
+            return true;
+        });
+
+        $this->assertDatabaseHas('employee_magic_links', [
+            'employee_id' => 2,
+            'redirect_path' => '/employee/dashboard',
+            'used_at' => null,
+        ]);
+    }
+
+    public function test_admin_can_send_employee_portal_magic_link_whatsapp_to_all_active_employees_with_phone(): void
+    {
+        Http::fake([
+            'http://wa-gateway.test/client/sendMessage/beacon' => Http::response(['ok' => true], 200),
+        ]);
+
+        config([
+            'services.whatsapp.endpoint' => 'http://wa-gateway.test/client/sendMessage/beacon',
+            'services.whatsapp.api_key' => 'secret-key',
+        ]);
+
+        $response = $this->withSession(['admin_id' => 1])
+            ->post(route('admin.employees.portal-link.whatsapp.send-all'));
+
+        $response->assertRedirect(route('admin.employees.index'));
+        $response->assertSessionHas('success', 'Link portal employee berhasil dikirim via WhatsApp ke 2 karyawan.');
+
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request['chatId'] === '6281234567890@c.us' && $request->hasHeader('x-api-key', 'secret-key'));
+        Http::assertSent(fn ($request) => $request['chatId'] === '6281200000002@c.us' && $request->hasHeader('x-api-key', 'secret-key'));
 
         $this->assertDatabaseHas('employee_magic_links', ['employee_id' => 2, 'used_at' => null]);
         $this->assertDatabaseHas('employee_magic_links', ['employee_id' => 3, 'used_at' => null]);

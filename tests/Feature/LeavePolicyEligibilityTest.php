@@ -246,4 +246,91 @@ class LeavePolicyEligibilityTest extends TestCase
             'year' => 2026,
         ]);
     }
+
+    public function test_zero_tenure_policy_generates_for_employee_joining_during_generated_year(): void
+    {
+        DB::table('companies')->insert([
+            'id' => 1,
+            'name' => 'PT Beacon',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            'id' => 18,
+            'employee_code' => 'EMP-18',
+            'company_id' => 1,
+            'full_name' => 'Dewi Setiawati',
+            'email' => 'dewi@example.test',
+            'join_date' => '2026-04-14',
+            'is_active' => true,
+            'role' => 'employee',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_types')->insert([
+            [
+                'id' => 20,
+                'name' => 'Cuti Tahunan',
+                'max_days' => 12,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 21,
+                'name' => 'Cuti Izin',
+                'max_days' => 6,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        DB::table('leave_policies')->insert([
+            [
+                'id' => 30,
+                'company_id' => 1,
+                'leave_type_id' => 20,
+                'days_per_year' => 12,
+                'min_tenure_months' => 12,
+                'max_carry_over' => 0,
+                'is_prorated' => false,
+                'eligibility_type' => 'all',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 31,
+                'company_id' => 1,
+                'leave_type_id' => 21,
+                'days_per_year' => 6,
+                'min_tenure_months' => 0,
+                'max_carry_over' => 0,
+                'is_prorated' => false,
+                'eligibility_type' => 'all',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        Artisan::call('leave:generate-annual', [
+            'year' => 2026,
+            '--company' => 1,
+        ]);
+
+        $this->assertDatabaseMissing('leave_balances', [
+            'employee_id' => 18,
+            'leave_type_id' => 20,
+            'year' => 2026,
+        ]);
+        $this->assertDatabaseHas('leave_balances', [
+            'employee_id' => 18,
+            'leave_type_id' => 21,
+            'year' => 2026,
+            'total_days' => 6,
+            'remaining_days' => 6,
+        ]);
+    }
 }
