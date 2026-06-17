@@ -91,6 +91,11 @@ class Employee extends Authenticatable
         return $this->hasMany(LeaveBalance::class);
     }
 
+    public function leavePolicies(): BelongsToMany
+    {
+        return $this->belongsToMany(LeavePolicy::class, 'leave_policy_employees')->withTimestamps();
+    }
+
     public function overtimeRequests(): HasMany
     {
         return $this->hasMany(OvertimeRequest::class);

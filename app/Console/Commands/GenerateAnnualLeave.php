@@ -31,7 +31,7 @@ class GenerateAnnualLeave extends Command
         foreach ($companies as $company) {
             $policies = LeavePolicy::where('company_id', $company->id)
                 ->where('is_active', true)
-                ->with('leaveType')
+                ->with(['leaveType', 'eligibleEmployees:id'])
                 ->get();
 
             if ($policies->isEmpty()) {
@@ -39,12 +39,21 @@ class GenerateAnnualLeave extends Command
                 continue;
             }
 
-            $employees = Employee::where('company_id', $company->id)
-                ->where('is_active', true)
-                ->get();
+            foreach ($policies as $policy) {
+                $employeeQuery = Employee::where('company_id', $company->id)
+                    ->where('is_active', true);
 
-            foreach ($employees as $emp) {
-                foreach ($policies as $policy) {
+                if (! $policy->appliesToAllEmployees()) {
+                    $eligibleEmployeeIds = $policy->eligibleEmployees->pluck('id');
+
+                    if ($eligibleEmployeeIds->isEmpty()) {
+                        continue;
+                    }
+
+                    $employeeQuery->whereIn('id', $eligibleEmployeeIds);
+                }
+
+                foreach ($employeeQuery->get() as $emp) {
                     // Check if balance already exists for this year
                     $exists = LeaveBalance::where('employee_id', $emp->id)
                         ->where('leave_type_id', $policy->leave_type_id)
