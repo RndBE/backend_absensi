@@ -22,7 +22,6 @@ class LeavePolicyController extends Controller
         $leaveTypes = LeaveType::all();
         $employees = Employee::where('company_id', $admin->company_id)
             ->where('is_active', true)
-            ->where('role', 'employee')
             ->orderBy('full_name')
             ->get();
 
@@ -123,7 +122,6 @@ class LeavePolicyController extends Controller
 
         $validCount = Employee::where('company_id', $companyId)
             ->where('is_active', true)
-            ->where('role', 'employee')
             ->whereIn('id', $employeeIds)
             ->count();
 
