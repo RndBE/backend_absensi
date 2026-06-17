@@ -9,7 +9,6 @@ use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Validation\Rule;
 
 class LeaveController extends Controller
 {
@@ -43,7 +42,7 @@ class LeaveController extends Controller
 
         return view('employee.leaves.create', [
             'employee' => $employee,
-            'leaveTypes' => LeaveType::where('name', 'Cuti Tahunan')->orderBy('name')->get(),
+            'leaveTypes' => LeaveType::orderBy('name')->get(),
             'balances' => LeaveBalance::with('leaveType')
                 ->where('employee_id', $employee->id)
                 ->where('year', now()->year)
@@ -56,10 +55,7 @@ class LeaveController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'leave_type_id' => [
-                'required',
-                Rule::exists('leave_types', 'id')->where(fn ($query) => $query->where('name', 'Cuti Tahunan')),
-            ],
+            'leave_type_id' => 'required|exists:leave_types,id',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'total_days' => 'required|numeric|min:0.5',

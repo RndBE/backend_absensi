@@ -429,7 +429,7 @@ class EmployeePortalTest extends TestCase
             ->assertSee('/employee/leaves/create', false);
     }
 
-    public function test_employee_leave_pages_only_show_annual_leave_balance(): void
+    public function test_employee_leave_index_only_shows_annual_balance_but_create_lists_all_leave_types(): void
     {
         $this->seedEmployee();
         $this->seedLeaveTypeAndBalance();
@@ -445,10 +445,10 @@ class EmployeePortalTest extends TestCase
             ->get('/employee/leaves/create')
             ->assertOk()
             ->assertSee('Cuti Tahunan')
-            ->assertDontSee('Cuti Melahirkan');
+            ->assertSee('Cuti Melahirkan');
     }
 
-    public function test_employee_cannot_submit_non_annual_leave_from_web_portal(): void
+    public function test_employee_can_submit_non_annual_leave_from_web_portal(): void
     {
         $this->seedEmployee();
         $this->seedLeaveTypeAndBalance();
@@ -462,11 +462,13 @@ class EmployeePortalTest extends TestCase
                 'total_days' => '2',
                 'reason' => 'Cuti melahirkan',
             ])
-            ->assertSessionHasErrors('leave_type_id');
+            ->assertRedirect(route('employee.leaves.index'));
 
-        $this->assertDatabaseMissing('leave_requests', [
+        $this->assertDatabaseHas('leave_requests', [
             'employee_id' => 1,
             'leave_type_id' => 2,
+            'status' => 'pending',
+            'current_step' => 1,
         ]);
     }
 
