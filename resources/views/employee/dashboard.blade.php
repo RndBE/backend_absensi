@@ -59,35 +59,52 @@
         </div>
     </section>
 
-    <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <a href="{{ route('employee.leaves.index') }}" class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all">
-            <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-                        <span class="material-symbols-outlined text-[20px]">event_available</span>
+    @php
+        $shortcuts = [
+            [
+                'href' => route('employee.attendance-requests.index'),
+                'icon' => 'edit_calendar',
+                'title' => 'Absensi',
+                'description' => 'Koreksi clock',
+                'color' => 'bg-emerald-50 text-emerald-600',
+            ],
+            [
+                'href' => route('employee.leaves.index'),
+                'icon' => 'event_available',
+                'title' => 'Cuti',
+                'description' => 'Ajukan izin',
+                'color' => 'bg-sky-50 text-sky-600',
+            ],
+            [
+                'href' => route('employee.overtimes.index'),
+                'icon' => 'more_time',
+                'title' => 'Lembur',
+                'description' => 'Ajukan lembur',
+                'color' => 'bg-violet-50 text-violet-600',
+            ],
+            [
+                'href' => route('employee.approvals.index'),
+                'icon' => 'fact_check',
+                'title' => 'Persetujuan Tim',
+                'description' => 'Setujui tim',
+                'color' => 'bg-amber-50 text-amber-600',
+            ],
+        ];
+    @endphp
+    <section class="employee-dashboard-shortcuts grid grid-cols-2 lg:grid-cols-4 gap-3">
+        @foreach($shortcuts as $shortcut)
+            <a href="{{ $shortcut['href'] }}" class="min-h-[96px] bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 hover:-translate-y-0.5 hover:shadow-md transition-all">
+                <div class="flex h-full flex-col justify-between gap-3">
+                    <div class="w-9 h-9 rounded-lg {{ $shortcut['color'] }} flex items-center justify-center">
+                        <span class="material-symbols-outlined text-[19px]">{{ $shortcut['icon'] }}</span>
                     </div>
-                    <div>
-                        <div class="text-[14px] font-black text-gray-900">Pengajuan Cuti</div>
-                        <div class="text-[12px] text-gray-500 mt-1">Ajukan cuti atau izin</div>
+                    <div class="min-w-0">
+                        <div class="text-[13px] font-black text-gray-900 leading-tight truncate">{{ $shortcut['title'] }}</div>
+                        <div class="text-[11px] text-gray-500 mt-1 leading-tight truncate">{{ $shortcut['description'] }}</div>
                     </div>
                 </div>
-                <span class="material-symbols-outlined text-[18px] text-gray-400">chevron_right</span>
-            </div>
-        </a>
-        <a href="{{ route('employee.overtimes.index') }}" class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all">
-            <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center">
-                        <span class="material-symbols-outlined text-[20px]">more_time</span>
-                    </div>
-                    <div>
-                        <div class="text-[14px] font-black text-gray-900">Pengajuan Lembur</div>
-                        <div class="text-[12px] text-gray-500 mt-1">Ajukan lembur kerja/libur</div>
-                    </div>
-                </div>
-                <span class="material-symbols-outlined text-[18px] text-gray-400">chevron_right</span>
-            </div>
-        </a>
+            </a>
+        @endforeach
     </section>
 
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -38,6 +38,8 @@ use App\Http\Controllers\Admin\TaxController;
 use App\Http\Controllers\Admin\TravelReportController;
 use App\Http\Controllers\Admin\TravelZoneController;
 use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceController;
+use App\Http\Controllers\Employee\AttendanceRequestController as EmployeeAttendanceRequestController;
+use App\Http\Controllers\Employee\ApprovalController as EmployeeApprovalController;
 use App\Http\Controllers\Employee\AuthController as EmployeeAuthController;
 use App\Http\Controllers\Employee\DashboardController as EmployeeDashboardController;
 use App\Http\Controllers\Employee\FacePhotoController as EmployeeFacePhotoController;
@@ -69,6 +71,16 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/overtimes', [EmployeeOvertimeController::class, 'index'])->name('overtimes.index');
     Route::get('/overtimes/create', [EmployeeOvertimeController::class, 'create'])->name('overtimes.create');
     Route::post('/overtimes', [EmployeeOvertimeController::class, 'store'])->name('overtimes.store');
+    Route::get('/attendance-requests', [EmployeeAttendanceRequestController::class, 'index'])->name('attendance-requests.index');
+    Route::get('/attendance-requests/create', [EmployeeAttendanceRequestController::class, 'create'])->name('attendance-requests.create');
+    Route::post('/attendance-requests', [EmployeeAttendanceRequestController::class, 'store'])->name('attendance-requests.store');
+    Route::get('/approvals', [EmployeeApprovalController::class, 'index'])->name('approvals.index');
+    Route::post('/approvals/{type}/{id}/approve', [EmployeeApprovalController::class, 'approve'])
+        ->whereIn('type', ['leave', 'overtime', 'attendance'])
+        ->name('approvals.approve');
+    Route::post('/approvals/{type}/{id}/reject', [EmployeeApprovalController::class, 'reject'])
+        ->whereIn('type', ['leave', 'overtime', 'attendance'])
+        ->name('approvals.reject');
     Route::get('/face-photo', [EmployeeFacePhotoController::class, 'show'])->name('face-photo.show');
     Route::post('/face-photo', [EmployeeFacePhotoController::class, 'store'])->name('face-photo.store');
     Route::delete('/face-photo', [EmployeeFacePhotoController::class, 'destroy'])->name('face-photo.destroy');

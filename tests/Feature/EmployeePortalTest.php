@@ -22,11 +22,14 @@ class EmployeePortalTest extends TestCase
         Schema::dropIfExists('schedule_assignments');
         Schema::dropIfExists('schedule_template_days');
         Schema::dropIfExists('schedule_templates');
+        Schema::dropIfExists('request_attachments');
+        Schema::dropIfExists('approval_logs');
         Schema::dropIfExists('employee_approvers');
         Schema::dropIfExists('notifications');
         Schema::dropIfExists('leave_requests');
         Schema::dropIfExists('leave_balances');
         Schema::dropIfExists('leave_types');
+        Schema::dropIfExists('attendance_requests');
         Schema::dropIfExists('attendances');
         Schema::dropIfExists('overtime_requests');
         Schema::dropIfExists('shifts');
@@ -101,6 +104,18 @@ class EmployeePortalTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('approval_logs', function (Blueprint $table) {
+            $table->id();
+            $table->string('approvable_type');
+            $table->unsignedBigInteger('approvable_id');
+            $table->unsignedBigInteger('approver_id');
+            $table->string('action');
+            $table->unsignedTinyInteger('step_order');
+            $table->unsignedBigInteger('approval_rule_id')->nullable();
+            $table->text('notes')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('leave_types', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -161,6 +176,28 @@ class EmployeePortalTest extends TestCase
             $table->boolean('is_late')->default(false);
             $table->boolean('is_remote')->default(false);
             $table->text('remote_notes')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('attendance_requests', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->date('date');
+            $table->time('clock_in')->nullable();
+            $table->time('clock_out')->nullable();
+            $table->text('reason')->nullable();
+            $table->string('status')->default('pending');
+            $table->unsignedTinyInteger('current_step')->default(1);
+            $table->timestamps();
+        });
+
+        Schema::create('request_attachments', function (Blueprint $table) {
+            $table->id();
+            $table->string('attachable_type');
+            $table->unsignedBigInteger('attachable_id');
+            $table->string('file_path');
+            $table->string('file_name');
+            $table->integer('file_size')->default(0);
             $table->timestamps();
         });
 
@@ -245,8 +282,8 @@ class EmployeePortalTest extends TestCase
             ->assertSee('Senin, 15 Juni 2026')
             ->assertSee('Employee One')
             ->assertSee('Clock In Sekarang')
-            ->assertSee('Pengajuan Cuti')
-            ->assertSee('Pengajuan Lembur')
+            ->assertSee('Cuti')
+            ->assertSee('Lembur')
             ->assertSee('Verifikasi Wajah')
             ->assertSee('/employee/face-photo', false)
             ->assertSee('/employee/profile', false)
@@ -495,6 +532,179 @@ class EmployeePortalTest extends TestCase
         ]);
     }
 
+    public function test_employee_can_open_attendance_request_page(): void
+    {
+        $this->seedEmployee();
+        DB::table('attendance_requests')->insert([
+            'employee_id' => 1,
+            'date' => '2026-06-14',
+            'clock_in' => '09:05',
+            'clock_out' => '17:10',
+            'reason' => 'Koreksi presensi kemarin',
+            'status' => 'pending',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/attendance-requests')
+            ->assertOk()
+            ->assertSee('Pengajuan Absensi')
+            ->assertSee('Koreksi presensi kemarin')
+            ->assertSee('/employee/attendance-requests/create', false);
+    }
+
+    public function test_employee_can_submit_attendance_request_from_web_portal(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/attendance-requests', [
+                'date' => '2026-06-14',
+                'clock_in' => '09:05',
+                'clock_out' => '17:10',
+                'reason' => 'Lupa clock in dan clock out',
+            ])
+            ->assertRedirect(route('employee.attendance-requests.index'));
+
+        $this->assertDatabaseHas('attendance_requests', [
+            'employee_id' => 1,
+            'date' => '2026-06-14',
+            'clock_in' => '09:05',
+            'clock_out' => '17:10',
+            'reason' => 'Lupa clock in dan clock out',
+            'status' => 'pending',
+            'current_step' => 1,
+        ]);
+    }
+
+    public function test_employee_dashboard_links_to_attendance_requests(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Absensi')
+            ->assertSee('/employee/attendance-requests', false);
+    }
+
+    public function test_employee_dashboard_shortcuts_use_compact_mobile_grid(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('employee-dashboard-shortcuts', false)
+            ->assertSee('grid-cols-2', false)
+            ->assertSee('Persetujuan Tim')
+            ->assertDontSee('chevron_right');
+    }
+
+    public function test_employee_approver_can_open_my_approvals_page(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('Persetujuan Tim')
+            ->assertSee('Fadel Approver')
+            ->assertSee('Employee One')
+            ->assertSee('Pengajuan Lembur');
+    }
+
+    public function test_employee_approval_actions_use_compact_mobile_layout(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('approval-action-bar', false)
+            ->assertSee('Tambah catatan setuju')
+            ->assertSee('Tambah catatan tolak')
+            ->assertDontSee('rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-3', false);
+    }
+
+    public function test_employee_approver_can_approve_overtime_step_then_next_approver_final_approves(): void
+    {
+        $this->seedEmployee(['id' => 1, 'employee_code' => 'EMP001', 'email' => 'shandy@example.test', 'full_name' => 'Shandy Bagus']);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'nofiyanto@example.test', 'full_name' => 'Nofiyanto Manager', 'role' => 'manager']);
+        $this->seedOvertimeApprovalForEmployee(1, [2, 3]);
+
+        $this->withSession(['employee_id' => 2])
+            ->post('/employee/approvals/overtime/1/approve', [
+                'notes' => 'Oke dari Fadel',
+            ])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertDatabaseHas('overtime_requests', [
+            'id' => 1,
+            'status' => 'in_review',
+            'current_step' => 2,
+        ]);
+        $this->assertDatabaseHas('approval_logs', [
+            'approvable_type' => \App\Models\OvertimeRequest::class,
+            'approvable_id' => 1,
+            'approver_id' => 2,
+            'action' => 'approved',
+            'step_order' => 1,
+        ]);
+
+        $this->withSession(['employee_id' => 3])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('Shandy Bagus')
+            ->assertSee('Step 2');
+
+        $this->withSession(['employee_id' => 3])
+            ->post('/employee/approvals/overtime/1/approve', [
+                'notes' => 'Final approve',
+            ])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertDatabaseHas('overtime_requests', [
+            'id' => 1,
+            'status' => 'approved',
+            'current_step' => 2,
+        ]);
+        $this->assertDatabaseHas('approval_logs', [
+            'approvable_type' => \App\Models\OvertimeRequest::class,
+            'approvable_id' => 1,
+            'approver_id' => 3,
+            'action' => 'approved',
+            'step_order' => 2,
+        ]);
+    }
+
+    public function test_employee_cannot_approve_when_not_current_approver(): void
+    {
+        $this->seedEmployee(['id' => 1, 'employee_code' => 'EMP001', 'email' => 'shandy@example.test', 'full_name' => 'Shandy Bagus']);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedEmployee(['id' => 4, 'employee_code' => 'EMP004', 'email' => 'other@example.test', 'full_name' => 'Other Employee']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $this->withSession(['employee_id' => 4])
+            ->post('/employee/approvals/overtime/1/approve')
+            ->assertRedirect(route('employee.approvals.index'))
+            ->assertSessionHas('error', 'Anda bukan approver untuk step ini.');
+
+        $this->assertDatabaseHas('overtime_requests', [
+            'id' => 1,
+            'status' => 'pending',
+            'current_step' => 1,
+        ]);
+        $this->assertDatabaseCount('approval_logs', 0);
+    }
+
     public function test_employee_can_open_overtime_request_page(): void
     {
         $this->seedEmployee();
@@ -556,9 +766,14 @@ class EmployeePortalTest extends TestCase
         ]);
     }
 
-    private function seedEmployee(bool $isActive = true): void
+    private function seedEmployee(bool|array $attributes = true, ?bool $isActive = null): void
     {
-        DB::table('employees')->insert([
+        $attributes = is_array($attributes) ? $attributes : ['is_active' => $attributes];
+        if (! is_null($isActive)) {
+            $attributes['is_active'] = $isActive;
+        }
+
+        DB::table('employees')->insert(array_merge([
             'id' => 1,
             'company_id' => 1,
             'employee_code' => 'EMP001',
@@ -567,10 +782,10 @@ class EmployeePortalTest extends TestCase
             'password' => Hash::make('password'),
             'role' => 'employee',
             'position' => 'Staff',
-            'is_active' => $isActive,
+            'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ], $attributes));
     }
 
     private function seedLeaveTypeAndBalance(): void
@@ -615,5 +830,37 @@ class EmployeePortalTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function seedOvertimeApprovalForEmployee(int $employeeId, array $approverIds): void
+    {
+        DB::table('overtime_requests')->insert([
+            'id' => 1,
+            'employee_id' => $employeeId,
+            'date' => '2026-06-20',
+            'overtime_type' => 'workday',
+            'pre_shift_duration' => 60,
+            'pre_shift_break' => 0,
+            'post_shift_duration' => 90,
+            'post_shift_break' => 0,
+            'break_duration' => 0,
+            'total_duration' => 150,
+            'reason' => 'Lembur closing laporan',
+            'status' => 'pending',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        foreach ($approverIds as $index => $approverId) {
+            DB::table('employee_approvers')->insert([
+                'employee_id' => $employeeId,
+                'request_type' => 'overtime',
+                'step_order' => $index + 1,
+                'approver_id' => $approverId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 }
