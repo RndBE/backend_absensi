@@ -60,7 +60,7 @@ class FcmService
                 ],
             ];
 
-            $response = Http::withHeaders([
+            $response = self::http()->withHeaders([
                 'Authorization' => 'Bearer ' . $accessToken,
                 'Content-Type' => 'application/json',
             ])->post($url, $message);
@@ -112,7 +112,7 @@ class FcmService
                 openssl_sign($signatureInput, $signature, $privateKey, OPENSSL_ALGO_SHA256);
                 $jwt = "{$signatureInput}." . self::base64url($signature);
 
-                $response = Http::asForm()->post('https://oauth2.googleapis.com/token', [
+                $response = self::http()->asForm()->post('https://oauth2.googleapis.com/token', [
                     'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
                     'assertion' => $jwt,
                 ]);
@@ -128,6 +128,35 @@ class FcmService
                 return null;
             }
         });
+    }
+
+    private static function http()
+    {
+        return Http::withOptions(self::httpOptions());
+    }
+
+    public static function httpOptions(): array
+    {
+        $verify = filter_var(config('services.fcm.http_verify', true), FILTER_VALIDATE_BOOLEAN);
+        if (! $verify) {
+            return ['verify' => false];
+        }
+
+        $caFile = config('services.fcm.ca_file');
+        if (! $caFile) {
+            return [];
+        }
+
+        return ['verify' => self::resolvePath($caFile)];
+    }
+
+    private static function resolvePath(string $path): string
+    {
+        if (preg_match('/^[A-Za-z]:[\\\\\\/]/', $path) || str_starts_with($path, '/') || str_starts_with($path, '\\')) {
+            return $path;
+        }
+
+        return base_path($path);
     }
 
     private static function getCredentials(): ?array

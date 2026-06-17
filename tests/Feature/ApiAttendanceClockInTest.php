@@ -22,7 +22,9 @@ class ApiAttendanceClockInTest extends TestCase
         Schema::dropIfExists('schedule_assignments');
         Schema::dropIfExists('schedule_template_days');
         Schema::dropIfExists('schedule_templates');
+        Schema::dropIfExists('notifications');
         Schema::dropIfExists('attendances');
+        Schema::dropIfExists('overtime_requests');
         Schema::dropIfExists('shifts');
         Schema::dropIfExists('settings');
         Schema::dropIfExists('employees');
@@ -37,6 +39,8 @@ class ApiAttendanceClockInTest extends TestCase
             $table->string('email')->unique();
             $table->string('password');
             $table->string('role')->default('employee');
+            $table->string('position')->nullable();
+            $table->string('fcm_token')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
@@ -100,9 +104,43 @@ class ApiAttendanceClockInTest extends TestCase
             $table->string('clock_in_photo')->nullable();
             $table->string('clock_out_photo')->nullable();
             $table->string('status')->default('present');
+            $table->string('review_status')->nullable();
+            $table->text('suspicious_reason')->nullable();
+            $table->json('security_flags')->nullable();
+            $table->unsignedBigInteger('reviewed_by')->nullable();
+            $table->timestamp('reviewed_at')->nullable();
+            $table->text('review_notes')->nullable();
             $table->boolean('is_late')->default(false);
             $table->boolean('is_remote')->default(false);
             $table->text('remote_notes')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('overtime_requests', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->date('date');
+            $table->string('overtime_type')->default('workday');
+            $table->integer('total_duration')->default(0);
+            $table->integer('break_duration')->default(0);
+            $table->integer('approved_duration')->nullable();
+            $table->integer('approved_break')->nullable();
+            $table->integer('actual_duration')->nullable();
+            $table->time('actual_clock_in')->nullable();
+            $table->time('actual_clock_out')->nullable();
+            $table->string('status')->default('pending');
+            $table->timestamps();
+        });
+
+        Schema::create('notifications', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->string('title');
+            $table->text('message');
+            $table->string('type')->default('info');
+            $table->string('reference_type')->nullable();
+            $table->unsignedBigInteger('reference_id')->nullable();
+            $table->boolean('is_read')->default(false);
             $table->timestamps();
         });
     }
@@ -176,7 +214,7 @@ class ApiAttendanceClockInTest extends TestCase
         ]);
     }
 
-    public function test_clock_in_rejects_mock_location(): void
+    public function test_clock_in_with_mock_location_is_saved_for_hr_review(): void
     {
         $this->seedLocationSettings();
         $this->seedEmployee();
@@ -192,12 +230,123 @@ class ApiAttendanceClockInTest extends TestCase
 
         $response = (new AttendanceController())->clockIn($request);
 
-        $this->assertSame(422, $response->getStatusCode());
-        $this->assertStringContainsString('lokasi palsu', $response->getData(true)['message']);
-        $this->assertDatabaseMissing('attendances', ['employee_id' => 1]);
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertTrue($response->getData(true)['needs_review']);
+        $this->assertSame('Clock in berhasil', $response->getData(true)['message']);
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'clock_in' => '14:34:00',
+            'status' => 'present',
+            'review_status' => 'pending',
+            'clock_in_is_mocked' => true,
+        ]);
+        $this->assertStringContainsString(
+            'Fake GPS',
+            DB::table('attendances')->where('employee_id', 1)->value('suspicious_reason')
+        );
     }
 
-    public function test_clock_in_rejects_poor_location_accuracy(): void
+    public function test_clock_in_with_mock_location_notifies_hr_attendance_admins(): void
+    {
+        $this->seedLocationSettings();
+        $this->seedEmployee();
+        $this->seedAdminEmployee(2, 'HR Admin', 'hr_admin', 1);
+        $this->seedAdminEmployee(3, 'Finance Admin', 'finance_admin', 1);
+        $this->seedAdminEmployee(4, 'Other Company HR', 'hr_admin', 2);
+        $this->seedAdminEmployee(5, 'Super Admin', 'superadmin', 1);
+        $this->seedAdminEmployee(6, 'General Admin', 'admin', 1);
+
+        $request = Request::create('/api/attendance/clock-in', 'POST', [
+            'latitude' => '1.0456',
+            'longitude' => '104.0305',
+            'location_accuracy' => 10,
+            'location_timestamp' => '2026-05-26T07:34:00Z',
+            'is_mock_location' => true,
+        ]);
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new AttendanceController())->clockIn($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $attendanceId = DB::table('attendances')->where('employee_id', 1)->value('id');
+
+        $this->assertDatabaseHas('notifications', [
+            'employee_id' => 2,
+            'title' => 'Presensi Mencurigakan',
+            'type' => 'attendance_security_review',
+            'reference_type' => \App\Models\Attendance::class,
+            'reference_id' => $attendanceId,
+            'is_read' => false,
+        ]);
+        $this->assertDatabaseHas('notifications', [
+            'employee_id' => 5,
+            'title' => 'Presensi Mencurigakan',
+            'type' => 'attendance_security_review',
+            'reference_type' => \App\Models\Attendance::class,
+            'reference_id' => $attendanceId,
+            'is_read' => false,
+        ]);
+        $this->assertStringContainsString(
+            'Employee One terdeteksi Fake GPS saat clock in',
+            DB::table('notifications')->where('employee_id', 2)->value('message')
+        );
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 1]);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 3]);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 4]);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 6]);
+    }
+
+    public function test_existing_security_review_notification_still_sends_push_on_clock_out_without_duplicate_inbox_item(): void
+    {
+        $this->seedLocationSettings();
+        $this->seedEmployee();
+        $this->seedAdminEmployee(2, 'HR Admin', 'hr_admin', 1, 'hr-fcm-token');
+
+        DB::table('attendances')->insert([
+            'id' => 55,
+            'employee_id' => 1,
+            'date' => '2026-05-26',
+            'clock_in' => '08:00:00',
+            'status' => 'present',
+            'review_status' => 'pending',
+            'suspicious_reason' => 'Fake GPS terdeteksi saat clock in',
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('notifications')->insert([
+            'employee_id' => 2,
+            'title' => 'Presensi Mencurigakan',
+            'message' => 'Pesan lama',
+            'type' => 'attendance_security_review',
+            'reference_type' => \App\Models\Attendance::class,
+            'reference_id' => 55,
+            'is_read' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/api/attendance/clock-out', 'POST', [
+            'latitude' => '1.0456',
+            'longitude' => '104.0305',
+            'location_accuracy' => 8,
+            'location_timestamp' => '2026-05-26T10:34:00Z',
+            'is_mock_location' => true,
+        ]);
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $controller = new AttendanceControllerPushSpy();
+        $response = $controller->clockOut($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertCount(1, $controller->sentPushes);
+        $this->assertSame(2, $controller->sentPushes[0]['employee_id']);
+        $this->assertSame('Presensi Mencurigakan', $controller->sentPushes[0]['title']);
+        $this->assertSame(1, DB::table('notifications')->count());
+    }
+
+    public function test_clock_in_with_poor_location_accuracy_is_saved_for_hr_review(): void
     {
         $this->seedLocationSettings(['max_gps_accuracy_meters' => '50']);
         $this->seedEmployee();
@@ -213,9 +362,57 @@ class ApiAttendanceClockInTest extends TestCase
 
         $response = (new AttendanceController())->clockIn($request);
 
-        $this->assertSame(422, $response->getStatusCode());
-        $this->assertStringContainsString('Akurasi lokasi', $response->getData(true)['message']);
-        $this->assertDatabaseMissing('attendances', ['employee_id' => 1]);
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertTrue($response->getData(true)['needs_review']);
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'clock_in' => '14:34:00',
+            'review_status' => 'pending',
+            'clock_in_accuracy_meters' => 125,
+        ]);
+        $this->assertStringContainsString(
+            'Akurasi GPS rendah',
+            DB::table('attendances')->where('employee_id', 1)->value('suspicious_reason')
+        );
+    }
+
+    public function test_clock_out_with_mock_location_marks_attendance_for_hr_review(): void
+    {
+        $this->seedLocationSettings();
+        $this->seedEmployee();
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-05-26',
+            'clock_in' => '08:00:00',
+            'clock_out' => null,
+            'status' => 'present',
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/api/attendance/clock-out', 'POST', [
+            'latitude' => '1.0456',
+            'longitude' => '104.0305',
+            'location_accuracy' => 8,
+            'location_timestamp' => '2026-05-26T10:34:00Z',
+            'is_mock_location' => true,
+        ]);
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new AttendanceController())->clockOut($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertTrue($response->getData(true)['needs_review']);
+        $this->assertSame('Clock out berhasil', $response->getData(true)['message']);
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'clock_out' => '14:34:00',
+            'review_status' => 'pending',
+            'clock_out_is_mocked' => true,
+        ]);
     }
 
     public function test_clock_out_rejects_location_outside_office_radius(): void
@@ -293,5 +490,39 @@ class ApiAttendanceClockInTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function seedAdminEmployee(int $id, string $name, string $role, int $companyId, ?string $fcmToken = null): void
+    {
+        DB::table('employees')->insert([
+            'id' => $id,
+            'company_id' => $companyId,
+            'work_schedule_id' => null,
+            'schedule_template_id' => null,
+            'employee_code' => 'ADM'.str_pad((string) $id, 3, '0', STR_PAD_LEFT),
+            'full_name' => $name,
+            'email' => "admin{$id}@example.test",
+            'password' => 'password',
+            'role' => $role,
+            'position' => $name,
+            'fcm_token' => $fcmToken,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+}
+
+class AttendanceControllerPushSpy extends AttendanceController
+{
+    public array $sentPushes = [];
+
+    protected function sendAttendanceSecurityPush(\App\Models\Employee $recipient, \App\Models\Notification $notification): void
+    {
+        $this->sentPushes[] = [
+            'employee_id' => $recipient->id,
+            'title' => $notification->title,
+            'message' => $notification->message,
+        ];
     }
 }

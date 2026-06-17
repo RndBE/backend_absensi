@@ -57,6 +57,52 @@
         font-weight: bold;
         font-size: 9.5px;
     }
+    .split-panels {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        margin-top: 14px;
+    }
+    .split-panels td {
+        vertical-align: top;
+    }
+    .split-panels .panel-left,
+    .split-panels .panel-right {
+        width: 49%;
+    }
+    .split-panels .panel-gap {
+        width: 12px;
+    }
+    .pay-panel {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid #d1d5db;
+    }
+    .pay-panel th {
+        padding: 7px 9px;
+        background: #374151;
+        color: #fff;
+        border-bottom: 1px solid #d1d5db;
+        font-size: 9px;
+        font-weight: bold;
+        text-align: left;
+    }
+    .pay-panel td {
+        padding: 5px 10px;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: 9.5px;
+        vertical-align: top;
+    }
+    .pay-panel .num { text-align: right; white-space: nowrap; width: 92px; }
+    .pay-panel .blank-row td {
+        color: transparent;
+    }
+    .pay-panel .panel-total td {
+        border-top: 1.5px solid #d1d5db;
+        border-bottom: none;
+        background: #f9fafb;
+        font-weight: bold;
+    }
 
     .thp-tbl { border-collapse: collapse; margin-top: 0; }
     .thp-tbl td {
@@ -111,7 +157,7 @@
     }
 
     $earningRows = count($earnings) + 1;
-    $deductionRows = count($deductions);
+    $deductionRows = max(count($deductions), 1);
     $maxRows = max($earningRows, $deductionRows);
 @endphp
 
@@ -183,65 +229,82 @@
     </tr>
 </table>
 
-<table class="w100 main-tbl" style="border:1px solid #d1d5db;">
-    <thead>
-        <tr>
-            <th style="width:40%; border-right:none;">Earnings</th>
-            <th style="width:10%; text-align:right; border-left:none; border-right:none;"></th>
-            <th style="width:40%; border-left:1px solid #d1d5db; border-right:none;">Deductions</th>
-            <th style="width:10%; text-align:right; border-left:none;"></th>
-        </tr>
-    </thead>
-    <tbody>
-        @for($i = 0; $i < $maxRows; $i++)
-        @php
-            if ($i === 0) {
-                $eName = 'Basic Salary';
-                $eAmt = $detail->basic_salary;
-                $hasE = true;
-            } elseif (isset($earnings[$i - 1])) {
-                $eName = $earnings[$i - 1]['name'];
-                $eAmt = $earnings[$i - 1]['amount'];
-                $hasE = true;
-            } else {
-                $eName = '';
-                $eAmt = null;
-                $hasE = false;
-            }
-
-            if (isset($deductions[$i])) {
-                $dName = $deductions[$i]['name'];
-                $dAmt = $deductions[$i]['amount'];
-                $hasD = true;
-                $dLoanLines = \App\Support\PayslipLoanSummary::detailLinesForComponent($deductions[$i]);
-            } else {
-                $dName = '';
-                $dAmt = null;
-                $hasD = false;
-                $dLoanLines = [];
-            }
-        @endphp
-        <tr>
-            <td>{{ $eName }}</td>
-            <td class="num">{{ $hasE && $eAmt !== null ? number_format($eAmt, 0, ',', '.') : '' }}</td>
-            <td class="divider">
-                {{ $dName }}
-                @foreach($dLoanLines as $line)
-                    <div class="loan-detail">{{ $line }}</div>
-                @endforeach
-            </td>
-            <td class="num">{{ $hasD && $dAmt !== null ? number_format($dAmt, 0, ',', '.') : '' }}</td>
-        </tr>
-        @endfor
-    </tbody>
-    <tfoot>
-        <tr class="total-row">
-            <td>Total earnings</td>
-            <td class="num">{{ number_format($detail->total_earning, 0, ',', '.') }}</td>
-            <td class="divider">Total deductions</td>
-            <td class="num">{{ number_format($detail->total_deduction, 0, ',', '.') }}</td>
-        </tr>
-    </tfoot>
+<table class="split-panels">
+    <tr>
+        <td class="panel-left">
+            <table class="pay-panel">
+                <thead>
+                    <tr>
+                        <th>Pemasukan</th>
+                        <th class="num">Nominal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Basic Salary</td>
+                        <td class="num">{{ number_format($detail->basic_salary, 0, ',', '.') }}</td>
+                    </tr>
+                    @foreach($earnings as $earning)
+                        <tr>
+                            <td>{{ $earning['name'] }}</td>
+                            <td class="num">{{ number_format($earning['amount'], 0, ',', '.') }}</td>
+                        </tr>
+                    @endforeach
+                    @for($i = 0; $i < $maxRows - $earningRows; $i++)
+                        <tr class="blank-row">
+                            <td>&nbsp;</td>
+                            <td class="num">&nbsp;</td>
+                        </tr>
+                    @endfor
+                    <tr class="panel-total">
+                        <td>Total pemasukan</td>
+                        <td class="num">{{ number_format($detail->total_earning, 0, ',', '.') }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </td>
+        <td class="panel-gap"></td>
+        <td class="panel-right">
+            <table class="pay-panel">
+                <thead>
+                    <tr>
+                        <th>Pengeluaran</th>
+                        <th class="num">Nominal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($deductions as $deduction)
+                        @php
+                            $dLoanLines = \App\Support\PayslipLoanSummary::detailLinesForComponent($deduction);
+                        @endphp
+                        <tr>
+                            <td>
+                                {{ $deduction['name'] }}
+                                @foreach($dLoanLines as $line)
+                                    <div class="loan-detail">{{ $line }}</div>
+                                @endforeach
+                            </td>
+                            <td class="num">{{ number_format($deduction['amount'], 0, ',', '.') }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="2" class="muted">Tidak ada pengeluaran</td>
+                        </tr>
+                    @endforelse
+                    @for($i = 0; $i < $maxRows - $deductionRows; $i++)
+                        <tr class="blank-row">
+                            <td>&nbsp;</td>
+                            <td class="num">&nbsp;</td>
+                        </tr>
+                    @endfor
+                    <tr class="panel-total">
+                        <td>Total pengeluaran</td>
+                        <td class="num">{{ number_format($detail->total_deduction, 0, ',', '.') }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </td>
+    </tr>
 </table>
 
 <table class="w100 thp-tbl">
@@ -251,7 +314,7 @@
     </tr>
 </table>
 
-@if(!empty($bpjsData['items']))
+@if(empty($hideBenefits) && !empty($bpjsData['items']))
 <div class="benefits-section">
     <div class="benefits-title">Benefits* <span style="font-weight:normal; color:#9ca3af; font-size:8.5px;">(ditanggung perusahaan)</span></div>
     <table class="ben-tbl">

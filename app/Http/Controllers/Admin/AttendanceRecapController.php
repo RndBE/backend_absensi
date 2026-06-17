@@ -117,7 +117,14 @@ class AttendanceRecapController extends Controller
                             $row['attendance'] = $att;
                             $row['clock_in'] = $att->clock_in;
                             $row['clock_out'] = $att->clock_out;
-                            if ($att->is_late) {
+                            if ($att->review_status === 'pending') {
+                                $row['status'] = 'review';
+                                $row['status_label'] = 'Butuh Review';
+                            } elseif ($att->review_status === 'rejected' || $att->status === 'absent') {
+                                $row['status'] = 'absent';
+                                $row['status_label'] = 'Alpha';
+                                $stats['alpha']++;
+                            } elseif ($att->is_late) {
                                 $row['status'] = 'late';
                                 $row['status_label'] = 'Terlambat';
                                 $stats['terlambat']++;

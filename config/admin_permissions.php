@@ -145,6 +145,8 @@ return [
         'admin.employees.store' => 'employees.create',
         'admin.employees.edit' => 'employees.update',
         'admin.employees.update' => 'employees.update',
+        'admin.employees.portal-link.send-all' => 'employees.update',
+        'admin.employees.portal-link.send' => 'employees.update',
         'admin.employees.destroy' => 'employees.delete',
         'admin.employees.resign' => 'employees.delete',
         'admin.employees.process-resign' => 'employees.delete',

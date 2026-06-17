@@ -14,6 +14,15 @@
             <span class="material-symbols-outlined text-[16px]">arrow_back</span> Kembali ke Daftar
         </a>
         <div class="flex gap-2">
+            @if($employee->is_active && $employee->email && $canUpdateEmployee)
+            <form method="POST" action="{{ route('admin.employees.portal-link.send', $employee->id) }}" class="inline">
+                @csrf
+                <button data-confirm="Kirim link portal ke {{ $employee->email }}?" data-confirm-text="Kirim" data-confirm-variant="primary"
+                    class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-cyan-600 to-cyan-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+                    <span class="material-symbols-outlined text-[15px]">outgoing_mail</span> Kirim Link Portal
+                </button>
+            </form>
+            @endif
             @if($employee->is_active && $canDeleteEmployee)
             <a href="{{ route('admin.employees.resign', $employee->id) }}"
                 class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-red-600 to-red-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">

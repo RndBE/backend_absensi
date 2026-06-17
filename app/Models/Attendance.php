@@ -13,7 +13,9 @@ class Attendance extends Model
         'clock_in_accuracy_meters', 'clock_out_accuracy_meters',
         'clock_in_is_mocked', 'clock_out_is_mocked',
         'clock_in_location_recorded_at', 'clock_out_location_recorded_at',
-        'clock_in_photo', 'clock_out_photo', 'status', 'is_late',
+        'clock_in_photo', 'clock_out_photo', 'status', 'review_status',
+        'suspicious_reason', 'security_flags', 'reviewed_by', 'reviewed_at',
+        'review_notes', 'is_late',
         'is_remote', 'remote_notes',
     ];
 
@@ -33,11 +35,18 @@ class Attendance extends Model
             'clock_out_is_mocked' => 'boolean',
             'clock_in_location_recorded_at' => 'datetime',
             'clock_out_location_recorded_at' => 'datetime',
+            'security_flags' => 'array',
+            'reviewed_at' => 'datetime',
         ];
     }
 
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'reviewed_by');
     }
 }

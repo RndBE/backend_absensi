@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendPayslipEmailJob;
 use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\EmployeePayroll;
@@ -151,8 +152,9 @@ class PayrollRunController extends Controller
 
         $run->update(['status' => 'published', 'published_at' => now()]);
         $this->logAction($run, 'published', $admin->id);
+        $this->queuePayslipEmails($run);
 
-        return back()->with('success', 'Payslip berhasil di-publish. Karyawan sekarang bisa melihat slip gaji.');
+        return back()->with('success', 'Payslip berhasil di-publish. Email slip gaji sedang dikirim ke karyawan.');
     }
 
     public function unpublish($id)
@@ -360,6 +362,15 @@ class PayrollRunController extends Controller
             'performed_by' => $performedBy,
             'notes' => $notes,
         ]);
+    }
+
+    private function queuePayslipEmails(PayrollRun $run): void
+    {
+        PayrollRunDetail::with('employee:id,email')
+            ->where('payroll_run_id', $run->id)
+            ->get()
+            ->filter(fn (PayrollRunDetail $detail) => filled($detail->employee?->email))
+            ->each(fn (PayrollRunDetail $detail) => SendPayslipEmailJob::dispatch($detail->id));
     }
 
     private function generateDetails(PayrollRun $run, array $employeeIds = []): void
@@ -912,6 +923,7 @@ class PayrollRunController extends Controller
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->where('is_late', true)
             ->where('status', 'present')
+            ->where(fn ($query) => $query->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->whereNotIn('date', $holidayDates)
             ->whereNotIn('date', $leaveDates)
             ->count();
@@ -1019,6 +1031,7 @@ class PayrollRunController extends Controller
 
         $attendanceDates = Attendance::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $countUntil])
+            ->where(fn ($query) => $query->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->pluck('date')
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->flip();

@@ -45,6 +45,7 @@ class AdminDashboardSummaryTest extends TestCase
             $table->time('clock_in')->nullable();
             $table->time('clock_out')->nullable();
             $table->string('status')->default('present');
+            $table->string('review_status')->nullable();
             $table->boolean('is_late')->default(false);
             $table->timestamps();
         });

@@ -24,22 +24,26 @@ class AdminDashboardSummary
         $attendedToday = Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
             ->where('date', $todayDate)
             ->whereNotNull('clock_in')
+            ->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->count();
 
         $presentToday = Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
             ->where('date', $todayDate)
             ->whereNotNull('clock_in')
             ->where('is_late', false)
+            ->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->count();
 
         $lateToday = Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
             ->where('date', $todayDate)
             ->where('is_late', true)
+            ->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->count();
 
         $lateThisMonth = Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
             ->whereBetween('date', [$today->copy()->startOfMonth()->toDateString(), $today->copy()->endOfMonth()->toDateString()])
             ->where('is_late', true)
+            ->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->count();
 
         $pendingStatuses = ['pending', 'in_review'];

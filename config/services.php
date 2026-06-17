@@ -37,6 +37,8 @@ return [
 
     'fcm' => [
         'server_key' => env('FCM_SERVER_KEY'),
+        'http_verify' => env('FCM_HTTP_VERIFY', true),
+        'ca_file' => env('FCM_CA_FILE'),
     ],
 
     'face_verification' => [

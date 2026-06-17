@@ -9,11 +9,21 @@
     $canDeleteEmployee = $adminPermission->can($currentAdmin, 'employees.delete');
 @endphp
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
-    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">group</span> Daftar Karyawan</h3>
-        @if($canCreateEmployee)
-        <a href="{{ route('admin.employees.create') }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-[0_2px_8px_rgba(79,70,229,0.3)] hover:shadow-[0_4px_12px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 transition-all duration-200">+ Tambah Karyawan</a>
-        @endif
+        <div class="flex items-center gap-2 flex-wrap">
+            @if($canUpdateEmployee)
+                <form method="POST" action="{{ route('admin.employees.portal-link.send-all') }}" class="inline">
+                    @csrf
+                    <button data-confirm="Kirim link portal ke semua karyawan aktif yang memiliki email?" data-confirm-text="Kirim Semua" data-confirm-variant="primary" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg hover:bg-cyan-100 transition-all duration-200 cursor-pointer">
+                        <span class="material-symbols-outlined text-[16px]">outgoing_mail</span> Kirim Link Portal ke Semua
+                    </button>
+                </form>
+            @endif
+            @if($canCreateEmployee)
+            <a href="{{ route('admin.employees.create') }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-[0_2px_8px_rgba(79,70,229,0.3)] hover:shadow-[0_4px_12px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 transition-all duration-200">+ Tambah Karyawan</a>
+            @endif
+        </div>
     </div>
     <div class="p-5">
         {{-- Filters --}}
@@ -89,6 +99,14 @@
                                 <a href="{{ route('admin.employees.show', $emp->id) }}" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all duration-200" title="Detail"><span class="material-symbols-outlined text-[16px]">visibility</span></a>
                                 @if($canUpdateEmployee)
                                     <a href="{{ route('admin.employees.edit', $emp->id) }}" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all duration-200" title="Edit"><span class="material-symbols-outlined text-[16px]">edit</span></a>
+                                    @if($emp->is_active && $emp->email)
+                                        <form method="POST" action="{{ route('admin.employees.portal-link.send', $emp->id) }}" class="inline">
+                                            @csrf
+                                            <button data-confirm="Kirim link portal ke {{ $emp->email }}?" data-confirm-text="Kirim" data-confirm-variant="primary" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition-all duration-200 cursor-pointer" title="Kirim Link Portal">
+                                                <span class="material-symbols-outlined text-[16px]">outgoing_mail</span>
+                                            </button>
+                                        </form>
+                                    @endif
                                 @endif
                                 @if($canDeleteEmployee)
                                     <a href="{{ route('admin.employees.resign', $emp->id) }}" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200" title="Proses Resign"><span class="material-symbols-outlined text-[16px]">person_remove</span></a>

@@ -7,10 +7,13 @@ use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\Holiday;
 use App\Models\LeaveRequest;
+use App\Models\Notification;
 use App\Models\OvertimeRequest;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
 use App\Services\FaceVerificationService;
+use App\Services\FcmService;
+use App\Support\AdminPermission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -251,10 +254,6 @@ class AttendanceController extends Controller
 
         $request->validate($rules);
 
-        if ($locationError = $this->validateLocationIntegrity($request, $requireGps)) {
-            return $locationError;
-        }
-
         $employee = $request->user();
         $today = Carbon::today();
 
@@ -348,6 +347,7 @@ class AttendanceController extends Controller
                 'clock_in_lat' => $request->latitude,
                 'clock_in_lng' => $request->longitude,
                 ...$this->locationAuditAttributes($request, 'clock_in'),
+                ...$this->locationReviewAttributes($request, 'clock_in', $requireGps),
                 'clock_in_photo' => $photoPath,
                 'status' => 'present',
                 'is_late' => $isLate,
@@ -355,6 +355,11 @@ class AttendanceController extends Controller
                 'remote_notes' => $isRemote ? $request->notes : null,
             ]
         );
+
+        $needsReview = $attendance->review_status === 'pending';
+        if ($needsReview) {
+            $this->notifyAttendanceSecurityReview($attendance, 'clock_in');
+        }
 
         $message = 'Clock in berhasil';
         if ($isRemote) {
@@ -367,6 +372,8 @@ class AttendanceController extends Controller
             'data' => $attendance,
             'is_remote' => $isRemote,
             'distance' => $distance ? round($distance) : null,
+            'needs_review' => $needsReview,
+            'review_status' => $attendance->review_status,
         ]);
     }
 
@@ -383,35 +390,6 @@ class AttendanceController extends Controller
             sin($dLng / 2) * sin($dLng / 2);
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
         return $earthRadius * $c;
-    }
-
-    private function validateLocationIntegrity(Request $request, bool $requireGps)
-    {
-        if (!$requireGps) {
-            return null;
-        }
-
-        if ($this->locationIsMocked($request)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Terdeteksi penggunaan lokasi palsu. Matikan Fake GPS untuk melanjutkan.',
-                'is_mock_location' => true,
-            ], 422);
-        }
-
-        $accuracy = $this->locationAccuracy($request);
-        $maxAccuracy = (float) Setting::getValue('max_gps_accuracy_meters', '100');
-
-        if ($accuracy !== null && $maxAccuracy > 0 && $accuracy > $maxAccuracy) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Akurasi lokasi terlalu rendah (' . round($accuracy) . "m). Maksimal {$maxAccuracy}m.",
-                'accuracy' => round($accuracy),
-                'max_accuracy' => $maxAccuracy,
-            ], 422);
-        }
-
-        return null;
     }
 
     private function locationIsMocked(Request $request): bool
@@ -456,6 +434,153 @@ class AttendanceController extends Controller
         ];
     }
 
+    private function locationReviewAttributes(
+        Request $request,
+        string $prefix,
+        bool $requireGps,
+        ?Attendance $attendance = null
+    ): array {
+        $securityFlags = is_array($attendance?->security_flags) ? $attendance->security_flags : [];
+        $issue = $this->locationReviewIssue($request, $prefix, $requireGps);
+
+        $securityFlags[$prefix] = [
+            'is_mocked' => $this->locationIsMocked($request),
+            'accuracy_meters' => $this->locationAccuracy($request),
+            'max_accuracy_meters' => (float) Setting::getValue('max_gps_accuracy_meters', '100'),
+            'recorded_at' => $request->location_timestamp,
+            'issue' => $issue,
+        ];
+
+        $attributes = ['security_flags' => $securityFlags];
+
+        if ($issue) {
+            return $attributes + [
+                'review_status' => 'pending',
+                'suspicious_reason' => $this->mergeSuspiciousReason($attendance?->suspicious_reason, $issue),
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+                'review_notes' => null,
+            ];
+        }
+
+        if (!$attendance) {
+            $attributes['review_status'] = null;
+            $attributes['suspicious_reason'] = null;
+        }
+
+        return $attributes;
+    }
+
+    private function locationReviewIssue(Request $request, string $prefix, bool $requireGps): ?string
+    {
+        if (!$requireGps) {
+            return null;
+        }
+
+        $label = $prefix === 'clock_out' ? 'clock out' : 'clock in';
+        $issues = [];
+
+        if ($this->locationIsMocked($request)) {
+            $issues[] = 'Fake GPS terdeteksi saat '.$label;
+        }
+
+        $accuracy = $this->locationAccuracy($request);
+        $maxAccuracy = (float) Setting::getValue('max_gps_accuracy_meters', '100');
+
+        if ($accuracy !== null && $maxAccuracy > 0 && $accuracy > $maxAccuracy) {
+            $issues[] = 'Akurasi GPS rendah saat '.$label.' ('.round($accuracy).'m, maksimal '.round($maxAccuracy).'m)';
+        }
+
+        return $issues ? implode('; ', $issues) : null;
+    }
+
+    private function mergeSuspiciousReason(?string $existingReason, string $newReason): string
+    {
+        if (!$existingReason) {
+            return $newReason;
+        }
+
+        return str_contains($existingReason, $newReason)
+            ? $existingReason
+            : $existingReason.'; '.$newReason;
+    }
+
+    private function notifyAttendanceSecurityReview(Attendance $attendance, string $event): void
+    {
+        $attendance->loadMissing('employee:id,company_id,full_name');
+        $employee = $attendance->employee;
+
+        if (!$employee || $attendance->review_status !== 'pending') {
+            return;
+        }
+
+        $permission = app(AdminPermission::class);
+        $recipients = Employee::where('company_id', $employee->company_id)
+            ->where('id', '!=', $employee->id)
+            ->where('is_active', true)
+            ->get()
+            ->filter(fn (Employee $recipient) => $this->shouldReceiveAttendanceSecurityNotification($recipient, $permission));
+
+        if ($recipients->isEmpty()) {
+            return;
+        }
+
+        $message = $this->attendanceSecurityReviewMessage($attendance, $event);
+
+        foreach ($recipients as $recipient) {
+            $notification = Notification::firstOrNew([
+                'employee_id' => $recipient->id,
+                'type' => 'attendance_security_review',
+                'reference_type' => Attendance::class,
+                'reference_id' => $attendance->id,
+            ]);
+
+            $notification->fill([
+                'title' => 'Presensi Mencurigakan',
+                'message' => $message,
+                'is_read' => false,
+            ]);
+            $notification->save();
+
+            $this->sendAttendanceSecurityPush($recipient, $notification);
+        }
+    }
+
+    private function shouldReceiveAttendanceSecurityNotification(Employee $recipient, AdminPermission $permission): bool
+    {
+        return (bool) array_intersect($permission->roleSlugs($recipient), ['superadmin', 'hr_admin']);
+    }
+
+    protected function sendAttendanceSecurityPush(Employee $recipient, Notification $notification): void
+    {
+        FcmService::sendToEmployee($recipient, $notification->title, $notification->message, [
+            'type' => 'attendance_security_review',
+            'reference_type' => 'attendance',
+            'reference_id' => (string) $notification->reference_id,
+        ]);
+    }
+
+    private function attendanceSecurityReviewMessage(Attendance $attendance, string $event): string
+    {
+        $eventLabel = $event === 'clock_out' ? 'clock out' : 'clock in';
+        $reason = $attendance->suspicious_reason ?: 'presensi mencurigakan';
+        $summary = str_replace(
+            [
+                'Fake GPS terdeteksi saat '.$eventLabel,
+                'Akurasi GPS rendah saat '.$eventLabel,
+            ],
+            [
+                'Fake GPS saat '.$eventLabel,
+                'akurasi GPS rendah saat '.$eventLabel,
+            ],
+            $reason
+        );
+
+        $date = $attendance->date ? Carbon::parse($attendance->date)->format('d/m/Y') : '-';
+
+        return "{$attendance->employee->full_name} terdeteksi {$summary}. Periksa presensi tanggal {$date}.";
+    }
+
     public function clockOut(Request $request)
     {
         $requirePhoto = Setting::getValue('require_photo', '1') === '1';
@@ -473,10 +598,6 @@ class AttendanceController extends Controller
             'photo' => 'nullable|image|max:5120',
             'photo_base64' => 'nullable|string',
         ]);
-
-        if ($locationError = $this->validateLocationIntegrity($request, $requireGps)) {
-            return $locationError;
-        }
 
         if ($requirePhoto && !$request->hasFile('photo') && !$request->photo_base64) {
             return response()->json([
@@ -543,8 +664,14 @@ class AttendanceController extends Controller
             'clock_out_lat' => $request->latitude,
             'clock_out_lng' => $request->longitude,
             ...$this->locationAuditAttributes($request, 'clock_out'),
+            ...$this->locationReviewAttributes($request, 'clock_out', $requireGps, $attendance),
             'clock_out_photo' => $photoPath,
         ]);
+        $attendance->refresh();
+        $needsReview = $attendance->review_status === 'pending';
+        if ($needsReview) {
+            $this->notifyAttendanceSecurityReview($attendance, 'clock_out');
+        }
 
         // === OVERTIME ACTUAL CALCULATION ===
         $attendanceDate = Carbon::parse($attendance->date);
@@ -579,6 +706,8 @@ class AttendanceController extends Controller
             'message' => 'Clock out berhasil' . ($overtimeInfo ? ' (Lembur: ' . $overtimeInfo['actual_formatted'] . ')' : ''),
             'data' => $attendance,
             'overtime' => $overtimeInfo,
+            'needs_review' => $needsReview,
+            'review_status' => $attendance->review_status,
         ]);
     }
 

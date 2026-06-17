@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\EmployeePortalMagicLinkMail;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
@@ -11,11 +12,13 @@ use App\Models\EmployeePayrollComponent;
 use App\Models\Role;
 use App\Models\WorkSchedule;
 use App\Services\BpjsCalculator;
+use App\Services\EmployeePortalMagicLinkService;
 use App\Services\Pph21Calculator;
 use App\Support\AdminPermission;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
@@ -149,6 +152,63 @@ class EmployeeController extends Controller
         $adminRoles = app(AdminPermission::class)->roles();
 
         return view('admin.employees.edit', compact('employee', 'departments', 'workSchedules', 'managers', 'approvalChains', 'adminRoles'));
+    }
+
+    public function sendPortalLink($id, EmployeePortalMagicLinkService $magicLinks)
+    {
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)->findOrFail($id);
+
+        if (! $employee->is_active) {
+            return redirect()->back(302, [], route('admin.employees.index'))
+                ->with('error', 'Link portal hanya bisa dikirim ke karyawan aktif.');
+        }
+
+        if (! $employee->email) {
+            return redirect()->back(302, [], route('admin.employees.index'))
+                ->with('error', 'Karyawan ini belum memiliki email.');
+        }
+
+        $magicLink = $magicLinks->create($employee);
+
+        Mail::to($employee->email)->send(new EmployeePortalMagicLinkMail(
+            $employee,
+            $magicLink['url'],
+            $magicLink['link']->expires_at
+        ));
+
+        return redirect()->back(302, [], route('admin.employees.index'))
+            ->with('success', 'Link portal employee berhasil dikirim ke '.$employee->email.'.');
+    }
+
+    public function sendPortalLinkToAll(EmployeePortalMagicLinkService $magicLinks)
+    {
+        $admin = Employee::find(session('admin_id'));
+        $employees = Employee::where('company_id', $admin->company_id)
+            ->where('is_active', true)
+            ->where('role', 'employee')
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->orderBy('full_name')
+            ->get();
+
+        if ($employees->isEmpty()) {
+            return redirect()->back(302, [], route('admin.employees.index'))
+                ->with('error', 'Tidak ada karyawan aktif dengan email untuk dikirimi link portal.');
+        }
+
+        foreach ($employees as $employee) {
+            $magicLink = $magicLinks->create($employee);
+
+            Mail::to($employee->email)->send(new EmployeePortalMagicLinkMail(
+                $employee,
+                $magicLink['url'],
+                $magicLink['link']->expires_at
+            ));
+        }
+
+        return redirect()->back(302, [], route('admin.employees.index'))
+            ->with('success', 'Link portal employee berhasil dikirim ke '.$employees->count().' karyawan.');
     }
 
     public function update(Request $request, $id)
