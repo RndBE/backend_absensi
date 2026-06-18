@@ -138,12 +138,12 @@ class AttendanceController extends Controller
                 return $date->between($l->start_date, $l->end_date);
             });
 
-            // Determine shift: only when NOT holiday and NOT on leave
+            // Manual override wins over holiday; template only applies on non-holidays.
             $shift = null;
-            if (!$holiday && !$leave) {
+            if (!$leave) {
                 if (isset($overrides[$dateStr])) {
                     $shift = $overrides[$dateStr]->shift;
-                } elseif (isset($templateDays[$dow])) {
+                } elseif (!$holiday && isset($templateDays[$dow])) {
                     $shift = $templateDays[$dow];
                 }
             }
@@ -152,7 +152,7 @@ class AttendanceController extends Controller
             $att = $attendances[$dateStr] ?? null;
 
             // Calculate stats
-            if ($holiday) {
+            if ($holiday && !$shift) {
                 $stats['libur']++;
             } elseif ($leave) {
                 $stats['cuti']++;

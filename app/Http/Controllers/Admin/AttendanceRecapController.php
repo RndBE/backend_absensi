@@ -79,20 +79,20 @@ class AttendanceRecapController extends Controller
                 'clock_out' => null,
             ];
 
-            // Determine shift for this day
-            if ($holiday) {
+            // Shift: manual override wins over holiday; template only applies on non-holidays.
+            $override = $overrides->get($emp->id);
+            if ($override) {
+                $row['shift'] = $override->shift;
+            } elseif (!$holiday && $emp->scheduleTemplate) {
+                $row['shift'] = $emp->scheduleTemplate->getShiftForDay($date->dayOfWeekIso);
+            }
+
+            // Determine status for this day.
+            if ($holiday && !$row['shift']) {
                 $row['status'] = 'holiday';
                 $row['status_label'] = 'Libur Nasional';
                 $stats['libur']++;
             } else {
-                // Shift: override > template
-                $override = $overrides->get($emp->id);
-                if ($override) {
-                    $row['shift'] = $override->shift;
-                } elseif ($emp->scheduleTemplate) {
-                    $row['shift'] = $emp->scheduleTemplate->getShiftForDay($date->dayOfWeekIso);
-                }
-
                 $shift = $row['shift'];
 
                 if (!$shift) {
@@ -270,11 +270,10 @@ class AttendanceRecapController extends Controller
             $holiday = $holidays[$dateStr] ?? null;
             $att = $attendances[$dateStr] ?? null;
 
-            // Only resolve shift when NOT a holiday
-            $shift = null;
-            if (!$holiday) {
-                $shift = (isset($overrides[$dateStr]) ? $overrides[$dateStr]->shift : null)
-                    ?? ($templateDays[$dow] ?? null);
+            // Manual override wins over holiday; template only applies on non-holidays.
+            $shift = isset($overrides[$dateStr]) ? $overrides[$dateStr]->shift : null;
+            if (!$shift && !$holiday) {
+                $shift = $templateDays[$dow] ?? null;
             }
 
             // Check leave
@@ -284,7 +283,7 @@ class AttendanceRecapController extends Controller
 
             $status = 'no_schedule';
             $statusLabel = '-';
-            if ($holiday) {
+            if ($holiday && !$shift) {
                 $status = 'holiday';
                 $statusLabel = $holiday->name;
                 $stats['libur']++;
@@ -310,6 +309,9 @@ class AttendanceRecapController extends Controller
                 $status = 'absent';
                 $statusLabel = 'Alpha';
                 $stats['alpha']++;
+            } elseif ($shift && !$shift->is_off) {
+                $status = 'scheduled';
+                $statusLabel = 'Terjadwal';
             }
 
             $rows[] = [
