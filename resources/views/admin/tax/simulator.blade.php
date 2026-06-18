@@ -105,7 +105,7 @@
                     <tr><th class="text-left py-1 text-gray-500">Program</th><th class="text-right py-1 text-gray-500">Perusahaan</th><th class="text-right py-1 text-gray-500">Karyawan</th></tr>
                 </thead>
                 <tbody>
-                    @foreach(['kesehatan' => 'Kesehatan', 'jht' => 'JHT', 'jkk' => 'JKK', 'jkm' => 'JKM', 'jp' => 'JP'] as $key => $lbl)
+                    @foreach(['kesehatan' => 'Kesehatan', 'jht' => 'JHT', 'jkk' => 'JKK', 'jkm' => 'JKM'] as $key => $lbl)
                     <tr>
                         <td class="py-1.5 text-gray-700 font-medium">{{ $lbl }}</td>
                         <td class="py-1.5 text-right text-gray-700">Rp {{ number_format($result['bpjs_detail'][$key]['company'], 0, ',', '.') }}</td>

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\Admin\PayrollRunController;
+use App\Models\BpjsSetting;
 use App\Models\Company;
 use App\Models\Employee;
 use App\Models\EmployeePayroll;
@@ -96,6 +97,80 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertSame(10, $loanComponent['loan']['installment_count']);
         $this->assertSame(2000000.0, (float) $loanComponent['loan']['remaining_amount']);
         $this->assertGreaterThanOrEqual(500000, (float) $detail->total_deduction);
+    }
+
+    public function test_payroll_run_no_longer_generates_jaminan_pensiun_components(): void
+    {
+        $company = Company::create(['name' => 'PT Tanpa JP']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-JP',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll',
+            'email' => 'admin-jp@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-JP',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Tanpa JP',
+            'email' => 'employee-jp@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 8000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        // Seed BPJS rates including JP — old code would inject JP here, new code must not.
+        foreach ([
+            'jht_rate' => ['company' => 3.7, 'employee' => 2],
+            'jp_rate' => ['company' => 2, 'employee' => 1],
+        ] as $key => $value) {
+            BpjsSetting::create([
+                'key' => $key,
+                'value' => $value,
+                'effective_date' => '2024-01-01',
+                'is_active' => true,
+            ]);
+        }
+        BpjsSetting::create([
+            'key' => 'jp_cap',
+            'value' => ['salary_cap' => 10042300],
+            'effective_date' => '2024-01-01',
+            'is_active' => true,
+        ]);
+
+        $run = PayrollRun::create([
+            'period' => '2026-06',
+            'created_by' => $admin->id,
+        ]);
+
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+        $names = collect($detail->components)->pluck('name');
+
+        // Other BPJS programs still generated, JP must be gone entirely.
+        $this->assertContains('JHT Karyawan', $names);
+        $this->assertNotContains('JP Karyawan', $names);
+        $this->assertNotContains('JP Perusahaan', $names);
+        $this->assertTrue($names->every(fn ($name) => ! str_contains($name, 'JP')));
     }
 
     public function test_payroll_loan_deduction_is_capped_by_remaining_amount(): void

@@ -289,12 +289,6 @@ class PayrollRunController extends Controller
                     'detail' => '2% x Rp '.number_format($bpjs['jht']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['jht']['employee'];
             }
-            if ($bpjs['jp']['employee'] > 0) {
-                $comps[] = ['id' => null, 'name' => 'JP Karyawan', 'type' => 'deduction', 'category' => 'recurring',
-                    'amount' => $bpjs['jp']['employee'], 'is_taxable' => false, 'is_auto' => true,
-                    'detail' => '1% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
-                $totalDeduction += $bpjs['jp']['employee'];
-            }
 
             // ── BPJS Perusahaan: tiap program jadi baris terpisah (info only) ──
             if ($bpjs['kesehatan']['company'] > 0) {
@@ -316,11 +310,6 @@ class PayrollRunController extends Controller
                 $comps[] = ['id' => null, 'name' => 'JKM Perusahaan', 'type' => 'info', 'category' => 'info',
                     'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
                     'detail' => '0.3% x Rp '.number_format($bpjs['jkm']['basis'], 0, ',', '.')];
-            }
-            if ($bpjs['jp']['company'] > 0) {
-                $comps[] = ['id' => null, 'name' => 'JP Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jp']['company'], 'is_taxable' => false, 'is_auto' => true,
-                    'detail' => '2% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
             }
 
             $detail->update([
@@ -644,12 +633,6 @@ class PayrollRunController extends Controller
                     'detail' => '2% x Rp '.number_format($bpjs['jht']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['jht']['employee'];
             }
-            if ($bpjs['jp']['employee'] > 0) {
-                $components[] = ['id' => null, 'name' => 'JP Karyawan', 'type' => 'deduction', 'category' => 'recurring',
-                    'amount' => $bpjs['jp']['employee'], 'is_taxable' => false, 'is_auto' => true,
-                    'detail' => '1% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
-                $totalDeduction += $bpjs['jp']['employee'];
-            }
 
             // BPJS Perusahaan — masing-masing program sebagai info terpisah
             if ($bpjs['kesehatan']['company'] > 0) {
@@ -671,11 +654,6 @@ class PayrollRunController extends Controller
                 $components[] = ['id' => null, 'name' => 'JKM Perusahaan', 'type' => 'info', 'category' => 'info',
                     'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
                     'detail' => '0.3% x Rp '.number_format($bpjs['jkm']['basis'], 0, ',', '.')];
-            }
-            if ($bpjs['jp']['company'] > 0) {
-                $components[] = ['id' => null, 'name' => 'JP Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jp']['company'], 'is_taxable' => false, 'is_auto' => true,
-                    'detail' => '2% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
             }
 
             // 7. Auto-calculate: PPh 21
