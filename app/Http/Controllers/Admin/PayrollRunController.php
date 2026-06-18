@@ -291,9 +291,10 @@ class PayrollRunController extends Controller
             }
 
             // ── BPJS Perusahaan: tiap program jadi baris terpisah (info only) ──
+            // Kesehatan/JKK/JKM pemberi kerja = penambah bruto pajak (is_taxable=true), JHT bukan.
             if ($bpjs['kesehatan']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => true, 'is_auto' => true,
                     'detail' => '4% x Rp '.number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jht']['company'] > 0) {
@@ -303,12 +304,12 @@ class PayrollRunController extends Controller
             }
             if ($bpjs['jkk']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JKK Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => true, 'is_auto' => true,
                     'detail' => '0.24% x Rp '.number_format($bpjs['jkk']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jkm']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JKM Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => true, 'is_auto' => true,
                     'detail' => '0.3% x Rp '.number_format($bpjs['jkm']['basis'], 0, ',', '.')];
             }
 
@@ -634,10 +635,12 @@ class PayrollRunController extends Controller
                 $totalDeduction += $bpjs['jht']['employee'];
             }
 
-            // BPJS Perusahaan — masing-masing program sebagai info terpisah
+            // BPJS Perusahaan — masing-masing program sebagai info terpisah.
+            // Premi pemberi kerja untuk Kesehatan, JKK, JKM = penambah penghasilan bruto (is_taxable=true),
+            // tapi tetap tipe 'info' sehingga TIDAK masuk earning/net slip. JHT pemberi kerja bukan penambah.
             if ($bpjs['kesehatan']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => true, 'is_auto' => true,
                     'detail' => '4% x Rp '.number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jht']['company'] > 0) {
@@ -647,14 +650,18 @@ class PayrollRunController extends Controller
             }
             if ($bpjs['jkk']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JKK Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => true, 'is_auto' => true,
                     'detail' => '0.24% x Rp '.number_format($bpjs['jkk']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jkm']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JKM Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => true, 'is_auto' => true,
                     'detail' => '0.3% x Rp '.number_format($bpjs['jkm']['basis'], 0, ',', '.')];
             }
+
+            // Penambah penghasilan bruto dari premi pemberi kerja (Kesehatan + JKK + JKM).
+            // Dipakai HANYA untuk basis pajak — tidak menambah total_earning / net salary.
+            $taxableEmployerBenefit = $bpjs['kesehatan']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'];
 
             // 7. Auto-calculate: PPh 21
             $ptkpStatus = $payroll->employee->ptkp_status ?? $payroll->ptkp_status ?? 'TK/0';
@@ -680,17 +687,20 @@ class PayrollRunController extends Controller
                 $taxJanToNov = 0;
                 foreach ($prevDetails as $pd) {
                     $brutoJanToNov += (float) $pd->total_earning;
-                    // Sum PPh21 deduction components
+                    // Sum PPh21 deduction components + premi pemberi kerja yang penambah bruto (is_taxable info)
                     $comps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
                     foreach ($comps as $c) {
                         if (str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction') {
                             $taxJanToNov += (float) ($c['amount'] ?? 0);
                         }
+                        if (($c['type'] ?? '') === 'info' && ! empty($c['is_taxable'])) {
+                            $brutoJanToNov += (float) ($c['amount'] ?? 0);
+                        }
                     }
                 }
 
                 $tax = $pph21Calc->calculateDecember(
-                    brutoDecember      : $totalEarning,
+                    brutoDecember      : $totalEarning + $taxableEmployerBenefit,
                     brutoJanToNov      : $brutoJanToNov,
                     bpjsEmployeeMonthly: $bpjs['employee_total'],
                     ptkpStatus         : $ptkpStatus,
@@ -703,7 +713,7 @@ class PayrollRunController extends Controller
                             .'PKP Aktual: Rp '.number_format($tax['pkp'], 0, ',', '.');
             } else {
                 // ── Jan-Nov: annualized × 12 (metode normal) ──
-                $tax = $pph21Calc->calculateMonthly($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
+                $tax = $pph21Calc->calculateMonthly($totalEarning + $taxableEmployerBenefit, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
                 $detailNote = 'Jan-Nov - TER bulanan PP 58/2023 | '
                     ."Metode: {$taxMethod}, PTKP: {$ptkpStatus}, "
                     .'Kategori TER: '.($tax['ter_category'] ?? '-').', '

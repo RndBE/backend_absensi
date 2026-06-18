@@ -354,8 +354,14 @@ class Pph21Calculator
         $bpjs = $bpjsCalc->calculate($grossMonthly);
         $bpjsEmployeeTotal = $bpjs['employee_total'];
 
-        $result = $this->calculateMonthly($grossMonthly, $ptkpStatus, $taxMethod, $bpjsEmployeeTotal);
+        // Premi pemberi kerja Kesehatan + JKK + JKM = penambah penghasilan bruto (kena pajak),
+        // tapi tidak menambah take-home karyawan. JHT pemberi kerja bukan penambah.
+        $taxableEmployerBenefit = $bpjs['kesehatan']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'];
+
+        $result = $this->calculateMonthly($grossMonthly + $taxableEmployerBenefit, $ptkpStatus, $taxMethod, $bpjsEmployeeTotal);
         $result['bpjs_detail'] = $bpjs;
+        $result['gross_input'] = round($grossMonthly, 0);
+        $result['taxable_employer_benefit'] = round($taxableEmployerBenefit, 0);
 
         // Take-home pay
         if ($taxMethod === 'gross') {

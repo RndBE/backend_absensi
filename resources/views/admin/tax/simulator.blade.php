@@ -71,7 +71,13 @@
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
             <div class="text-[12px] font-bold text-gray-500 uppercase tracking-wider mb-3">PPh 21</div>
             <table class="w-full text-[12px]">
+                @if(($result['taxable_employer_benefit'] ?? 0) > 0)
+                <tr><td class="py-1.5 text-gray-600">Gaji Bruto (input)</td><td class="py-1.5 text-right font-semibold text-gray-800">Rp {{ number_format($result['gross_input'] ?? $result['bruto_monthly'], 0, ',', '.') }}</td></tr>
+                <tr><td class="py-1.5 text-gray-600">Penambah Bruto (premi Kesehatan/JKK/JKM perusahaan)</td><td class="py-1.5 text-right font-semibold text-amber-600">+ Rp {{ number_format($result['taxable_employer_benefit'], 0, ',', '.') }}</td></tr>
+                <tr class="border-t border-gray-100"><td class="py-1.5 text-gray-600">Bruto Bulanan (dasar pajak)</td><td class="py-1.5 text-right font-bold text-gray-800">Rp {{ number_format($result['bruto_monthly'], 0, ',', '.') }}</td></tr>
+                @else
                 <tr><td class="py-1.5 text-gray-600">Bruto Bulanan</td><td class="py-1.5 text-right font-semibold text-gray-800">Rp {{ number_format($result['bruto_monthly'], 0, ',', '.') }}</td></tr>
+                @endif
                 @if(($result['method'] ?? null) === 'ter_monthly')
                 <tr><td class="py-1.5 text-gray-600">Metode</td><td class="py-1.5 text-right font-semibold text-gray-800">TER Bulanan PP 58/2023</td></tr>
                 <tr><td class="py-1.5 text-gray-600">Kategori TER</td><td class="py-1.5 text-right font-semibold text-gray-800">{{ $result['ter_category'] ?? '-' }}</td></tr>

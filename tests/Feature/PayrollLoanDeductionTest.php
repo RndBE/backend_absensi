@@ -10,6 +10,8 @@ use App\Models\EmployeePayroll;
 use App\Models\LoanRequest;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunDetail;
+use App\Models\TaxSetting;
+use App\Services\Pph21Calculator;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -171,6 +173,79 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertNotContains('JP Karyawan', $names);
         $this->assertNotContains('JP Perusahaan', $names);
         $this->assertTrue($names->every(fn ($name) => ! str_contains($name, 'JP')));
+    }
+
+    public function test_employer_kesehatan_jkk_jkm_premiums_increase_tax_bruto_without_touching_earnings(): void
+    {
+        $company = Company::create(['name' => 'PT Benefit Bruto']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-BEN',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll',
+            'email' => 'admin-ben@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-BEN',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Benefit',
+            'email' => 'employee-ben@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        $basicSalary = 10_000_000;
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => $basicSalary,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'gross',
+        ]);
+
+        $this->seedBpjsRates();
+        $this->seedTaxSettings();
+
+        $run = PayrollRun::create([
+            'period' => '2026-06', // Jan-Nov → TER monthly
+            'created_by' => $admin->id,
+        ]);
+
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+        $components = collect($detail->components);
+
+        // Employer taxable premiums = Kesehatan 4% (400k) + JKK 0.24% (24k) + JKM 0.3% (30k).
+        $employerBenefit = 400_000 + 24_000 + 30_000;
+        // Employee BPJS pengurang = Kesehatan 1% (100k) + JHT 2% (200k).
+        $bpjsEmployee = 100_000 + 200_000;
+
+        $calc = new Pph21Calculator('2026-06-01');
+        $expectedWithBenefit = $calc->calculateMonthly($basicSalary + $employerBenefit, 'TK/0', 'gross', $bpjsEmployee)['pph21_deduction'];
+        $taxIfNoBenefit = $calc->calculateMonthly($basicSalary, 'TK/0', 'gross', $bpjsEmployee)['pph21_deduction'];
+
+        // Sanity: the benefit must actually move the tax (rate > 0 at these brutos).
+        $this->assertGreaterThan($taxIfNoBenefit, $expectedWithBenefit);
+
+        $pph21 = $components->first(fn ($c) => str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction');
+        $this->assertNotNull($pph21, 'PPh 21 deduction component must exist');
+        $this->assertSame((float) $expectedWithBenefit, (float) $pph21['amount']);
+
+        // Earnings/net must NOT include the employer premiums.
+        $this->assertSame((float) $basicSalary, (float) $detail->total_earning);
+        $this->assertSame((float) ($detail->total_earning - $detail->total_deduction), (float) $detail->net_salary);
     }
 
     public function test_payroll_loan_deduction_is_capped_by_remaining_amount(): void
@@ -587,6 +662,63 @@ class PayrollLoanDeductionTest extends TestCase
                 $table->timestamps();
             });
         }
+    }
+
+    private function seedBpjsRates(): void
+    {
+        $rates = [
+            'kes_rate' => ['company' => 4, 'employee' => 1],
+            'jht_rate' => ['company' => 3.7, 'employee' => 2],
+            'jkk_rate' => ['company' => 0.24, 'employee' => 0],
+            'jkm_rate' => ['company' => 0.3, 'employee' => 0],
+        ];
+        foreach ($rates as $key => $value) {
+            BpjsSetting::create([
+                'key' => $key,
+                'value' => $value,
+                'effective_date' => '2024-01-01',
+                'is_active' => true,
+            ]);
+        }
+        BpjsSetting::create([
+            'key' => 'kes_cap',
+            'value' => ['salary_cap' => 12_000_000],
+            'effective_date' => '2024-01-01',
+            'is_active' => true,
+        ]);
+    }
+
+    private function seedTaxSettings(): void
+    {
+        TaxSetting::create([
+            'key' => 'pph21_ter_monthly',
+            'effective_date' => '2024-01-01',
+            'value' => [
+                'ptkp_categories' => ['TK/0' => 'A'],
+                'rates' => [
+                    'A' => [['min' => 0, 'max' => 100_000_000, 'rate' => 5]],
+                ],
+            ],
+            'description' => 'Flat TER for test',
+        ]);
+        TaxSetting::create([
+            'key' => 'pph21_brackets',
+            'effective_date' => '2024-01-01',
+            'value' => [['min' => 0, 'max' => 60_000_000, 'rate' => 5]],
+            'description' => 'Progressive test',
+        ]);
+        TaxSetting::create([
+            'key' => 'ptkp_values',
+            'effective_date' => '2024-01-01',
+            'value' => ['TK/0' => 54_000_000],
+            'description' => 'PTKP test',
+        ]);
+        TaxSetting::create([
+            'key' => 'biaya_jabatan',
+            'effective_date' => '2024-01-01',
+            'value' => ['percentage' => 5, 'max_monthly' => 500_000, 'max_annual' => 6_000_000],
+            'description' => 'Biaya jabatan test',
+        ]);
     }
 
     private function invokePrivate(object $object, string $method, array $arguments): mixed
