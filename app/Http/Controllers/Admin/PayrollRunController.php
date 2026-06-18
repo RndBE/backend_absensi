@@ -38,15 +38,10 @@ class PayrollRunController extends Controller
 
         $admin = Employee::find(session('admin_id'));
 
-        // Employees available for the payroll picker: active, plus anyone who resigned recently
-        // (within the last 3 months) so a just-resigned employee can still be added to their final
-        // month's run. Period-correct inclusion/pro-rating is enforced later in generateDetails().
+        // Get all active employees with payroll data for the employee picker
         $employees = Employee::where('company_id', $admin->company_id)
+            ->where('is_active', true)
             ->whereHas('activePayroll')
-            ->where(function ($q) {
-                $q->where('is_active', true)
-                    ->orWhere('resign_date', '>=', now()->subMonths(3)->startOfMonth());
-            })
             ->with(['department:id,name'])
             ->orderBy('full_name')
             ->get(['id', 'full_name', 'employee_code', 'department_id']);
@@ -294,12 +289,17 @@ class PayrollRunController extends Controller
                     'detail' => '2% x Rp '.number_format($bpjs['jht']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['jht']['employee'];
             }
+            if ($bpjs['jp']['employee'] > 0) {
+                $comps[] = ['id' => null, 'name' => 'JP Karyawan', 'type' => 'deduction', 'category' => 'recurring',
+                    'amount' => $bpjs['jp']['employee'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '1% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
+                $totalDeduction += $bpjs['jp']['employee'];
+            }
 
             // ── BPJS Perusahaan: tiap program jadi baris terpisah (info only) ──
-            // Kesehatan/JKK/JKM pemberi kerja = penambah bruto pajak (is_taxable=true), JHT bukan.
             if ($bpjs['kesehatan']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => true, 'is_auto' => true,
+                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => false, 'is_auto' => true,
                     'detail' => '4% x Rp '.number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jht']['company'] > 0) {
@@ -309,13 +309,18 @@ class PayrollRunController extends Controller
             }
             if ($bpjs['jkk']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JKK Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => true, 'is_auto' => true,
+                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => false, 'is_auto' => true,
                     'detail' => '0.24% x Rp '.number_format($bpjs['jkk']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jkm']['company'] > 0) {
                 $comps[] = ['id' => null, 'name' => 'JKM Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => true, 'is_auto' => true,
+                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
                     'detail' => '0.3% x Rp '.number_format($bpjs['jkm']['basis'], 0, ',', '.')];
+            }
+            if ($bpjs['jp']['company'] > 0) {
+                $comps[] = ['id' => null, 'name' => 'JP Perusahaan', 'type' => 'info', 'category' => 'info',
+                    'amount' => $bpjs['jp']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '2% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
             }
 
             $detail->update([
@@ -368,58 +373,14 @@ class PayrollRunController extends Controller
             ->each(fn (PayrollRunDetail $detail) => SendPayslipEmailJob::dispatch($detail->id));
     }
 
-    /**
-     * Hitung jumlah HARI KERJA EFEKTIF karyawan dalam rentang [$start, $end] (inklusif):
-     * hari yang terjadwal kerja (shift non-off, dari override schedule_assignments atau template
-     * mingguan) dan BUKAN hari libur. Mengembalikan 0 bila karyawan belum punya jadwal.
-     */
-    private function effectiveWorkingDays(Employee $employee, Carbon $start, Carbon $end, array $holidayDates): int
-    {
-        $employee->loadMissing('scheduleTemplate.days.shift');
-        $templateDays = $employee->scheduleTemplate?->days?->keyBy('day_of_week') ?? collect();
-
-        $overrides = ScheduleAssignment::with('shift')
-            ->where('employee_id', $employee->id)
-            ->whereBetween('date', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
-            ->get()
-            ->keyBy(fn ($assignment) => Carbon::parse($assignment->date)->format('Y-m-d'));
-
-        $holidayLookup = array_flip($holidayDates);
-
-        $count = 0;
-        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-            $dateString = $date->format('Y-m-d');
-            if (isset($holidayLookup[$dateString])) {
-                continue;
-            }
-            $shift = $overrides->get($dateString)?->shift
-                ?? $templateDays->get($date->dayOfWeekIso)?->shift;
-            if ($shift && ! $shift->is_off) {
-                $count++;
-            }
-        }
-
-        return $count;
-    }
-
     private function generateDetails(PayrollRun $run, array $employeeIds = []): void
     {
         $admin = Employee::find(session('admin_id'));
 
-        $periodDate = Carbon::parse($run->period.'-01');
-        $periodStart = $periodDate->copy()->startOfMonth();
-        $periodEnd = $periodDate->copy()->endOfMonth();
-
-        // Get active payrolls for selected employees.
-        // Include employees who were employed during the period: still active, OR resigned on/after
-        // the period start (so a mid-month resigner is still paid — and pro-rated — for that month).
+        // Get active payrolls for selected employees
         $query = EmployeePayroll::where('is_active', true)
-            ->whereHas('employee', function ($q) use ($admin, $periodStart) {
-                $q->where('company_id', $admin->company_id)
-                    ->where(function ($q2) use ($periodStart) {
-                        $q2->where('is_active', true)
-                            ->orWhere('resign_date', '>=', $periodStart);
-                    });
+            ->whereHas('employee', function ($q) use ($admin) {
+                $q->where('company_id', $admin->company_id)->where('is_active', true);
             });
 
         if (! empty($employeeIds)) {
@@ -427,6 +388,9 @@ class PayrollRunController extends Controller
         }
 
         $payrolls = $query->with('employee')->get();
+        $periodDate = Carbon::parse($run->period.'-01');
+        $periodStart = $periodDate->copy()->startOfMonth();
+        $periodEnd = $periodDate->copy()->endOfMonth();
 
         // Collect holiday dates for the period
         $holidayDates = Holiday::where('company_id', $admin->company_id)
@@ -447,46 +411,29 @@ class PayrollRunController extends Controller
             $empId = $payroll->employee_id;
             $employee = $payroll->employee;
 
-            // === PRO-RATE: Join / Resign mid-period (berbasis HARI KERJA EFEKTIF) ===
-            // Tentukan rentang karyawan benar-benar bekerja dalam periode ini.
-            $employedStart = $periodStart->copy();
-            $employedEnd = $periodEnd->copy();
+            // === PRO-RATE: Join / Resign mid-period ===
+            $workingDays = $totalDaysInMonth;
             $proRateReason = null;
 
-            // Join mid-month → dihitung mulai tanggal join
+            // Check join_date mid-month
             if ($employee->join_date) {
                 $joinDate = Carbon::parse($employee->join_date);
                 if ($joinDate->between($periodStart, $periodEnd) && $joinDate->day > 1) {
-                    $employedStart = $joinDate->copy();
+                    $workingDays = $periodEnd->day - $joinDate->day + 1;
                     $proRateReason = 'Join tgl '.$joinDate->day;
                 }
             }
 
-            // Resign mid-month → dihitung sampai tanggal resign
+            // Check resign_date mid-month
             if ($employee->resign_date) {
                 $resignDate = Carbon::parse($employee->resign_date);
                 if ($resignDate->between($periodStart, $periodEnd) && $resignDate->day < $periodEnd->day) {
-                    $employedEnd = $resignDate->copy();
+                    $workingDays = $resignDate->day;
                     $proRateReason = ($proRateReason ? $proRateReason.', ' : '').'Resign tgl '.$resignDate->day;
                 }
             }
 
-            // Pro-rate berdasarkan hari kerja efektif (hari terjadwal kerja, di luar libur & off).
-            // Fallback ke hari kalender bila karyawan belum punya jadwal kerja.
-            $proRateRatio = 1.0;
-            $proRateLabel = null;
-            if ($proRateReason !== null) {
-                $totalWorkDays = $this->effectiveWorkingDays($employee, $periodStart, $periodEnd, $holidayDates);
-                if ($totalWorkDays > 0) {
-                    $workedDays = $this->effectiveWorkingDays($employee, $employedStart, $employedEnd, $holidayDates);
-                    $proRateRatio = $workedDays / $totalWorkDays;
-                    $proRateLabel = "{$workedDays}/{$totalWorkDays} hari kerja";
-                } else {
-                    $workedCalendar = $employedStart->diffInDays($employedEnd) + 1;
-                    $proRateRatio = $workedCalendar / $totalDaysInMonth;
-                    $proRateLabel = "{$workedCalendar}/{$totalDaysInMonth} hari";
-                }
-            }
+            $proRateRatio = $workingDays / $totalDaysInMonth;
 
             // === SALARY REVISION MID-PERIOD ===
             $basicSalary = (float) $payroll->basic_salary;
@@ -542,7 +489,7 @@ class PayrollRunController extends Controller
                     'amount' => 0,
                     'is_taxable' => false,
                     'is_auto' => true,
-                    'detail' => "{$proRateLabel} ({$proRateReason})",
+                    'detail' => "{$workingDays}/{$totalDaysInMonth} hari ({$proRateReason})",
                 ];
             }
             if ($salaryRevisionNote) {
@@ -697,13 +644,17 @@ class PayrollRunController extends Controller
                     'detail' => '2% x Rp '.number_format($bpjs['jht']['basis'], 0, ',', '.')];
                 $totalDeduction += $bpjs['jht']['employee'];
             }
+            if ($bpjs['jp']['employee'] > 0) {
+                $components[] = ['id' => null, 'name' => 'JP Karyawan', 'type' => 'deduction', 'category' => 'recurring',
+                    'amount' => $bpjs['jp']['employee'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '1% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
+                $totalDeduction += $bpjs['jp']['employee'];
+            }
 
-            // BPJS Perusahaan — masing-masing program sebagai info terpisah.
-            // Premi pemberi kerja untuk Kesehatan, JKK, JKM = penambah penghasilan bruto (is_taxable=true),
-            // tapi tetap tipe 'info' sehingga TIDAK masuk earning/net slip. JHT pemberi kerja bukan penambah.
+            // BPJS Perusahaan — masing-masing program sebagai info terpisah
             if ($bpjs['kesehatan']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => true, 'is_auto' => true,
+                    'amount' => $bpjs['kesehatan']['company'], 'is_taxable' => false, 'is_auto' => true,
                     'detail' => '4% x Rp '.number_format($bpjs['kesehatan']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jht']['company'] > 0) {
@@ -713,18 +664,19 @@ class PayrollRunController extends Controller
             }
             if ($bpjs['jkk']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JKK Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => true, 'is_auto' => true,
+                    'amount' => $bpjs['jkk']['company'], 'is_taxable' => false, 'is_auto' => true,
                     'detail' => '0.24% x Rp '.number_format($bpjs['jkk']['basis'], 0, ',', '.')];
             }
             if ($bpjs['jkm']['company'] > 0) {
                 $components[] = ['id' => null, 'name' => 'JKM Perusahaan', 'type' => 'info', 'category' => 'info',
-                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => true, 'is_auto' => true,
+                    'amount' => $bpjs['jkm']['company'], 'is_taxable' => false, 'is_auto' => true,
                     'detail' => '0.3% x Rp '.number_format($bpjs['jkm']['basis'], 0, ',', '.')];
             }
-
-            // Penambah penghasilan bruto dari premi pemberi kerja (Kesehatan + JKK + JKM).
-            // Dipakai HANYA untuk basis pajak — tidak menambah total_earning / net salary.
-            $taxableEmployerBenefit = $bpjs['kesehatan']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'];
+            if ($bpjs['jp']['company'] > 0) {
+                $components[] = ['id' => null, 'name' => 'JP Perusahaan', 'type' => 'info', 'category' => 'info',
+                    'amount' => $bpjs['jp']['company'], 'is_taxable' => false, 'is_auto' => true,
+                    'detail' => '2% x Rp '.number_format($bpjs['jp']['basis'], 0, ',', '.')];
+            }
 
             // 7. Auto-calculate: PPh 21
             $ptkpStatus = $payroll->employee->ptkp_status ?? $payroll->ptkp_status ?? 'TK/0';
@@ -750,20 +702,17 @@ class PayrollRunController extends Controller
                 $taxJanToNov = 0;
                 foreach ($prevDetails as $pd) {
                     $brutoJanToNov += (float) $pd->total_earning;
-                    // Sum PPh21 deduction components + premi pemberi kerja yang penambah bruto (is_taxable info)
+                    // Sum PPh21 deduction components
                     $comps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
                     foreach ($comps as $c) {
                         if (str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction') {
                             $taxJanToNov += (float) ($c['amount'] ?? 0);
                         }
-                        if (($c['type'] ?? '') === 'info' && ! empty($c['is_taxable'])) {
-                            $brutoJanToNov += (float) ($c['amount'] ?? 0);
-                        }
                     }
                 }
 
                 $tax = $pph21Calc->calculateDecember(
-                    brutoDecember      : $totalEarning + $taxableEmployerBenefit,
+                    brutoDecember      : $totalEarning,
                     brutoJanToNov      : $brutoJanToNov,
                     bpjsEmployeeMonthly: $bpjs['employee_total'],
                     ptkpStatus         : $ptkpStatus,
@@ -776,7 +725,7 @@ class PayrollRunController extends Controller
                             .'PKP Aktual: Rp '.number_format($tax['pkp'], 0, ',', '.');
             } else {
                 // ── Jan-Nov: annualized × 12 (metode normal) ──
-                $tax = $pph21Calc->calculateMonthly($totalEarning + $taxableEmployerBenefit, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
+                $tax = $pph21Calc->calculateMonthly($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
                 $detailNote = 'Jan-Nov - TER bulanan PP 58/2023 | '
                     ."Metode: {$taxMethod}, PTKP: {$ptkpStatus}, "
                     .'Kategori TER: '.($tax['ter_category'] ?? '-').', '

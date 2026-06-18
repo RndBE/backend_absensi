@@ -7,7 +7,6 @@ use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
-use App\Models\LeaveType;
 use App\Models\Notification;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
@@ -25,11 +24,20 @@ class LeaveController extends Controller
         return response()->json(['success' => true, 'data' => $balances]);
     }
 
-    public function types()
+    public function types(Request $request)
     {
+        $leaveTypes = LeaveBalance::with('leaveType')
+            ->where('employee_id', $request->user()->id)
+            ->where('year', now()->year)
+            ->get()
+            ->pluck('leaveType')
+            ->filter()
+            ->sortBy('name')
+            ->values();
+
         return response()->json([
             'success' => true,
-            'data' => LeaveType::all(),
+            'data' => $leaveTypes,
         ]);
     }
 
@@ -173,6 +181,13 @@ class LeaveController extends Controller
             ->where('leave_type_id', $request->leave_type_id)
             ->where('year', now()->year)
             ->first();
+
+        if (! $balance) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Saldo cuti belum tersedia.',
+            ], 422);
+        }
 
         if ($balance && $balance->remaining_days < $request->total_days) {
             return response()->json([

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
-use App\Models\LeaveType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -39,16 +38,20 @@ class LeaveController extends Controller
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
+        $balances = LeaveBalance::with('leaveType')
+            ->where('employee_id', $employee->id)
+            ->where('year', now()->year)
+            ->get()
+            ->keyBy('leave_type_id');
 
         return view('employee.leaves.create', [
             'employee' => $employee,
-            'leaveTypes' => LeaveType::orderBy('name')->get(),
-            'balances' => LeaveBalance::with('leaveType')
-                ->where('employee_id', $employee->id)
-                ->where('year', now()->year)
-                ->whereHas('leaveType', fn ($query) => $query->where('name', 'Cuti Tahunan'))
-                ->get()
-                ->keyBy('leave_type_id'),
+            'leaveTypes' => $balances
+                ->pluck('leaveType')
+                ->filter()
+                ->sortBy('name')
+                ->values(),
+            'balances' => $balances,
         ]);
     }
 
@@ -69,6 +72,12 @@ class LeaveController extends Controller
             ->where('leave_type_id', $validated['leave_type_id'])
             ->where('year', now()->year)
             ->first();
+
+        if (! $balance) {
+            return back()
+                ->withInput()
+                ->with('error', 'Saldo cuti belum tersedia.');
+        }
 
         if ($balance && (float) $balance->remaining_days < (float) $validated['total_days']) {
             return back()

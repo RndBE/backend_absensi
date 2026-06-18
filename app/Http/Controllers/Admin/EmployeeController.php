@@ -416,12 +416,9 @@ class EmployeeController extends Controller
             $bpjsCalc = new BpjsCalculator(now()->format('Y-m-d'));
             $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
 
-            // Premi pemberi kerja Kesehatan + JKK + JKM = penambah penghasilan bruto (konsisten dgn payroll run).
-            $taxableEmployerBenefit = $bpjs['kesehatan']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'];
-
             $pph21Calc = new Pph21Calculator(now()->format('Y-m-d'));
             $pph21Preview = $pph21Calc->calculateFinalMonth(
-                avgBrutoMonthly : (float) $payroll->basic_salary + $taxableEmployerBenefit,
+                avgBrutoMonthly : (float) $payroll->basic_salary,
                 ptkpStatus      : $payroll->ptkp_status ?? 'TK/0',
                 taxMethod       : $payroll->tax_method ?? 'gross',
                 bpjsEmployee    : $bpjs['employee_total'],

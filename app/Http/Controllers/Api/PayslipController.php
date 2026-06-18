@@ -157,7 +157,7 @@ class PayslipController extends Controller
             'is_basis' => true,
         ]];
 
-        $tkHasContrib = $bpjs['jht']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'] > 0;
+        $tkHasContrib = $bpjs['jht']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'] + $bpjs['jp']['company'] > 0;
         if ($tkHasContrib) {
             $items[] = [
                 'label' => 'Rate BPJS Ketenagakerjaan',
@@ -174,6 +174,9 @@ class PayslipController extends Controller
         }
         if ($bpjs['jht']['company'] > 0) {
             $items[] = ['label' => 'JHT Perusahaan (Jaminan Hari Tua)', 'amount' => $bpjs['jht']['company'], 'is_basis' => false];
+        }
+        if ($bpjs['jp']['company'] > 0) {
+            $items[] = ['label' => 'JP Perusahaan (Jaminan Pensiun)', 'amount' => $bpjs['jp']['company'], 'is_basis' => false];
         }
         if ($bpjs['kesehatan']['company'] > 0) {
             $items[] = ['label' => 'BPJS Kesehatan Perusahaan', 'amount' => $bpjs['kesehatan']['company'], 'is_basis' => false];

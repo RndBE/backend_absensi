@@ -181,6 +181,7 @@
                             'jht_rate' => ['name' => 'Jaminan Hari Tua (JHT)', 'cap_key' => null, 'icon' => '🏦'],
                             'jkk_rate' => ['name' => 'Jaminan Kecelakaan Kerja (JKK)', 'cap_key' => null, 'icon' => '⚠️'],
                             'jkm_rate' => ['name' => 'Jaminan Kematian (JKM)', 'cap_key' => null, 'icon' => '🛡️'],
+                            'jp_rate'  => ['name' => 'Jaminan Pensiun (JP)', 'cap_key' => 'jp_cap', 'icon' => '👴'],
                         ];
                     @endphp
                     @foreach($bpjsLabels as $key => $info)

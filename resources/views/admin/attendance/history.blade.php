@@ -151,7 +151,7 @@
         </div>
 
         @if($attendances->hasPages())
-            <div class="flex justify-center pt-4">{{ $attendances->links() }}</div>
+            <div class="flex justify-end pt-4">{{ $attendances->links() }}</div>
         @endif
     </div>
 </div>

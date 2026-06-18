@@ -157,6 +157,47 @@ class ApiLeaveRequestStoreTest extends TestCase
         ]);
     }
 
+    public function test_api_leave_types_only_returns_types_with_employee_balance(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypesWithAnnualBalanceOnly();
+
+        $request = Request::create('/api/leave/types', 'GET');
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new LeaveController)->types($request);
+        $data = $response->getData(true)['data'];
+
+        $this->assertCount(1, $data);
+        $this->assertSame('Cuti Tahunan', $data[0]['name']);
+    }
+
+    public function test_api_leave_request_rejects_leave_type_without_balance(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypesWithAnnualBalanceOnly();
+
+        $request = Request::create('/api/leave/requests', 'POST', [
+            'leave_type_id' => 2,
+            'start_date' => '2026-06-01',
+            'end_date' => '2026-06-02',
+            'total_days' => 2,
+            'reason' => 'Cuti melahirkan',
+        ]);
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new LeaveController)->store($request);
+        $payload = $response->getData(true);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertFalse($payload['success']);
+        $this->assertSame('Saldo cuti belum tersedia.', $payload['message']);
+        $this->assertDatabaseMissing('leave_requests', [
+            'employee_id' => 1,
+            'leave_type_id' => 2,
+        ]);
+    }
+
     public function test_company_timeline_mixes_leave_and_birthday_items(): void
     {
         Carbon::setTestNow('2026-05-30 10:00:00');
@@ -244,5 +285,46 @@ class ApiLeaveRequestStoreTest extends TestCase
         $this->assertContains('birthday', $timeline->pluck('type')->all());
         $this->assertSame('WIDYA', $timeline->firstWhere('type', 'birthday')['employee']['name']);
         $this->assertSame('Cuti Sakit', $timeline->firstWhere('type', 'leave')['employees'][0]['leave_type']);
+    }
+
+    private function seedEmployee(): void
+    {
+        DB::table('employees')->insert([
+            'id' => 1,
+            'full_name' => 'Employee One',
+            'email' => 'employee@example.test',
+            'password' => 'password',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function seedLeaveTypesWithAnnualBalanceOnly(): void
+    {
+        DB::table('leave_types')->insert([
+            [
+                'id' => 1,
+                'name' => 'Cuti Tahunan',
+                'max_days' => 12,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 2,
+                'name' => 'Cuti Melahirkan',
+                'max_days' => 90,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        DB::table('leave_balances')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 1,
+            'year' => now()->year,
+            'remaining_days' => 12,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }

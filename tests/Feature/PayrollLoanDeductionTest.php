@@ -3,18 +3,14 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\Admin\PayrollRunController;
-use App\Models\BpjsSetting;
 use App\Models\Company;
 use App\Models\Employee;
 use App\Models\EmployeePayroll;
 use App\Models\LoanRequest;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunDetail;
-use App\Models\TaxSetting;
-use App\Services\Pph21Calculator;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use ReflectionClass;
@@ -100,279 +96,6 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertSame(10, $loanComponent['loan']['installment_count']);
         $this->assertSame(2000000.0, (float) $loanComponent['loan']['remaining_amount']);
         $this->assertGreaterThanOrEqual(500000, (float) $detail->total_deduction);
-    }
-
-    public function test_payroll_run_no_longer_generates_jaminan_pensiun_components(): void
-    {
-        $company = Company::create(['name' => 'PT Tanpa JP']);
-        $admin = Employee::create([
-            'employee_code' => 'ADM-JP',
-            'company_id' => $company->id,
-            'full_name' => 'Admin Payroll',
-            'email' => 'admin-jp@example.test',
-            'password' => 'secret',
-            'role' => 'admin',
-            'is_active' => true,
-        ]);
-        session(['admin_id' => $admin->id]);
-
-        $employee = Employee::create([
-            'employee_code' => 'EMP-JP',
-            'company_id' => $company->id,
-            'full_name' => 'Employee Tanpa JP',
-            'email' => 'employee-jp@example.test',
-            'password' => 'secret',
-            'role' => 'employee',
-            'is_active' => true,
-            'ptkp' => 'TK/0',
-        ]);
-
-        EmployeePayroll::create([
-            'employee_id' => $employee->id,
-            'basic_salary' => 8000000,
-            'effective_date' => '2026-01-01',
-            'is_active' => true,
-            'is_exempt_penalty' => true,
-            'late_penalty_per_day' => 0,
-            'overtime_multiplier' => 0,
-            'tax_method' => 'nett',
-        ]);
-
-        // Seed BPJS rates including JP — old code would inject JP here, new code must not.
-        foreach ([
-            'jht_rate' => ['company' => 3.7, 'employee' => 2],
-            'jp_rate' => ['company' => 2, 'employee' => 1],
-        ] as $key => $value) {
-            BpjsSetting::create([
-                'key' => $key,
-                'value' => $value,
-                'effective_date' => '2024-01-01',
-                'is_active' => true,
-            ]);
-        }
-        BpjsSetting::create([
-            'key' => 'jp_cap',
-            'value' => ['salary_cap' => 10042300],
-            'effective_date' => '2024-01-01',
-            'is_active' => true,
-        ]);
-
-        $run = PayrollRun::create([
-            'period' => '2026-06',
-            'created_by' => $admin->id,
-        ]);
-
-        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
-
-        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
-            ->where('employee_id', $employee->id)
-            ->firstOrFail();
-        $names = collect($detail->components)->pluck('name');
-
-        // Other BPJS programs still generated, JP must be gone entirely.
-        $this->assertContains('JHT Karyawan', $names);
-        $this->assertNotContains('JP Karyawan', $names);
-        $this->assertNotContains('JP Perusahaan', $names);
-        $this->assertTrue($names->every(fn ($name) => ! str_contains($name, 'JP')));
-    }
-
-    public function test_employee_resigning_mid_month_is_included_and_prorated_in_that_month_run(): void
-    {
-        $company = Company::create(['name' => 'PT Resign']);
-        $admin = Employee::create([
-            'employee_code' => 'ADM-RSG',
-            'company_id' => $company->id,
-            'full_name' => 'Admin Payroll',
-            'email' => 'admin-rsg@example.test',
-            'password' => 'secret',
-            'role' => 'admin',
-            'is_active' => true,
-        ]);
-        session(['admin_id' => $admin->id]);
-
-        // Resigned on 15 May, so is_active was flipped to false by processResign().
-        $employee = Employee::create([
-            'employee_code' => 'EMP-RSG',
-            'company_id' => $company->id,
-            'full_name' => 'Employee Resign',
-            'email' => 'employee-rsg@example.test',
-            'password' => 'secret',
-            'role' => 'employee',
-            'is_active' => false,
-            'resign_date' => '2026-05-15',
-            'ptkp' => 'TK/0',
-        ]);
-
-        EmployeePayroll::create([
-            'employee_id' => $employee->id,
-            'basic_salary' => 10_000_000,
-            'effective_date' => '2026-01-01',
-            'is_active' => true,
-            'is_exempt_penalty' => true,
-            'late_penalty_per_day' => 0,
-            'overtime_multiplier' => 0,
-            'tax_method' => 'gross',
-        ]);
-
-        // May run: resigner must be included and prorated to 15/31 days.
-        $mayRun = PayrollRun::create(['period' => '2026-05', 'created_by' => $admin->id]);
-        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$mayRun, [$employee->id]]);
-
-        $mayDetail = PayrollRunDetail::where('payroll_run_id', $mayRun->id)
-            ->where('employee_id', $employee->id)
-            ->first();
-        $this->assertNotNull($mayDetail, 'Resigner must be included in the month they resign');
-        $this->assertSame(round(10_000_000 * 15 / 31, 0), (float) $mayDetail->total_earning);
-
-        // June run: resigner must NOT be included (resigned before June).
-        $juneRun = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
-        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$juneRun, [$employee->id]]);
-
-        $juneDetail = PayrollRunDetail::where('payroll_run_id', $juneRun->id)
-            ->where('employee_id', $employee->id)
-            ->first();
-        $this->assertNull($juneDetail, 'Resigner must be excluded from runs after their resignation month');
-    }
-
-    public function test_resign_proration_uses_effective_working_days_excluding_holidays_and_off_days(): void
-    {
-        $company = Company::create(['name' => 'PT Hari Kerja']);
-        $admin = Employee::create([
-            'employee_code' => 'ADM-HK',
-            'company_id' => $company->id,
-            'full_name' => 'Admin Payroll',
-            'email' => 'admin-hk@example.test',
-            'password' => 'secret',
-            'role' => 'admin',
-            'is_active' => true,
-        ]);
-        session(['admin_id' => $admin->id]);
-
-        // Schedule: a work shift for every weekday-of-week, plus one "off" shift used for an override.
-        $workShift = DB::table('shifts')->insertGetId(['name' => 'Kerja', 'is_off' => false, 'created_at' => now(), 'updated_at' => now()]);
-        $offShift = DB::table('shifts')->insertGetId(['name' => 'Libur', 'is_off' => true, 'created_at' => now(), 'updated_at' => now()]);
-        $templateId = DB::table('schedule_templates')->insertGetId(['company_id' => $company->id, 'name' => 'Semua Hari', 'created_at' => now(), 'updated_at' => now()]);
-        for ($dow = 1; $dow <= 7; $dow++) {
-            DB::table('schedule_template_days')->insert(['template_id' => $templateId, 'day_of_week' => $dow, 'shift_id' => $workShift, 'created_at' => now(), 'updated_at' => now()]);
-        }
-
-        $employee = Employee::create([
-            'employee_code' => 'EMP-HK',
-            'company_id' => $company->id,
-            'full_name' => 'Employee Hari Kerja',
-            'email' => 'employee-hk@example.test',
-            'password' => 'secret',
-            'role' => 'employee',
-            'is_active' => false,
-            'resign_date' => '2026-05-15',
-            'schedule_template_id' => $templateId,
-            'ptkp' => 'TK/0',
-        ]);
-
-        EmployeePayroll::create([
-            'employee_id' => $employee->id,
-            'basic_salary' => 10_000_000,
-            'effective_date' => '2026-01-01',
-            'is_active' => true,
-            'is_exempt_penalty' => true,
-            'late_penalty_per_day' => 0,
-            'overtime_multiplier' => 0,
-            'tax_method' => 'gross',
-        ]);
-
-        // Two holidays AFTER the resign date, and one off-day override BEFORE it (10 May).
-        DB::table('holidays')->insert([
-            ['company_id' => $company->id, 'name' => 'Libur 1', 'date' => '2026-05-20', 'created_at' => now(), 'updated_at' => now()],
-            ['company_id' => $company->id, 'name' => 'Libur 2', 'date' => '2026-05-21', 'created_at' => now(), 'updated_at' => now()],
-        ]);
-        DB::table('schedule_assignments')->insert([
-            'employee_id' => $employee->id, 'shift_id' => $offShift, 'date' => '2026-05-10', 'created_at' => now(), 'updated_at' => now(),
-        ]);
-
-        $run = PayrollRun::create(['period' => '2026-05', 'created_by' => $admin->id]);
-        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
-
-        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
-            ->where('employee_id', $employee->id)
-            ->firstOrFail();
-
-        // Worked work-days (1–15 May, minus 10 May off) = 14.
-        // Total work-days in May (31 days − 1 off override − 2 holidays) = 28.
-        // Pro-rate = 14/28 = 0.5 → basic 10jt → 5.000.000.
-        $this->assertSame(5_000_000.0, (float) $detail->total_earning);
-    }
-
-    public function test_employer_kesehatan_jkk_jkm_premiums_increase_tax_bruto_without_touching_earnings(): void
-    {
-        $company = Company::create(['name' => 'PT Benefit Bruto']);
-        $admin = Employee::create([
-            'employee_code' => 'ADM-BEN',
-            'company_id' => $company->id,
-            'full_name' => 'Admin Payroll',
-            'email' => 'admin-ben@example.test',
-            'password' => 'secret',
-            'role' => 'admin',
-            'is_active' => true,
-        ]);
-        session(['admin_id' => $admin->id]);
-
-        $employee = Employee::create([
-            'employee_code' => 'EMP-BEN',
-            'company_id' => $company->id,
-            'full_name' => 'Employee Benefit',
-            'email' => 'employee-ben@example.test',
-            'password' => 'secret',
-            'role' => 'employee',
-            'is_active' => true,
-            'ptkp' => 'TK/0',
-        ]);
-
-        $basicSalary = 10_000_000;
-        EmployeePayroll::create([
-            'employee_id' => $employee->id,
-            'basic_salary' => $basicSalary,
-            'effective_date' => '2026-01-01',
-            'is_active' => true,
-            'is_exempt_penalty' => true,
-            'late_penalty_per_day' => 0,
-            'overtime_multiplier' => 0,
-            'tax_method' => 'gross',
-        ]);
-
-        $this->seedBpjsRates();
-        $this->seedTaxSettings();
-
-        $run = PayrollRun::create([
-            'period' => '2026-06', // Jan-Nov → TER monthly
-            'created_by' => $admin->id,
-        ]);
-
-        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
-
-        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
-            ->where('employee_id', $employee->id)
-            ->firstOrFail();
-        $components = collect($detail->components);
-
-        // Employer taxable premiums = Kesehatan 4% (400k) + JKK 0.24% (24k) + JKM 0.3% (30k).
-        $employerBenefit = 400_000 + 24_000 + 30_000;
-        // Employee BPJS pengurang = Kesehatan 1% (100k) + JHT 2% (200k).
-        $bpjsEmployee = 100_000 + 200_000;
-
-        $calc = new Pph21Calculator('2026-06-01');
-        $expectedWithBenefit = $calc->calculateMonthly($basicSalary + $employerBenefit, 'TK/0', 'gross', $bpjsEmployee)['pph21_deduction'];
-        $taxIfNoBenefit = $calc->calculateMonthly($basicSalary, 'TK/0', 'gross', $bpjsEmployee)['pph21_deduction'];
-
-        // Sanity: the benefit must actually move the tax (rate > 0 at these brutos).
-        $this->assertGreaterThan($taxIfNoBenefit, $expectedWithBenefit);
-
-        $pph21 = $components->first(fn ($c) => str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction');
-        $this->assertNotNull($pph21, 'PPh 21 deduction component must exist');
-        $this->assertSame((float) $expectedWithBenefit, (float) $pph21['amount']);
-
-        // Earnings/net must NOT include the employer premiums.
-        $this->assertSame((float) $basicSalary, (float) $detail->total_earning);
-        $this->assertSame((float) ($detail->total_earning - $detail->total_deduction), (float) $detail->net_salary);
     }
 
     public function test_payroll_loan_deduction_is_capped_by_remaining_amount(): void
@@ -589,9 +312,6 @@ class PayrollLoanDeductionTest extends TestCase
             'attendances',
             'overtime_requests',
             'schedule_assignments',
-            'shifts',
-            'schedule_templates',
-            'schedule_template_days',
             'employees',
             'tax_settings',
             'bpjs_settings',
@@ -767,28 +487,6 @@ class PayrollLoanDeductionTest extends TestCase
             $table->timestamps();
         });
 
-        Schema::create('shifts', function (Blueprint $table) {
-            $table->id();
-            $table->string('name')->nullable();
-            $table->boolean('is_off')->default(false);
-            $table->timestamps();
-        });
-
-        Schema::create('schedule_templates', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('company_id')->nullable();
-            $table->string('name')->nullable();
-            $table->timestamps();
-        });
-
-        Schema::create('schedule_template_days', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('template_id');
-            $table->unsignedTinyInteger('day_of_week');
-            $table->unsignedBigInteger('shift_id')->nullable();
-            $table->timestamps();
-        });
-
         Schema::create('payroll_adjustments', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('employee_id');
@@ -814,63 +512,6 @@ class PayrollLoanDeductionTest extends TestCase
                 $table->timestamps();
             });
         }
-    }
-
-    private function seedBpjsRates(): void
-    {
-        $rates = [
-            'kes_rate' => ['company' => 4, 'employee' => 1],
-            'jht_rate' => ['company' => 3.7, 'employee' => 2],
-            'jkk_rate' => ['company' => 0.24, 'employee' => 0],
-            'jkm_rate' => ['company' => 0.3, 'employee' => 0],
-        ];
-        foreach ($rates as $key => $value) {
-            BpjsSetting::create([
-                'key' => $key,
-                'value' => $value,
-                'effective_date' => '2024-01-01',
-                'is_active' => true,
-            ]);
-        }
-        BpjsSetting::create([
-            'key' => 'kes_cap',
-            'value' => ['salary_cap' => 12_000_000],
-            'effective_date' => '2024-01-01',
-            'is_active' => true,
-        ]);
-    }
-
-    private function seedTaxSettings(): void
-    {
-        TaxSetting::create([
-            'key' => 'pph21_ter_monthly',
-            'effective_date' => '2024-01-01',
-            'value' => [
-                'ptkp_categories' => ['TK/0' => 'A'],
-                'rates' => [
-                    'A' => [['min' => 0, 'max' => 100_000_000, 'rate' => 5]],
-                ],
-            ],
-            'description' => 'Flat TER for test',
-        ]);
-        TaxSetting::create([
-            'key' => 'pph21_brackets',
-            'effective_date' => '2024-01-01',
-            'value' => [['min' => 0, 'max' => 60_000_000, 'rate' => 5]],
-            'description' => 'Progressive test',
-        ]);
-        TaxSetting::create([
-            'key' => 'ptkp_values',
-            'effective_date' => '2024-01-01',
-            'value' => ['TK/0' => 54_000_000],
-            'description' => 'PTKP test',
-        ]);
-        TaxSetting::create([
-            'key' => 'biaya_jabatan',
-            'effective_date' => '2024-01-01',
-            'value' => ['percentage' => 5, 'max_monthly' => 500_000, 'max_annual' => 6_000_000],
-            'description' => 'Biaya jabatan test',
-        ]);
     }
 
     private function invokePrivate(object $object, string $method, array $arguments): mixed
