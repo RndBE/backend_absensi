@@ -38,10 +38,15 @@ class PayrollRunController extends Controller
 
         $admin = Employee::find(session('admin_id'));
 
-        // Get all active employees with payroll data for the employee picker
+        // Employees available for the payroll picker: active, plus anyone who resigned recently
+        // (within the last 3 months) so a just-resigned employee can still be added to their final
+        // month's run. Period-correct inclusion/pro-rating is enforced later in generateDetails().
         $employees = Employee::where('company_id', $admin->company_id)
-            ->where('is_active', true)
             ->whereHas('activePayroll')
+            ->where(function ($q) {
+                $q->where('is_active', true)
+                    ->orWhere('resign_date', '>=', now()->subMonths(3)->startOfMonth());
+            })
             ->with(['department:id,name'])
             ->orderBy('full_name')
             ->get(['id', 'full_name', 'employee_code', 'department_id']);
@@ -363,14 +368,58 @@ class PayrollRunController extends Controller
             ->each(fn (PayrollRunDetail $detail) => SendPayslipEmailJob::dispatch($detail->id));
     }
 
+    /**
+     * Hitung jumlah HARI KERJA EFEKTIF karyawan dalam rentang [$start, $end] (inklusif):
+     * hari yang terjadwal kerja (shift non-off, dari override schedule_assignments atau template
+     * mingguan) dan BUKAN hari libur. Mengembalikan 0 bila karyawan belum punya jadwal.
+     */
+    private function effectiveWorkingDays(Employee $employee, Carbon $start, Carbon $end, array $holidayDates): int
+    {
+        $employee->loadMissing('scheduleTemplate.days.shift');
+        $templateDays = $employee->scheduleTemplate?->days?->keyBy('day_of_week') ?? collect();
+
+        $overrides = ScheduleAssignment::with('shift')
+            ->where('employee_id', $employee->id)
+            ->whereBetween('date', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
+            ->get()
+            ->keyBy(fn ($assignment) => Carbon::parse($assignment->date)->format('Y-m-d'));
+
+        $holidayLookup = array_flip($holidayDates);
+
+        $count = 0;
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $dateString = $date->format('Y-m-d');
+            if (isset($holidayLookup[$dateString])) {
+                continue;
+            }
+            $shift = $overrides->get($dateString)?->shift
+                ?? $templateDays->get($date->dayOfWeekIso)?->shift;
+            if ($shift && ! $shift->is_off) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
     private function generateDetails(PayrollRun $run, array $employeeIds = []): void
     {
         $admin = Employee::find(session('admin_id'));
 
-        // Get active payrolls for selected employees
+        $periodDate = Carbon::parse($run->period.'-01');
+        $periodStart = $periodDate->copy()->startOfMonth();
+        $periodEnd = $periodDate->copy()->endOfMonth();
+
+        // Get active payrolls for selected employees.
+        // Include employees who were employed during the period: still active, OR resigned on/after
+        // the period start (so a mid-month resigner is still paid — and pro-rated — for that month).
         $query = EmployeePayroll::where('is_active', true)
-            ->whereHas('employee', function ($q) use ($admin) {
-                $q->where('company_id', $admin->company_id)->where('is_active', true);
+            ->whereHas('employee', function ($q) use ($admin, $periodStart) {
+                $q->where('company_id', $admin->company_id)
+                    ->where(function ($q2) use ($periodStart) {
+                        $q2->where('is_active', true)
+                            ->orWhere('resign_date', '>=', $periodStart);
+                    });
             });
 
         if (! empty($employeeIds)) {
@@ -378,9 +427,6 @@ class PayrollRunController extends Controller
         }
 
         $payrolls = $query->with('employee')->get();
-        $periodDate = Carbon::parse($run->period.'-01');
-        $periodStart = $periodDate->copy()->startOfMonth();
-        $periodEnd = $periodDate->copy()->endOfMonth();
 
         // Collect holiday dates for the period
         $holidayDates = Holiday::where('company_id', $admin->company_id)
@@ -401,29 +447,46 @@ class PayrollRunController extends Controller
             $empId = $payroll->employee_id;
             $employee = $payroll->employee;
 
-            // === PRO-RATE: Join / Resign mid-period ===
-            $workingDays = $totalDaysInMonth;
+            // === PRO-RATE: Join / Resign mid-period (berbasis HARI KERJA EFEKTIF) ===
+            // Tentukan rentang karyawan benar-benar bekerja dalam periode ini.
+            $employedStart = $periodStart->copy();
+            $employedEnd = $periodEnd->copy();
             $proRateReason = null;
 
-            // Check join_date mid-month
+            // Join mid-month → dihitung mulai tanggal join
             if ($employee->join_date) {
                 $joinDate = Carbon::parse($employee->join_date);
                 if ($joinDate->between($periodStart, $periodEnd) && $joinDate->day > 1) {
-                    $workingDays = $periodEnd->day - $joinDate->day + 1;
+                    $employedStart = $joinDate->copy();
                     $proRateReason = 'Join tgl '.$joinDate->day;
                 }
             }
 
-            // Check resign_date mid-month
+            // Resign mid-month → dihitung sampai tanggal resign
             if ($employee->resign_date) {
                 $resignDate = Carbon::parse($employee->resign_date);
                 if ($resignDate->between($periodStart, $periodEnd) && $resignDate->day < $periodEnd->day) {
-                    $workingDays = $resignDate->day;
+                    $employedEnd = $resignDate->copy();
                     $proRateReason = ($proRateReason ? $proRateReason.', ' : '').'Resign tgl '.$resignDate->day;
                 }
             }
 
-            $proRateRatio = $workingDays / $totalDaysInMonth;
+            // Pro-rate berdasarkan hari kerja efektif (hari terjadwal kerja, di luar libur & off).
+            // Fallback ke hari kalender bila karyawan belum punya jadwal kerja.
+            $proRateRatio = 1.0;
+            $proRateLabel = null;
+            if ($proRateReason !== null) {
+                $totalWorkDays = $this->effectiveWorkingDays($employee, $periodStart, $periodEnd, $holidayDates);
+                if ($totalWorkDays > 0) {
+                    $workedDays = $this->effectiveWorkingDays($employee, $employedStart, $employedEnd, $holidayDates);
+                    $proRateRatio = $workedDays / $totalWorkDays;
+                    $proRateLabel = "{$workedDays}/{$totalWorkDays} hari kerja";
+                } else {
+                    $workedCalendar = $employedStart->diffInDays($employedEnd) + 1;
+                    $proRateRatio = $workedCalendar / $totalDaysInMonth;
+                    $proRateLabel = "{$workedCalendar}/{$totalDaysInMonth} hari";
+                }
+            }
 
             // === SALARY REVISION MID-PERIOD ===
             $basicSalary = (float) $payroll->basic_salary;
@@ -479,7 +542,7 @@ class PayrollRunController extends Controller
                     'amount' => 0,
                     'is_taxable' => false,
                     'is_auto' => true,
-                    'detail' => "{$workingDays}/{$totalDaysInMonth} hari ({$proRateReason})",
+                    'detail' => "{$proRateLabel} ({$proRateReason})",
                 ];
             }
             if ($salaryRevisionNote) {

@@ -14,6 +14,7 @@ use App\Models\TaxSetting;
 use App\Services\Pph21Calculator;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use ReflectionClass;
@@ -173,6 +174,132 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertNotContains('JP Karyawan', $names);
         $this->assertNotContains('JP Perusahaan', $names);
         $this->assertTrue($names->every(fn ($name) => ! str_contains($name, 'JP')));
+    }
+
+    public function test_employee_resigning_mid_month_is_included_and_prorated_in_that_month_run(): void
+    {
+        $company = Company::create(['name' => 'PT Resign']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-RSG',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll',
+            'email' => 'admin-rsg@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        // Resigned on 15 May, so is_active was flipped to false by processResign().
+        $employee = Employee::create([
+            'employee_code' => 'EMP-RSG',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Resign',
+            'email' => 'employee-rsg@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => false,
+            'resign_date' => '2026-05-15',
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 10_000_000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'gross',
+        ]);
+
+        // May run: resigner must be included and prorated to 15/31 days.
+        $mayRun = PayrollRun::create(['period' => '2026-05', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$mayRun, [$employee->id]]);
+
+        $mayDetail = PayrollRunDetail::where('payroll_run_id', $mayRun->id)
+            ->where('employee_id', $employee->id)
+            ->first();
+        $this->assertNotNull($mayDetail, 'Resigner must be included in the month they resign');
+        $this->assertSame(round(10_000_000 * 15 / 31, 0), (float) $mayDetail->total_earning);
+
+        // June run: resigner must NOT be included (resigned before June).
+        $juneRun = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$juneRun, [$employee->id]]);
+
+        $juneDetail = PayrollRunDetail::where('payroll_run_id', $juneRun->id)
+            ->where('employee_id', $employee->id)
+            ->first();
+        $this->assertNull($juneDetail, 'Resigner must be excluded from runs after their resignation month');
+    }
+
+    public function test_resign_proration_uses_effective_working_days_excluding_holidays_and_off_days(): void
+    {
+        $company = Company::create(['name' => 'PT Hari Kerja']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-HK',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll',
+            'email' => 'admin-hk@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        // Schedule: a work shift for every weekday-of-week, plus one "off" shift used for an override.
+        $workShift = DB::table('shifts')->insertGetId(['name' => 'Kerja', 'is_off' => false, 'created_at' => now(), 'updated_at' => now()]);
+        $offShift = DB::table('shifts')->insertGetId(['name' => 'Libur', 'is_off' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $templateId = DB::table('schedule_templates')->insertGetId(['company_id' => $company->id, 'name' => 'Semua Hari', 'created_at' => now(), 'updated_at' => now()]);
+        for ($dow = 1; $dow <= 7; $dow++) {
+            DB::table('schedule_template_days')->insert(['template_id' => $templateId, 'day_of_week' => $dow, 'shift_id' => $workShift, 'created_at' => now(), 'updated_at' => now()]);
+        }
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-HK',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Hari Kerja',
+            'email' => 'employee-hk@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => false,
+            'resign_date' => '2026-05-15',
+            'schedule_template_id' => $templateId,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 10_000_000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'gross',
+        ]);
+
+        // Two holidays AFTER the resign date, and one off-day override BEFORE it (10 May).
+        DB::table('holidays')->insert([
+            ['company_id' => $company->id, 'name' => 'Libur 1', 'date' => '2026-05-20', 'created_at' => now(), 'updated_at' => now()],
+            ['company_id' => $company->id, 'name' => 'Libur 2', 'date' => '2026-05-21', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::table('schedule_assignments')->insert([
+            'employee_id' => $employee->id, 'shift_id' => $offShift, 'date' => '2026-05-10', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-05', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+
+        // Worked work-days (1–15 May, minus 10 May off) = 14.
+        // Total work-days in May (31 days − 1 off override − 2 holidays) = 28.
+        // Pro-rate = 14/28 = 0.5 → basic 10jt → 5.000.000.
+        $this->assertSame(5_000_000.0, (float) $detail->total_earning);
     }
 
     public function test_employer_kesehatan_jkk_jkm_premiums_increase_tax_bruto_without_touching_earnings(): void
@@ -462,6 +589,9 @@ class PayrollLoanDeductionTest extends TestCase
             'attendances',
             'overtime_requests',
             'schedule_assignments',
+            'shifts',
+            'schedule_templates',
+            'schedule_template_days',
             'employees',
             'tax_settings',
             'bpjs_settings',
@@ -634,6 +764,28 @@ class PayrollLoanDeductionTest extends TestCase
             $table->unsignedBigInteger('employee_id');
             $table->unsignedBigInteger('shift_id')->nullable();
             $table->date('date');
+            $table->timestamps();
+        });
+
+        Schema::create('shifts', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->boolean('is_off')->default(false);
+            $table->timestamps();
+        });
+
+        Schema::create('schedule_templates', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id')->nullable();
+            $table->string('name')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('schedule_template_days', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('template_id');
+            $table->unsignedTinyInteger('day_of_week');
+            $table->unsignedBigInteger('shift_id')->nullable();
             $table->timestamps();
         });
 
