@@ -117,9 +117,7 @@
                         ['route' => 'admin.audit-logs.index', 'icon' => 'manage_search', 'label' => 'Audit Log', 'match' => 'admin.audit-logs.*'],
                     ]],
                 ];
-                $pendingCount = \App\Models\LeaveRequest::whereIn('status',['pending','in_review'])->count()
-                    + \App\Models\OvertimeRequest::whereIn('status',['pending','in_review'])->count()
-                    + \App\Models\AttendanceRequest::whereIn('status',['pending','in_review'])->count();
+                $pendingCount = app(\App\Support\PendingApprovalCounter::class)->countForApprover($currentAdmin);
             @endphp
 
             @foreach($navGroups as $group)
