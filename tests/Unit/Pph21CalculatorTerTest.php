@@ -52,6 +52,16 @@ class Pph21CalculatorTerTest extends TestCase
         $this->assertSame(34_000.0, $result['tax_monthly']);
     }
 
+    public function test_gross_up_tax_allowance_matches_final_pph21_deduction(): void
+    {
+        $this->seedTaxSettings();
+
+        $result = (new Pph21Calculator('2024-06-01'))
+            ->calculateMonthly(17_500_000, 'TK/0', 'gross_up', 0);
+
+        $this->assertSame($result['pph21_deduction'], $result['tunjangan_pajak']);
+    }
+
     private function seedTaxSettings(): void
     {
         TaxSetting::create([

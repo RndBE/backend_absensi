@@ -163,7 +163,7 @@ class Pph21Calculator
             $rate = $this->lookupTerMonthlyRate($bruto, $category) / 100;
             $tax = round($bruto * $rate, 0);
 
-            if (abs($tax - $tunjangan) < 100) {
+            if ($tax === $tunjangan) {
                 return $tax;
             }
 
