@@ -107,6 +107,20 @@
                 'color' => 'bg-violet-50 text-violet-600',
             ],
             [
+                'href' => route('employee.budget-requests.index'),
+                'icon' => 'request_quote',
+                'title' => 'Anggaran',
+                'description' => 'Budget kerja',
+                'color' => 'bg-teal-50 text-teal-600',
+            ],
+            [
+                'href' => route('employee.travel-reports.index'),
+                'icon' => 'flight_takeoff',
+                'title' => 'LHP',
+                'description' => 'Laporan dinas',
+                'color' => 'bg-rose-50 text-rose-600',
+            ],
+            [
                 'href' => route('employee.approvals.index'),
                 'icon' => 'fact_check',
                 'title' => 'Persetujuan Tim',
@@ -115,7 +129,7 @@
             ],
         ];
     @endphp
-    <section class="employee-dashboard-shortcuts grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <section class="employee-dashboard-shortcuts grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         @foreach($shortcuts as $shortcut)
             <a href="{{ $shortcut['href'] }}" class="min-h-[96px] bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 hover:-translate-y-0.5 hover:shadow-md transition-all">
                 <div class="flex h-full flex-col justify-between gap-3">

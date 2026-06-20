@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Employee;
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalLog;
 use App\Models\AttendanceRequest;
+use App\Models\BudgetRequest;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
+use App\Models\TravelReport;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -20,12 +22,16 @@ class ApprovalController extends Controller
         'leave' => LeaveRequest::class,
         'overtime' => OvertimeRequest::class,
         'attendance' => AttendanceRequest::class,
+        'budget' => BudgetRequest::class,
+        'travel_report' => TravelReport::class,
     ];
 
     private array $typeLabels = [
         'leave' => 'Cuti',
         'overtime' => 'Lembur',
         'attendance' => 'Absensi',
+        'budget' => 'Anggaran',
+        'travel_report' => 'LHP',
     ];
 
     public function index(Request $request)
@@ -207,6 +213,8 @@ class ApprovalController extends Controller
     {
         return match ($type) {
             'leave' => ['employee:id,full_name,position,photo', 'leaveType'],
+            'budget' => ['employee:id,full_name,position,photo', 'items'],
+            'travel_report' => ['employee:id,full_name,position,photo', 'budgetRequest'],
             default => ['employee:id,full_name,position,photo'],
         };
     }

@@ -11,6 +11,7 @@ use App\Models\TravelZone;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class BudgetController extends Controller
 {
@@ -67,9 +68,13 @@ class BudgetController extends Controller
         DB::beginTransaction();
         try {
             $distanceKm = $request->filled('distance_km') ? (int) $request->distance_km : null;
-            $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
+            $canStoreDistance = Schema::hasColumn('budget_requests', 'distance_km');
+            $canStoreTravelZone = Schema::hasColumn('budget_requests', 'travel_zone_id');
+            $travelZone = $distanceKm !== null && $canStoreTravelZone && Schema::hasTable('travel_zones')
+                ? TravelZone::findByKm($distanceKm)
+                : null;
 
-            $budgetRequest = BudgetRequest::create([
+            $payload = [
                 'employee_id' => $employee->id,
                 'type' => $request->type,
                 'title' => $request->title,
@@ -79,9 +84,16 @@ class BudgetController extends Controller
                 'total_amount' => 0,
                 'surat_tugas_no' => $request->surat_tugas_no,
                 'surat_tugas_date' => $request->surat_tugas_date,
-                'distance_km' => $distanceKm,
-                'travel_zone_id' => $travelZone?->id,
-            ]);
+            ];
+
+            if ($canStoreDistance) {
+                $payload['distance_km'] = $distanceKm;
+            }
+            if ($canStoreTravelZone) {
+                $payload['travel_zone_id'] = $travelZone?->id;
+            }
+
+            $budgetRequest = BudgetRequest::create($payload);
 
             $total = 0;
             $itemsData = is_string($request->items) ? json_decode($request->items, true) : $request->items;

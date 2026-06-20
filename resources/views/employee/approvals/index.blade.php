@@ -37,7 +37,14 @@
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
                                 <span class="material-symbols-outlined text-[15px]">
-                                    {{ $type === 'leave' ? 'event_available' : ($type === 'overtime' ? 'more_time' : 'edit_calendar') }}
+                                    {{ match($type) {
+                                        'leave' => 'event_available',
+                                        'overtime' => 'more_time',
+                                        'attendance' => 'edit_calendar',
+                                        'budget' => 'request_quote',
+                                        'travel_report' => 'flight_takeoff',
+                                        default => 'fact_check',
+                                    } }}
                                 </span>
                                 Pengajuan {{ $row['type_label'] }}
                             </span>
@@ -60,7 +67,7 @@
                             </div>
                             <div>
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Durasi</div>
-                                <div class="font-semibold text-gray-900 mt-1">{{ $request->total_days_label }} hari</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ number_format((float) $request->total_days, 1) }} hari</div>
                             </div>
                         @elseif($type === 'overtime')
                             <div>
@@ -75,7 +82,7 @@
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Durasi</div>
                                 <div class="font-semibold text-gray-900 mt-1">{{ $request->total_duration_formatted }}</div>
                             </div>
-                        @else
+                        @elseif($type === 'attendance')
                             <div>
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Tanggal</div>
                                 <div class="font-semibold text-gray-900 mt-1">{{ $request->date?->format('d/m/Y') }}</div>
@@ -88,14 +95,50 @@
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Clock Out</div>
                                 <div class="font-semibold text-blue-600 mt-1">{{ $request->clock_out ? substr($request->clock_out, 0, 5) : '-' }}</div>
                             </div>
+                        @elseif($type === 'budget')
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Judul</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->title }}</div>
+                            </div>
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Tipe</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->type === 'budget' ? 'Budget' : 'Reimbursement' }}</div>
+                            </div>
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Nominal</div>
+                                <div class="font-semibold text-gray-900 mt-1">Rp {{ number_format((float) $request->total_amount, 0, ',', '.') }}</div>
+                            </div>
+                        @else
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Tujuan</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->destination_city }}</div>
+                            </div>
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Tanggal</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->departure_date?->format('d/m/Y') }} - {{ $request->return_date?->format('d/m/Y') }}</div>
+                            </div>
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Budget</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->budgetRequest?->title ?? '-' }}</div>
+                            </div>
                         @endif
                     </div>
                 </div>
 
                 <div class="p-5 space-y-4">
                     <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                        <div class="text-[11px] font-bold uppercase text-gray-400">Alasan</div>
-                        <div class="text-[13px] text-gray-700 mt-1">{{ $request->reason ?: '-' }}</div>
+                        <div class="text-[11px] font-bold uppercase text-gray-400">
+                            {{ in_array($type, ['budget', 'travel_report'], true) ? 'Keterangan' : 'Alasan' }}
+                        </div>
+                        <div class="text-[13px] text-gray-700 mt-1">
+                            @if($type === 'budget')
+                                {{ $request->description ?: '-' }}
+                            @elseif($type === 'travel_report')
+                                {{ $request->purpose ?: '-' }}
+                            @else
+                                {{ $request->reason ?: '-' }}
+                            @endif
+                        </div>
                     </div>
 
                     <div class="space-y-3">

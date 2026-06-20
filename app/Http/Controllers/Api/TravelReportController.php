@@ -11,6 +11,7 @@ use App\Models\TravelZone;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class TravelReportController extends Controller
 {
@@ -98,16 +99,18 @@ class TravelReportController extends Controller
             }
 
             $distanceKm = $request->filled('distance_km') ? (int) $request->distance_km : null;
-            $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
+            $canStoreDistance = Schema::hasColumn('travel_reports', 'distance_km');
+            $canStoreTravelZone = Schema::hasColumn('travel_reports', 'travel_zone_id');
+            $travelZone = $distanceKm !== null && $canStoreTravelZone && Schema::hasTable('travel_zones')
+                ? TravelZone::findByKm($distanceKm)
+                : null;
 
-            $report = TravelReport::create([
+            $payload = [
                 'employee_id' => $employee->id,
                 'budget_request_id' => $request->budget_request_id,
                 'surat_tugas_no' => $request->surat_tugas_no,
                 'surat_tugas_date' => $request->surat_tugas_date,
                 'destination_city' => $request->destination_city,
-                'distance_km' => $distanceKm,
-                'travel_zone_id' => $travelZone?->id,
                 'departure_date' => $request->departure_date,
                 'return_date' => $request->return_date,
                 'purpose' => $request->purpose,
@@ -115,7 +118,16 @@ class TravelReportController extends Controller
                 'recommendations' => $recommendations,
                 'status' => 'pending',
                 'current_step' => 1,
-            ]);
+            ];
+
+            if ($canStoreDistance) {
+                $payload['distance_km'] = $distanceKm;
+            }
+            if ($canStoreTravelZone) {
+                $payload['travel_zone_id'] = $travelZone?->id;
+            }
+
+            $report = TravelReport::create($payload);
 
             // Save activities
             if ($activitiesData && is_array($activitiesData)) {
@@ -233,22 +245,35 @@ class TravelReportController extends Controller
                 $activitiesData = json_decode($activitiesData, true);
             }
 
-            $distanceKm = $request->filled('distance_km') ? (int) $request->distance_km : $report->distance_km;
-            $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
+            $canStoreDistance = Schema::hasColumn('travel_reports', 'distance_km');
+            $canStoreTravelZone = Schema::hasColumn('travel_reports', 'travel_zone_id');
+            $distanceKm = $request->filled('distance_km')
+                ? (int) $request->distance_km
+                : ($canStoreDistance ? $report->distance_km : null);
+            $travelZone = $distanceKm !== null && $canStoreTravelZone && Schema::hasTable('travel_zones')
+                ? TravelZone::findByKm($distanceKm)
+                : null;
 
-            $report->update([
+            $payload = [
                 'budget_request_id' => $request->budget_request_id,
                 'surat_tugas_no' => $request->surat_tugas_no,
                 'surat_tugas_date' => $request->surat_tugas_date,
                 'destination_city' => $request->destination_city,
-                'distance_km' => $distanceKm,
-                'travel_zone_id' => $travelZone?->id,
                 'departure_date' => $request->departure_date,
                 'return_date' => $request->return_date,
                 'purpose' => $request->purpose,
                 'conclusion' => $request->conclusion,
                 'recommendations' => $recommendations,
-            ]);
+            ];
+
+            if ($canStoreDistance) {
+                $payload['distance_km'] = $distanceKm;
+            }
+            if ($canStoreTravelZone) {
+                $payload['travel_zone_id'] = $travelZone?->id;
+            }
+
+            $report->update($payload);
 
             // Notifikasi approver saat ini bahwa konten LHP telah diperbarui
             $currentApprover = EmployeeApprover::getApproverAt($employee->id, 'travel_report', $report->current_step);
@@ -334,7 +359,11 @@ class TravelReportController extends Controller
             ->whereHas('approver', fn ($q) => $q->where('position', 'like', '%HSE%'))
             ->min('step_order');
 
-        return $hseStep === null || $report->current_step <= $hseStep;
+        if ($hseStep === null) {
+            return true;
+        }
+
+        return (int) $report->current_step === (int) $hseStep;
     }
 
     /**

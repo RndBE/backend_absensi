@@ -37,15 +37,18 @@ use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\Admin\TaxController;
 use App\Http\Controllers\Admin\TravelReportController;
 use App\Http\Controllers\Admin\TravelZoneController;
+use App\Http\Controllers\Api\TravelZoneController as ApiTravelZoneController;
 use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceController;
 use App\Http\Controllers\Employee\AttendanceRequestController as EmployeeAttendanceRequestController;
 use App\Http\Controllers\Employee\ApprovalController as EmployeeApprovalController;
 use App\Http\Controllers\Employee\AuthController as EmployeeAuthController;
+use App\Http\Controllers\Employee\BudgetRequestController as EmployeeBudgetRequestController;
 use App\Http\Controllers\Employee\DashboardController as EmployeeDashboardController;
 use App\Http\Controllers\Employee\FacePhotoController as EmployeeFacePhotoController;
 use App\Http\Controllers\Employee\LeaveController as EmployeeLeaveController;
 use App\Http\Controllers\Employee\OvertimeController as EmployeeOvertimeController;
 use App\Http\Controllers\Employee\ProfileController as EmployeeProfileController;
+use App\Http\Controllers\Employee\TravelReportController as EmployeeTravelReportController;
 use App\Http\Middleware\AdminActivityLogger;
 use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\AdminPermissionMiddleware;
@@ -74,12 +77,23 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/attendance-requests', [EmployeeAttendanceRequestController::class, 'index'])->name('attendance-requests.index');
     Route::get('/attendance-requests/create', [EmployeeAttendanceRequestController::class, 'create'])->name('attendance-requests.create');
     Route::post('/attendance-requests', [EmployeeAttendanceRequestController::class, 'store'])->name('attendance-requests.store');
+    Route::get('/budget-requests', [EmployeeBudgetRequestController::class, 'index'])->name('budget-requests.index');
+    Route::get('/budget-requests/create', [EmployeeBudgetRequestController::class, 'create'])->name('budget-requests.create');
+    Route::post('/budget-requests', [EmployeeBudgetRequestController::class, 'store'])->name('budget-requests.store');
+    Route::get('/budget-requests/{id}', [EmployeeBudgetRequestController::class, 'show'])->name('budget-requests.show');
+    Route::get('/travel/estimate-zone', [ApiTravelZoneController::class, 'estimateZone'])->name('travel.estimate-zone');
+    Route::get('/travel-reports', [EmployeeTravelReportController::class, 'index'])->name('travel-reports.index');
+    Route::get('/travel-reports/create', [EmployeeTravelReportController::class, 'create'])->name('travel-reports.create');
+    Route::post('/travel-reports', [EmployeeTravelReportController::class, 'store'])->name('travel-reports.store');
+    Route::get('/travel-reports/{id}', [EmployeeTravelReportController::class, 'show'])->name('travel-reports.show');
+    Route::get('/travel-reports/{id}/edit', [EmployeeTravelReportController::class, 'edit'])->name('travel-reports.edit');
+    Route::put('/travel-reports/{id}', [EmployeeTravelReportController::class, 'update'])->name('travel-reports.update');
     Route::get('/approvals', [EmployeeApprovalController::class, 'index'])->name('approvals.index');
     Route::post('/approvals/{type}/{id}/approve', [EmployeeApprovalController::class, 'approve'])
-        ->whereIn('type', ['leave', 'overtime', 'attendance'])
+        ->whereIn('type', ['leave', 'overtime', 'attendance', 'budget', 'travel_report'])
         ->name('approvals.approve');
     Route::post('/approvals/{type}/{id}/reject', [EmployeeApprovalController::class, 'reject'])
-        ->whereIn('type', ['leave', 'overtime', 'attendance'])
+        ->whereIn('type', ['leave', 'overtime', 'attendance', 'budget', 'travel_report'])
         ->name('approvals.reject');
     Route::get('/face-photo', [EmployeeFacePhotoController::class, 'show'])->name('face-photo.show');
     Route::post('/face-photo', [EmployeeFacePhotoController::class, 'store'])->name('face-photo.store');
