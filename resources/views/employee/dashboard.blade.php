@@ -59,6 +59,29 @@
         </div>
     </section>
 
+    @if(($pendingApprovalCount ?? 0) > 0)
+        <section class="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="flex items-start gap-3 min-w-0">
+                    <div class="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-[20px]">priority_high</span>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="text-[14px] font-black text-gray-900">Persetujuan Tim</div>
+                        <div class="text-[12px] text-amber-800 mt-1">
+                            Ada {{ $pendingApprovalCount }} pengajuan menunggu approval Anda.
+                        </div>
+                    </div>
+                </div>
+                <a href="{{ route('employee.approvals.index') }}"
+                   class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[12px] font-bold text-amber-900 bg-white border border-amber-200 rounded-lg hover:bg-amber-100 transition-all">
+                    <span class="material-symbols-outlined text-[17px]">fact_check</span>
+                    Lihat Persetujuan Tim
+                </a>
+            </div>
+        </section>
+    @endif
+
     @php
         $shortcuts = [
             [

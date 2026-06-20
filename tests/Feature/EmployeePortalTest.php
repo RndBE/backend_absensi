@@ -639,6 +639,20 @@ class EmployeePortalTest extends TestCase
             ->assertDontSee('chevron_right');
     }
 
+    public function test_employee_dashboard_shows_team_approval_alert_for_current_approver(): void
+    {
+        $this->seedEmployee(['id' => 1, 'employee_code' => 'EMP001', 'email' => 'shandy@example.test', 'full_name' => 'Shandy Bagus']);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Ada 1 pengajuan menunggu approval Anda')
+            ->assertSee('/employee/approvals', false)
+            ->assertSee('Lihat Persetujuan Tim');
+    }
+
     public function test_employee_approver_can_open_my_approvals_page(): void
     {
         $this->seedEmployee();

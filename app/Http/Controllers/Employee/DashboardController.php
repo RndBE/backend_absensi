@@ -7,6 +7,7 @@ use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
+use App\Support\PendingApprovalCounter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
@@ -36,6 +37,7 @@ class DashboardController extends Controller
             'todayAttendance' => $todayAttendance,
             'recentAttendances' => $recentAttendances,
             'schedule' => $this->todaySchedule($employee, $today),
+            'pendingApprovalCount' => app(PendingApprovalCounter::class)->countForApprover($employee),
             'settings' => [
                 'office_latitude' => (float) Setting::getValue('office_latitude', '0'),
                 'office_longitude' => (float) Setting::getValue('office_longitude', '0'),
