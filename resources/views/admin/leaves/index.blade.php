@@ -66,7 +66,7 @@
                             <div class="text-[11px] text-gray-400">s/d {{ $leave->end_date->format('d M Y') }}</div>
                         </td>
                         <td class="py-3 px-3 text-center">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600">{{ (int)$leave->total_days }} hari</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600">{{ $leave->total_days_label }} hari</span>
                         </td>
                         <td class="py-3 px-3">
                             @php

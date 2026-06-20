@@ -60,7 +60,7 @@
                             </div>
                             <div>
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Durasi</div>
-                                <div class="font-semibold text-gray-900 mt-1">{{ number_format((float) $request->total_days, 1) }} hari</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->total_days_label }} hari</div>
                             </div>
                         @elseif($type === 'overtime')
                             <div>

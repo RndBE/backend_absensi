@@ -91,7 +91,7 @@
                         <td class="px-4 py-3.5 border-b border-gray-100"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">{{ $lr->leaveType->name ?? '-' }}</span></td>
                         <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $lr->start_date->format('d/m/Y') }}</td>
                         <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $lr->end_date->format('d/m/Y') }}</td>
-                        <td class="px-4 py-3.5 text-[13.5px] font-semibold text-gray-800 border-b border-gray-100">{{ $lr->total_days }}</td>
+                        <td class="px-4 py-3.5 text-[13.5px] font-semibold text-gray-800 border-b border-gray-100">{{ $lr->total_days_label }}</td>
                         <td class="px-4 py-3.5 text-[13px] text-gray-600 border-b border-gray-100 max-w-[200px]">{{ Str::limit($lr->reason, 60) }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex gap-2">

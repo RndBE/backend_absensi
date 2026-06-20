@@ -22,6 +22,11 @@ class LeaveRequest extends Model
         ];
     }
 
+    public function getTotalDaysLabelAttribute(): string
+    {
+        return rtrim(rtrim(number_format((float) $this->total_days, 1, '.', ''), '0'), '.');
+    }
+
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);

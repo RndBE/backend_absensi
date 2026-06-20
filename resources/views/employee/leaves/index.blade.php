@@ -47,7 +47,7 @@
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $leave->leaveType->name ?? '-' }}</td>
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $leave->start_date?->format('d/m/Y') }} - {{ $leave->end_date?->format('d/m/Y') }}</td>
-                            <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $leave->total_days }}</td>
+                            <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $leave->total_days_label }}</td>
                             <td class="px-4 py-3.5 border-b border-gray-100">@include('employee.partials.status-badge', ['status' => $leave->status])</td>
                         </tr>
                     @empty

@@ -546,12 +546,26 @@ class EmployeePortalTest extends TestCase
     {
         $this->seedEmployee();
         $this->seedLeaveTypeAndBalance();
+        DB::table('leave_requests')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 1,
+            'start_date' => '2026-06-20',
+            'end_date' => '2026-06-20',
+            'total_days' => 1,
+            'reason' => 'Keperluan keluarga',
+            'status' => 'approved',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $this->withSession(['employee_id' => 1])
             ->get('/employee/leaves')
             ->assertOk()
             ->assertSee('Pengajuan Cuti')
             ->assertSee('Cuti Tahunan')
+            ->assertSee('>1<', false)
+            ->assertDontSee('>1.0<', false)
             ->assertSee('/employee/leaves/create', false);
     }
 

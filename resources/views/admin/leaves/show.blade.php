@@ -29,7 +29,7 @@
                 <div>
                     <span class="text-gray-400 text-[11px] font-semibold uppercase">Tanggal</span>
                     <p class="font-semibold text-gray-900 mt-0.5">{{ $leave->start_date->format('d M Y') }} - {{ $leave->end_date->format('d M Y') }}</p>
-                    <p class="text-[11px] text-gray-400">{{ (int)$leave->total_days }} hari kerja</p>
+                    <p class="text-[11px] text-gray-400">{{ $leave->total_days_label }} hari kerja</p>
                 </div>
                 <div>
                     <span class="text-gray-400 text-[11px] font-semibold uppercase">Status</span>
