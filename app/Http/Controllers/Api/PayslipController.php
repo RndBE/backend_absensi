@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\PayrollRunDetail;
 use App\Services\BpjsCalculator;
+use App\Support\PayslipFilename;
 use App\Support\PayslipLoanSummary;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -120,7 +121,7 @@ class PayslipController extends Controller
         $pdf = Pdf::loadView('admin.payslips.pdf', compact('detail', 'company', 'logoBase64', 'bpjsData', 'loanSummary'));
         $pdf->setPaper('A4', 'portrait');
 
-        $filename = 'Payslip_' . $detail->employee->employee_code . '_' . $detail->payrollRun->period . '.pdf';
+        $filename = PayslipFilename::make($detail->employee->employee_code, $detail->payrollRun->period);
 
         return $pdf->download($filename);
     }

@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Employee;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\Holiday;
+use App\Models\LeaveRequest;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
+use App\Support\AttendanceLateExcuse;
 use App\Support\PendingApprovalCounter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -31,11 +34,22 @@ class DashboardController extends Controller
             ->limit(8)
             ->get();
 
+        $monthStart = $today->copy()->startOfMonth();
+        $monthEnd = $today->copy()->endOfMonth();
+        $approvedLeaves = LeaveRequest::with('leaveType')
+            ->where('employee_id', $employee->id)
+            ->where('status', 'approved')
+            ->where('start_date', '<=', $monthEnd->toDateString())
+            ->where('end_date', '>=', $monthStart->toDateString())
+            ->get();
+        $lateExcuseDates = AttendanceLateExcuse::lateExcuseDates($approvedLeaves, $monthStart, $monthEnd);
+
         return view('employee.dashboard', [
             'employee' => $employee,
             'today' => $today,
             'todayAttendance' => $todayAttendance,
             'recentAttendances' => $recentAttendances,
+            'lateExcuseDates' => $lateExcuseDates,
             'schedule' => $this->todaySchedule($employee, $today),
             'pendingApprovalCount' => app(PendingApprovalCounter::class)->countForApprover($employee),
             'settings' => [
@@ -60,6 +74,20 @@ class DashboardController extends Controller
 
             if ($assignment?->shift) {
                 return $this->formatShift($assignment->shift->name, $assignment->shift->start_time, $assignment->shift->end_time, $assignment->shift->is_off);
+            }
+        }
+
+        if (Schema::hasTable('holidays')) {
+            $holiday = Holiday::where('company_id', $employee->company_id)
+                ->where('date', $date->toDateString())
+                ->first();
+
+            if ($holiday) {
+                return [
+                    'name' => $holiday->name ?: 'Libur Nasional',
+                    'time' => 'Libur Nasional',
+                    'is_off' => true,
+                ];
             }
         }
 

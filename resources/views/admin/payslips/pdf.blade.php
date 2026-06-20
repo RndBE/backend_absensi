@@ -126,6 +126,12 @@
         padding-top: 5px;
         font-weight: bold;
     }
+    .benefit-notes {
+        margin-top: 18px;
+        color: #9ca3af;
+        font-size: 8.5px;
+        line-height: 1.55;
+    }
 
     .footer { margin-top: 24px; text-align: center; font-size: 8px; color: #9ca3af; }
 </style>
@@ -156,6 +162,7 @@
         }
     }
 
+    $benefitData = \App\Support\PayslipBenefits::from($bpjsData ?? [], $comps);
     $earningRows = count($earnings) + 1;
     $deductionRows = max(count($deductions), 1);
     $maxRows = max($earningRows, $deductionRows);
@@ -314,11 +321,11 @@
     </tr>
 </table>
 
-@if(empty($hideBenefits) && !empty($bpjsData['items']))
+@if(empty($hideBenefits) && !empty($benefitData['items']))
 <div class="benefits-section">
     <div class="benefits-title">Benefits* <span style="font-weight:normal; color:#9ca3af; font-size:8.5px;">(ditanggung perusahaan)</span></div>
     <table class="ben-tbl">
-        @foreach($bpjsData['items'] as $b)
+        @foreach($benefitData['items'] as $b)
         <tr class="{{ $b['is_basis'] ? 'ben-muted' : '' }}">
             <td class="ben-lbl {{ $b['is_basis'] ? 'ben-muted' : '' }}">{{ $b['label'] }}</td>
             <td class="ben-amt" style="font-weight:{{ $b['is_basis'] ? 'normal' : '600' }};">{{ number_format($b['amount'], 0, ',', '.') }}</td>
@@ -326,9 +333,16 @@
         @endforeach
         <tr class="ben-total">
             <td class="ben-lbl">Total benefits</td>
-            <td class="ben-amt">{{ number_format($bpjsData['total'], 0, ',', '.') }}</td>
+            <td class="ben-amt">{{ number_format($benefitData['total'], 0, ',', '.') }}</td>
         </tr>
     </table>
+    @if(!empty($benefitData['notes']))
+    <div class="benefit-notes">
+        @foreach($benefitData['notes'] as $note)
+            <div>{{ $note['label'] }}: {{ $note['detail'] }}</div>
+        @endforeach
+    </div>
+    @endif
 </div>
 @endif
 

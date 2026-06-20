@@ -8,12 +8,18 @@
 @endphp
 
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
-    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">list_alt</span> Komponen Payroll</h3>
         @if($canManagePayrollMaster)
-        <button onclick="document.getElementById('createModal').classList.remove('hidden')" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
-            <span class="material-symbols-outlined text-[16px]">add</span> Tambah Komponen
-        </button>
+        <div class="flex items-center gap-2">
+            <button type="button" data-component-import-open class="inline-flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer">
+                <span class="material-symbols-outlined text-[15px]">upload_file</span>
+                Import Assign
+            </button>
+            <button onclick="document.getElementById('createModal').classList.remove('hidden')" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+                <span class="material-symbols-outlined text-[16px]">add</span> Tambah Komponen
+            </button>
+        </div>
         @endif
     </div>
     <div class="p-5">
@@ -121,6 +127,39 @@
 
 {{-- Create Modal --}}
 @if($canManagePayrollMaster)
+<div data-component-import-modal class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-900/45 px-4 py-6">
+    <div class="w-full max-w-[560px] rounded-xl bg-white border border-gray-200 shadow-xl">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+                <h4 class="text-[15px] font-bold text-gray-900">Import Assign Komponen</h4>
+                <p class="text-[12px] text-gray-500 mt-0.5">Gunakan sheet KOMPONEN MASTER PAYROL FIX.</p>
+            </div>
+            <button type="button" data-component-import-close class="w-8 h-8 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 cursor-pointer">
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        </div>
+        <form action="{{ route('admin.payroll-components.import-assignments') }}" method="POST" enctype="multipart/form-data" class="p-5 space-y-4">
+            @csrf
+            <div>
+                <label class="block text-[12px] font-semibold text-gray-700 mb-1.5">Tanggal Efektif</label>
+                <input type="date" name="effective_date" value="{{ date('Y-m-01') }}" required class="w-full h-[42px] px-3 py-2 text-[13px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer">
+            </div>
+            <div>
+                <label class="block text-[12px] font-semibold text-gray-700 mb-1.5">File Import</label>
+                <input type="file" name="component_file" accept=".xlsx,.csv,.txt" required class="block w-full text-[13px] text-gray-600 cursor-pointer file:mr-3 file:h-[38px] file:px-3 file:border-0 file:rounded-lg file:bg-indigo-50 file:text-indigo-700 file:font-semibold file:cursor-pointer hover:file:bg-indigo-100">
+                <p class="mt-2 text-[11px] text-gray-500">Header: Employee ID, Basic Salary, Allowance, Deduction. Nilai 0 tetap disimpan sebagai assignment.</p>
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-2">
+                <button type="button" data-component-import-close class="px-4 py-2 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer">Batal</button>
+                <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm cursor-pointer">
+                    <span class="material-symbols-outlined text-[15px]">upload</span>
+                    Import
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div id="createModal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
         <div class="px-6 py-4 border-b border-gray-100">
@@ -264,6 +303,20 @@ if (payrollComponentSearch) {
 }
 
 @if($canManagePayrollMaster)
+const componentImportModal = document.querySelector('[data-component-import-modal]');
+document.querySelectorAll('[data-component-import-open]').forEach((button) => {
+    button.addEventListener('click', () => {
+        componentImportModal?.classList.remove('hidden');
+        componentImportModal?.classList.add('flex');
+    });
+});
+document.querySelectorAll('[data-component-import-close]').forEach((button) => {
+    button.addEventListener('click', () => {
+        componentImportModal?.classList.add('hidden');
+        componentImportModal?.classList.remove('flex');
+    });
+});
+
 function openEdit(id, name, type, category, amount, taxable) {
     document.getElementById('editForm').action = '{{ url("admin/payroll-components") }}/' + id;
     document.getElementById('editName').value = name;

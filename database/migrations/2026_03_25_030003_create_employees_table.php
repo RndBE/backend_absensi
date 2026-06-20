@@ -32,7 +32,7 @@ return new class extends Migration
             $table->text('residential_address')->nullable();
             $table->string('position')->nullable();
             $table->integer('job_level')->nullable();
-            $table->enum('employment_status', ['permanent', 'contract', 'intern', 'probation'])->default('contract');
+            $table->enum('employment_status', ['permanent', 'contract', 'intern', 'probation', 'outsourcing'])->default('contract');
             $table->date('join_date')->nullable();
             $table->date('contract_end_date')->nullable();
             $table->string('photo')->nullable();

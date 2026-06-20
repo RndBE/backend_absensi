@@ -68,6 +68,11 @@ class LeaveController extends Controller
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
+        $totalDays = Carbon::parse($validated['start_date'])
+            ->startOfDay()
+            ->diffInDays(Carbon::parse($validated['end_date'])->startOfDay()) + 1;
+        $validated['total_days'] = $totalDays;
+
         $balance = LeaveBalance::where('employee_id', $employee->id)
             ->where('leave_type_id', $validated['leave_type_id'])
             ->where('year', now()->year)

@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\Company;
 use App\Models\PayrollRunDetail;
+use App\Support\PayslipFilename;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -37,7 +38,7 @@ class PayslipPublishedMail extends Mailable
             ])
             ->attachData(
                 $this->pdfBinary,
-                'Payslip_'.$this->detail->employee->employee_code.'_'.$this->detail->payrollRun->period.'.pdf',
+                PayslipFilename::make($this->detail->employee->employee_code, $this->detail->payrollRun->period),
                 ['mime' => 'application/pdf']
             );
     }

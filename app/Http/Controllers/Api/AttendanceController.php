@@ -14,6 +14,7 @@ use App\Models\Setting;
 use App\Services\FaceVerificationService;
 use App\Services\FcmService;
 use App\Support\AdminPermission;
+use App\Support\AttendanceLateExcuse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -53,10 +54,25 @@ class AttendanceController extends Controller
         $query = Attendance::where('employee_id', $employee->id)
             ->whereYear('date', $period->year)
             ->whereMonth('date', $period->month);
+        $startOfMonth = $period->copy()->startOfMonth();
+        $endOfMonth = $period->copy()->endOfMonth();
+        $lateExcuseDates = AttendanceLateExcuse::lateExcuseDates(
+            LeaveRequest::with('leaveType')
+                ->where('employee_id', $employee->id)
+                ->where('status', 'approved')
+                ->where('start_date', '<=', $endOfMonth->toDateString())
+                ->where('end_date', '>=', $startOfMonth->toDateString())
+                ->get(),
+            $startOfMonth,
+            $endOfMonth
+        );
 
         $hadir = (clone $query)->where('status', 'present')->count();
         $absen = (clone $query)->where('status', 'absent')->count();
-        $terlambat = (clone $query)->where('is_late', true)->count();
+        $terlambat = (clone $query)
+            ->where('is_late', true)
+            ->when($lateExcuseDates->isNotEmpty(), fn ($q) => $q->whereNotIn('date', $lateExcuseDates->keys()->all()))
+            ->count();
 
         return response()->json([
             'success' => true,
@@ -134,13 +150,12 @@ class AttendanceController extends Controller
             $holiday = $holidays[$dateStr] ?? null;
 
             // Leave check
-            $leave = $leaves->first(function ($l) use ($date) {
-                return $date->between($l->start_date, $l->end_date);
-            });
+            $leave = AttendanceLateExcuse::firstForDate($leaves, $date);
+            $lateExcuse = AttendanceLateExcuse::isLateArrivalLeave($leave) ? $leave : null;
 
             // Manual override wins over holiday; template only applies on non-holidays.
             $shift = null;
-            if (!$leave) {
+            if (!$leave || $lateExcuse) {
                 if (isset($overrides[$dateStr])) {
                     $shift = $overrides[$dateStr]->shift;
                 } elseif (!$holiday && isset($templateDays[$dow])) {
@@ -154,12 +169,12 @@ class AttendanceController extends Controller
             // Calculate stats
             if ($holiday && !$shift) {
                 $stats['libur']++;
-            } elseif ($leave) {
+            } elseif ($leave && !$lateExcuse) {
                 $stats['cuti']++;
             } elseif ($shift && $shift->is_off) {
                 $stats['off']++;
             } elseif ($att) {
-                if ($att->is_late) {
+                if ($att->is_late && !$lateExcuse) {
                     $stats['terlambat']++;
                 }
                 $stats['hadir']++;
@@ -173,8 +188,11 @@ class AttendanceController extends Controller
                 'day_name' => $dayNames[$dow],
                 'is_today' => $date->isToday(),
                 'holiday' => $holiday ? $holiday->name : null,
-                'leave' => $leave ? [
+                'leave' => $leave && !$lateExcuse ? [
                     'type' => $leave->leaveType->name ?? 'Cuti',
+                ] : null,
+                'late_excuse' => $lateExcuse ? [
+                    'type' => $lateExcuse->leaveType->name ?? AttendanceLateExcuse::SHORT_LABEL,
                 ] : null,
                 'shift' => $shift ? [
                     'name' => $shift->name,
@@ -195,6 +213,9 @@ class AttendanceController extends Controller
                     'clock_out_lng' => $att->clock_out_lng,
                     'status' => $att->status,
                     'is_late' => $att->is_late,
+                    'status_label' => $att->is_late && $lateExcuse
+                        ? AttendanceLateExcuse::STATUS_LABEL
+                        : ($att->is_late ? 'Terlambat' : 'Hadir'),
                     'is_remote' => $att->is_remote,
                     'remote_notes' => $att->remote_notes,
                 ] : null,
@@ -877,8 +898,16 @@ class AttendanceController extends Controller
             ->where('date', $date)
             ->first();
 
-        if ($override?->shift && !$override->shift->is_off) {
-            return $override->shift->start_time;
+        if ($override?->shift) {
+            return $override->shift->is_off ? null : $override->shift->start_time;
+        }
+
+        $holiday = Holiday::where('company_id', $employee->company_id)
+            ->where('date', $date->toDateString())
+            ->exists();
+
+        if ($holiday) {
+            return null;
         }
 
         // 2. Fallback to schedule template

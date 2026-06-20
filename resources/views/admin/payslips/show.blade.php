@@ -13,7 +13,6 @@
 
     $earnings = [];
     $deductions = [];
-    $infoComps = [];
 
     $comps = is_array($detail->components) ? $detail->components : json_decode($detail->components, true) ?? [];
     foreach ($comps as $c) {
@@ -21,11 +20,10 @@
             $earnings[] = $c;
         } elseif (($c['type'] ?? '') === 'deduction') {
             $deductions[] = $c;
-        } elseif (($c['type'] ?? '') === 'info' && !str_contains($c['name'] ?? '', 'BPJS (Perusahaan)')) {
-            $infoComps[] = $c;
         }
     }
 
+    $benefitData = \App\Support\PayslipBenefits::from($bpjsData ?? [], $comps);
     $loanLines = fn (?array $component) => $component
         ? \App\Support\PayslipLoanSummary::detailLinesForComponent($component)
         : [];
@@ -178,11 +176,11 @@
         </div>
     </div>
 
-    @if(!empty($bpjsData['items']))
+    @if(!empty($benefitData['items']))
     <div class="px-8 py-5">
         <div class="text-[12px] font-bold text-gray-800 mb-3">Benefits* <span class="font-normal text-gray-400 text-[10px]">(ditanggung perusahaan)</span></div>
         <div class="space-y-1.5 max-w-sm">
-            @foreach($bpjsData['items'] as $b)
+            @foreach($benefitData['items'] as $b)
             <div class="flex justify-between text-[12px] {{ $b['is_basis'] ? 'text-gray-500' : 'text-gray-700' }}">
                 <span>{{ $b['label'] }}</span>
                 <span class="tabular-nums font-{{ $b['is_basis'] ? 'normal' : 'medium' }}">{{ number_format($b['amount'], 0, ',', '.') }}</span>
@@ -190,19 +188,16 @@
             @endforeach
             <div class="flex justify-between text-[12px] font-bold pt-1.5 border-t border-gray-900">
                 <span>Total benefits</span>
-                <span class="tabular-nums">{{ number_format($bpjsData['total'], 0, ',', '.') }}</span>
+                <span class="tabular-nums">{{ number_format($benefitData['total'], 0, ',', '.') }}</span>
             </div>
         </div>
-    </div>
-    @endif
-
-    @if(count($infoComps) > 0)
-    <div class="px-8 pb-5">
-        <div class="text-[11px] text-gray-400 space-y-1">
-            @foreach($infoComps as $ic)
-            <div>{{ $ic['name'] }}: {{ $ic['detail'] ?? '' }}</div>
+        @if(!empty($benefitData['notes']))
+        <div class="mt-6 space-y-1 text-[11px] leading-5 text-gray-400">
+            @foreach($benefitData['notes'] as $note)
+            <div>{{ $note['label'] }}: {{ $note['detail'] }}</div>
             @endforeach
         </div>
+        @endif
     </div>
     @endif
 

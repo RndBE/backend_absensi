@@ -109,12 +109,14 @@
                                     'contract' => 'Kontrak',
                                     'intern' => 'Magang',
                                     'probation' => 'Probation',
+                                    'outsourcing' => 'Outsourcing',
                                     default => ucfirst($employee->employment_status),
                                 };
                                 $statusColor = match($employee->employment_status) {
                                     'contract' => 'bg-blue-100 text-blue-800',
                                     'intern' => 'bg-orange-100 text-orange-700',
                                     'probation' => 'bg-amber-100 text-amber-800',
+                                    'outsourcing' => 'bg-cyan-100 text-cyan-800',
                                     default => 'bg-gray-100 text-gray-700',
                                 };
                             @endphp

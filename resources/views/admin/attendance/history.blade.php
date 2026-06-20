@@ -52,7 +52,7 @@
                     <option value="">Semua Karyawan</option>
                     @foreach($employees as $emp)
                         <option value="{{ $emp->id }}" {{ request('employee_id') == $emp->id ? 'selected' : '' }}>
-                            {{ $emp->full_name }}{{ $emp->employment_status === 'intern' ? ' (Magang)' : '' }}
+                            {{ $emp->full_name }}{{ $emp->employment_status === 'intern' ? ' (Magang)' : ($emp->employment_status === 'outsourcing' ? ' (Outsourcing)' : '') }}
                         </option>
                     @endforeach
                 </select>
@@ -65,6 +65,7 @@
                     <option value="contract" {{ request('employment_status') === 'contract' ? 'selected' : '' }}>Kontrak</option>
                     <option value="intern" {{ request('employment_status') === 'intern' ? 'selected' : '' }}>Magang</option>
                     <option value="probation" {{ request('employment_status') === 'probation' ? 'selected' : '' }}>Probation</option>
+                    <option value="outsourcing" {{ request('employment_status') === 'outsourcing' ? 'selected' : '' }}>Outsourcing</option>
                 </select>
             </div>
             <div>
@@ -102,6 +103,8 @@
                                 <span class="text-[13.5px] text-gray-700">{{ $att->employee->full_name ?? '-' }}</span>
                                 @if(($att->employee->employment_status ?? '') === 'intern')
                                     <span class="inline-flex items-center px-1.5 py-0 rounded-full text-[9.5px] font-bold bg-orange-100 text-orange-700 uppercase tracking-wide">Magang</span>
+                                @elseif(($att->employee->employment_status ?? '') === 'outsourcing')
+                                    <span class="inline-flex items-center px-1.5 py-0 rounded-full text-[9.5px] font-bold bg-cyan-100 text-cyan-700 uppercase tracking-wide">Outsourcing</span>
                                 @endif
                             </div>
                         </td>

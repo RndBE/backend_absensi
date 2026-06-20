@@ -147,6 +147,7 @@
                         <option value="permanent" {{ old('employment_status', $employee->employment_status) === 'permanent' ? 'selected' : '' }}>Tetap</option>
                         <option value="intern" {{ old('employment_status', $employee->employment_status) === 'intern' ? 'selected' : '' }}>Magang</option>
                         <option value="probation" {{ old('employment_status', $employee->employment_status) === 'probation' ? 'selected' : '' }}>Probation</option>
+                        <option value="outsourcing" {{ old('employment_status', $employee->employment_status) === 'outsourcing' ? 'selected' : '' }}>Outsourcing</option>
                     </select>
                 </div>
                 <div class="mb-2">
@@ -155,8 +156,8 @@
                 </div>
             </div>
 
-            {{-- Contract End Date (shown when status = contract/intern/probation) --}}
-            <div id="contractDatesRow" class="grid grid-cols-1 md:grid-cols-2 gap-4" style="{{ in_array(old('employment_status', $employee->employment_status), ['contract','intern','probation']) ? '' : 'display:none' }}">
+            {{-- Contract End Date (shown when status = contract/intern/probation/outsourcing) --}}
+            <div id="contractDatesRow" class="grid grid-cols-1 md:grid-cols-2 gap-4" style="{{ in_array(old('employment_status', $employee->employment_status), ['contract','intern','probation','outsourcing']) ? '' : 'display:none' }}">
                 <div class="mb-2">
                     <label class="block text-[13px] font-semibold text-gray-700 mb-1.5">Kontrak Berakhir</label>
                     <input type="date" name="contract_end_date" class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10" value="{{ old('contract_end_date', $employee->contract_end_date?->format('Y-m-d')) }}">
@@ -460,7 +461,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function toggleStatusSections() {
         const val = statusSelect.value;
-        const showContract = ['contract', 'intern', 'probation'].includes(val);
+        const showContract = ['contract','intern','probation','outsourcing'].includes(val);
         contractRow.style.display = showContract ? '' : 'none';
         if (internshipSection) {
             internshipSection.style.display = val === 'intern' ? '' : 'none';

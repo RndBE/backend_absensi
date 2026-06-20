@@ -158,6 +158,104 @@ class AttendanceHolidayShiftOverrideTest extends TestCase
         $this->assertSame('Terjadwal', $employeeRow['status_label']);
     }
 
+    public function test_admin_daily_recap_shows_clock_times_for_attendance_on_national_holiday_without_shift(): void
+    {
+        session(['admin_id' => 99]);
+
+        DB::table('schedule_assignments')
+            ->where('employee_id', 1)
+            ->where('date', '2026-12-25')
+            ->delete();
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-12-25',
+            'clock_in' => '09:00:00',
+            'clock_out' => '12:30:00',
+            'status' => 'present',
+            'review_status' => null,
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/admin/attendance-recap', 'GET', [
+            'date' => '2026-12-25',
+        ]);
+
+        $view = (new AttendanceRecapController())->index($request);
+        $rows = $view->getData()['rows'];
+
+        $employeeRow = collect($rows)->firstWhere('employee.id', 1);
+
+        $this->assertSame('holiday', $employeeRow['status']);
+        $this->assertSame('Libur Nasional', $employeeRow['status_label']);
+        $this->assertSame('09:00:00', $employeeRow['clock_in']);
+        $this->assertSame('12:30:00', $employeeRow['clock_out']);
+        $this->assertNotNull($employeeRow['attendance']);
+    }
+
+    public function test_admin_daily_recap_counts_approved_late_arrival_permission_as_present(): void
+    {
+        session(['admin_id' => 99]);
+
+        DB::table('schedule_assignments')->insert([
+            'employee_id' => 1,
+            'shift_id' => 7,
+            'date' => '2026-12-24',
+            'notes' => 'Regular workday',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-12-24',
+            'clock_in' => '09:30:00',
+            'clock_out' => '17:00:00',
+            'status' => 'present',
+            'review_status' => null,
+            'is_late' => true,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_types')->insert([
+            'id' => 3,
+            'name' => 'Izin Datang Terlambat',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 3,
+            'start_date' => '2026-12-24',
+            'end_date' => '2026-12-24',
+            'status' => 'approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/admin/attendance-recap', 'GET', [
+            'date' => '2026-12-24',
+        ]);
+
+        $view = (new AttendanceRecapController())->index($request);
+        $rows = $view->getData()['rows'];
+        $stats = $view->getData()['stats'];
+
+        $employeeRow = collect($rows)->firstWhere('employee.id', 1);
+
+        $this->assertSame('present', $employeeRow['status']);
+        $this->assertSame('Hadir - Izin Terlambat', $employeeRow['status_label']);
+        $this->assertSame(1, $stats['hadir']);
+        $this->assertSame(0, $stats['terlambat']);
+        $this->assertSame(0, $stats['cuti']);
+    }
+
     public function test_admin_employee_monthly_detail_keeps_manual_shift_override_on_national_holiday(): void
     {
         session(['admin_id' => 99]);
@@ -192,6 +290,70 @@ class AttendanceHolidayShiftOverrideTest extends TestCase
         $this->assertSame('Natal Nasional', $christmasDay['holiday']);
         $this->assertSame('Piket Natal', $christmasDay['shift']['name']);
         $this->assertSame('08:00', $christmasDay['shift']['start_time']);
+    }
+
+    public function test_api_recap_counts_approved_late_arrival_permission_as_present(): void
+    {
+        DB::table('schedule_assignments')->insert([
+            'employee_id' => 1,
+            'shift_id' => 7,
+            'date' => '2026-12-24',
+            'notes' => 'Regular workday',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-12-24',
+            'clock_in' => '09:30:00',
+            'clock_out' => '17:00:00',
+            'status' => 'present',
+            'review_status' => null,
+            'is_late' => true,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_types')->insert([
+            'id' => 3,
+            'name' => 'Izin Datang Terlambat',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 3,
+            'start_date' => '2026-12-24',
+            'end_date' => '2026-12-24',
+            'status' => 'approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/api/attendance/recap', 'GET', [
+            'period' => '2026-12',
+        ]);
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $recapResponse = (new AttendanceController())->recap($request);
+        $recap = $recapResponse->getData(true)['data'];
+
+        $this->assertSame(1, $recap['hadir']);
+        $this->assertSame(0, $recap['terlambat']);
+
+        $scheduleResponse = (new AttendanceController())->schedule($request);
+        $schedule = $scheduleResponse->getData(true)['data'];
+        $day = collect($schedule['days'])->firstWhere('date', '2026-12-24');
+
+        $this->assertSame(1, $schedule['stats']['hadir']);
+        $this->assertSame(0, $schedule['stats']['terlambat']);
+        $this->assertSame(0, $schedule['stats']['cuti']);
+        $this->assertSame('Hadir - Izin Terlambat', $day['attendance']['status_label']);
+        $this->assertSame('Izin Datang Terlambat', $day['late_excuse']['type']);
+        $this->assertNull($day['leave']);
     }
 
     private function seedHolidayOverrideSchedule(): void

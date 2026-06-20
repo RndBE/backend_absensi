@@ -177,6 +177,7 @@ Route::prefix('admin')->name('admin.')->middleware([
 
     // Attendance Recap
     Route::get('/attendance-recap', [AttendanceRecapController::class, 'index'])->name('attendance-recap.index');
+    Route::post('/attendance-recap/import', [AttendanceRecapController::class, 'import'])->name('attendance-recap.import');
     Route::post('/attendance-recap', [AttendanceRecapController::class, 'update'])->name('attendance-recap.update');
     Route::get('/attendance-recap/employee/{id}', [AttendanceRecapController::class, 'employeeDetail'])->name('attendance-recap.employee-detail');
 
@@ -271,6 +272,7 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Payroll Components
     Route::get('/payroll-components', [PayrollComponentController::class, 'index'])->name('payroll-components.index');
     Route::post('/payroll-components', [PayrollComponentController::class, 'store'])->name('payroll-components.store');
+    Route::post('/payroll-components/import-assignments', [PayrollComponentController::class, 'importAssignments'])->name('payroll-components.import-assignments');
     Route::put('/payroll-components/{id}', [PayrollComponentController::class, 'update'])->name('payroll-components.update');
     Route::post('/payroll-components/{id}/toggle', [PayrollComponentController::class, 'toggle'])->name('payroll-components.toggle');
     Route::delete('/payroll-components/{id}', [PayrollComponentController::class, 'destroy'])->name('payroll-components.destroy');
@@ -306,6 +308,7 @@ Route::prefix('admin')->name('admin.')->middleware([
 
     // Payslips
     Route::get('/payslips', [PayslipController::class, 'index'])->name('payslips.index');
+    Route::post('/payslips/import', [PayslipController::class, 'import'])->name('payslips.import');
     Route::get('/payslips/{id}', [PayslipController::class, 'show'])->name('payslips.show');
     Route::get('/payslips/{id}/download', [PayslipController::class, 'downloadPdf'])->name('payslips.download');
 

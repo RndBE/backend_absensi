@@ -1,9 +1,12 @@
 @php
     $selectedEmployee = old('employee_id', $loanRequest->employee_id ?? '');
     $selectedStatus = old('status', $loanRequest->status ?? 'active');
+    $hasExistingMonthlyInstallment = isset($loanRequest) && $loanRequest->monthly_installment !== null && $loanRequest->monthly_installment !== '';
+    $selectedInstallmentMode = old('installment_mode', $hasExistingMonthlyInstallment ? 'manual' : 'auto');
+    $monthlyInstallmentValue = old('monthly_installment', $hasExistingMonthlyInstallment ? (int) $loanRequest->monthly_installment : '');
 @endphp
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4" data-loan-installment-form>
     <div>
         <label class="block text-[12px] font-semibold text-gray-700 mb-1.5">Karyawan</label>
         <select name="employee_id" required class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
@@ -46,17 +49,22 @@
         @error('installment_count') <div class="text-[11px] text-red-600 mt-1">{{ $message }}</div> @enderror
     </div>
 
-    {{-- <div>
+    <div>
         <label class="block text-[12px] font-semibold text-gray-700 mb-1.5">Cicilan per Bulan</label>
-        <input type="number" name="monthly_installment" min="0" step="1" value="{{ old('monthly_installment', isset($loanRequest) ? (int) $loanRequest->monthly_installment : '') }}" placeholder="Kosongkan untuk hitung otomatis" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+        <div class="mb-2 grid grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-1 text-[12px] font-semibold text-gray-600">
+            <label class="cursor-pointer">
+                <input type="radio" name="installment_mode" value="auto" class="peer sr-only" @checked($selectedInstallmentMode === 'auto') data-installment-mode>
+                <span class="block rounded-md px-3 py-2 text-center peer-checked:bg-white peer-checked:text-indigo-700 peer-checked:shadow-sm">Otomatis</span>
+            </label>
+            <label class="cursor-pointer">
+                <input type="radio" name="installment_mode" value="manual" class="peer sr-only" @checked($selectedInstallmentMode === 'manual') data-installment-mode>
+                <span class="block rounded-md px-3 py-2 text-center peer-checked:bg-white peer-checked:text-indigo-700 peer-checked:shadow-sm">Manual</span>
+            </label>
+        </div>
+        <input type="number" name="monthly_installment" min="0" step="1" value="{{ $monthlyInstallmentValue }}" placeholder="Dihitung otomatis saat disimpan" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" data-monthly-installment-input>
+        <p class="text-[11px] text-gray-400 mt-1" data-auto-installment-preview>Dihitung otomatis saat disimpan.</p>
         @error('monthly_installment') <div class="text-[11px] text-red-600 mt-1">{{ $message }}</div> @enderror
     </div>
-
-    <div>
-        <label class="block text-[12px] font-semibold text-gray-700 mb-1.5">Sisa Pinjaman</label>
-        <input type="number" name="remaining_amount" min="0" step="1" value="{{ old('remaining_amount', isset($loanRequest) ? (int) $loanRequest->remaining_amount : '') }}" placeholder="Kosongkan untuk sama dengan nominal" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-        @error('remaining_amount') <div class="text-[11px] text-red-600 mt-1">{{ $message }}</div> @enderror
-    </div> --}}
 
     <div>
         <label class="block text-[12px] font-semibold text-gray-700 mb-1.5">Periode Mulai Potong</label>
@@ -70,3 +78,73 @@
         @error('purpose') <div class="text-[11px] text-red-600 mt-1">{{ $message }}</div> @enderror
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.querySelector('[data-loan-installment-form]');
+
+    if (!form) {
+        return;
+    }
+
+    const amountInput = form.querySelector('[name="amount"]');
+    const interestInput = form.querySelector('[name="interest_rate"]');
+    const tenorInput = form.querySelector('[name="installment_count"]');
+    const monthlyInput = form.querySelector('[data-monthly-installment-input]');
+    const modeInputs = form.querySelectorAll('[data-installment-mode]');
+    const preview = form.querySelector('[data-auto-installment-preview]');
+    let manualValue = monthlyInput?.value || '';
+
+    const rupiah = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        maximumFractionDigits: 0,
+    });
+
+    const selectedMode = () => Array.from(modeInputs).find((input) => input.checked)?.value || 'auto';
+
+    const calculateMonthlyInstallment = () => {
+        const amount = Number(amountInput?.value || 0);
+        const interestRate = Number(interestInput?.value || 0);
+        const tenor = Math.max(Number(tenorInput?.value || 0), 0);
+
+        if (!amount || !tenor) {
+            return null;
+        }
+
+        return Math.round((amount + (amount * (interestRate / 100))) / tenor);
+    };
+
+    const renderPreview = () => {
+        const monthly = calculateMonthlyInstallment();
+        preview.textContent = monthly === null
+            ? 'Dihitung otomatis saat disimpan.'
+            : `Otomatis: ${rupiah.format(monthly)} per bulan.`;
+    };
+
+    const syncMode = () => {
+        const isManual = selectedMode() === 'manual';
+
+        monthlyInput.disabled = !isManual;
+        monthlyInput.required = isManual;
+        monthlyInput.placeholder = isManual ? 'Masukkan cicilan manual' : 'Dihitung otomatis saat disimpan';
+
+        if (isManual) {
+            monthlyInput.value = manualValue;
+        } else {
+            manualValue = monthlyInput.value || manualValue;
+            monthlyInput.value = '';
+        }
+
+        renderPreview();
+    };
+
+    monthlyInput?.addEventListener('input', () => {
+        manualValue = monthlyInput.value;
+    });
+    modeInputs.forEach((input) => input.addEventListener('change', syncMode));
+    [amountInput, interestInput, tenorInput].forEach((input) => input?.addEventListener('input', renderPreview));
+
+    syncMode();
+});
+</script>

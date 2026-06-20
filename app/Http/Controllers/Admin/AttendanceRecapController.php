@@ -8,9 +8,13 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Holiday;
 use App\Models\LeaveRequest;
+use App\Models\OvertimeRequest;
 use App\Models\ScheduleAssignment;
+use App\Support\AttendanceLateExcuse;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use ZipArchive;
 
 class AttendanceRecapController extends Controller
 {
@@ -73,6 +77,7 @@ class AttendanceRecapController extends Controller
                 'shift' => null,
                 'attendance' => null,
                 'leave' => null,
+                'late_excuse' => null,
                 'status' => 'no_schedule', // no_schedule, off, holiday, leave, present, late, absent
                 'status_label' => '-',
                 'clock_in' => null,
@@ -85,6 +90,13 @@ class AttendanceRecapController extends Controller
                 $row['shift'] = $override->shift;
             } elseif (!$holiday && $emp->scheduleTemplate) {
                 $row['shift'] = $emp->scheduleTemplate->getShiftForDay($date->dayOfWeekIso);
+            }
+
+            $att = $attendances->get($emp->id);
+            if ($att) {
+                $row['attendance'] = $att;
+                $row['clock_in'] = $att->clock_in;
+                $row['clock_out'] = $att->clock_out;
             }
 
             // Determine status for this day.
@@ -105,18 +117,22 @@ class AttendanceRecapController extends Controller
                 } else {
                     // Has schedule — check leave first
                     $leave = $leaves->get($emp->id);
+                    $lateExcuse = AttendanceLateExcuse::isLateArrivalLeave($leave) ? $leave : null;
                     if ($leave) {
+                        $row['leave'] = $leave;
+                    }
+                    if ($lateExcuse) {
+                        $row['late_excuse'] = $lateExcuse;
+                    }
+
+                    if ($leave && !$lateExcuse) {
                         $row['status'] = 'leave';
                         $row['status_label'] = 'Cuti: ' . ($leave->leaveType->name ?? 'Cuti');
-                        $row['leave'] = $leave;
                         $stats['cuti']++;
                     } else {
                         // Check attendance
-                        $att = $attendances->get($emp->id);
+                        $att = $row['attendance'];
                         if ($att) {
-                            $row['attendance'] = $att;
-                            $row['clock_in'] = $att->clock_in;
-                            $row['clock_out'] = $att->clock_out;
                             if ($att->review_status === 'pending') {
                                 $row['status'] = 'review';
                                 $row['status_label'] = 'Butuh Review';
@@ -124,13 +140,15 @@ class AttendanceRecapController extends Controller
                                 $row['status'] = 'absent';
                                 $row['status_label'] = 'Alpha';
                                 $stats['alpha']++;
-                            } elseif ($att->is_late) {
+                            } elseif ($att->is_late && !$lateExcuse) {
                                 $row['status'] = 'late';
                                 $row['status_label'] = 'Terlambat';
                                 $stats['terlambat']++;
                             } else {
                                 $row['status'] = 'present';
-                                $row['status_label'] = 'Hadir';
+                                $row['status_label'] = $att->is_late && $lateExcuse
+                                    ? AttendanceLateExcuse::STATUS_LABEL
+                                    : 'Hadir';
                                 $stats['hadir']++;
                             }
                         } else {
@@ -164,6 +182,112 @@ class AttendanceRecapController extends Controller
         ));
     }
 
+    public function import(Request $request)
+    {
+        $request->validate([
+            'attendance_file' => 'required|file|mimes:csv,txt,xlsx|max:5120',
+        ]);
+
+        $admin = Employee::find(session('admin_id'));
+        $rows = $this->readImportRows($request->file('attendance_file'));
+        $headers = array_map(fn ($header) => $this->normalizeImportHeader($header), array_shift($rows) ?? []);
+        $imported = 0;
+        $skipped = 0;
+        $warnings = [];
+
+        foreach ($rows as $index => $row) {
+            $lineNumber = $index + 2;
+            $data = $this->combineImportRow($headers, $row);
+
+            if ($this->isBlankImportRow($data)) {
+                continue;
+            }
+
+            $employeeCode = trim((string) ($data['employee_code'] ?? $data['employee_id'] ?? $data['kode_karyawan'] ?? $data['kode'] ?? ''));
+            $dateValue = $data['date'] ?? $data['tanggal'] ?? null;
+            $clockIn = $this->normalizeImportTime($data['clock_in'] ?? $data['check_in'] ?? $data['jam_masuk'] ?? null);
+            $clockOut = $this->normalizeImportTime($data['clock_out'] ?? $data['check_out'] ?? $data['jam_keluar'] ?? null);
+            $overtimeClockIn = $this->normalizeImportTime($data['overtime_check_in'] ?? $data['ot_check_in'] ?? $data['lembur_masuk'] ?? null);
+            $overtimeClockOut = $this->normalizeImportTime($data['overtime_check_out'] ?? $data['ot_check_out'] ?? $data['lembur_keluar'] ?? null);
+            $overtimeBreak = $this->normalizeImportDurationMinutes($data['overtime_break'] ?? $data['overtime_break_duration'] ?? $data['break_duration'] ?? $data['istirahat_lembur'] ?? null);
+            $date = $this->normalizeImportDate($dateValue);
+
+            if ($employeeCode === '') {
+                $skipped++;
+                $warnings[] = "Baris {$lineNumber}: kode karyawan kosong.";
+                continue;
+            }
+
+            $employee = Employee::where('company_id', $admin->company_id)
+                ->where('employee_code', $employeeCode)
+                ->first();
+
+            if (! $employee) {
+                $skipped++;
+                $warnings[] = "Baris {$lineNumber}: kode karyawan {$employeeCode} tidak ditemukan.";
+                continue;
+            }
+
+            if (! $date) {
+                $skipped++;
+                $warnings[] = "Baris {$lineNumber}: tanggal tidak valid.";
+                continue;
+            }
+
+            $hasAttendanceTime = $clockIn || $clockOut;
+            $hasOvertimeTime = $overtimeClockIn || $overtimeClockOut;
+
+            if (! $hasAttendanceTime && ! $hasOvertimeTime) {
+                $skipped++;
+                $warnings[] = "Baris {$lineNumber}: clock in/out kosong atau tidak valid.";
+                continue;
+            }
+
+            $rowImported = false;
+
+            if ($hasAttendanceTime) {
+                Attendance::updateOrCreate(
+                    [
+                        'employee_id' => $employee->id,
+                        'date' => $date->format('Y-m-d'),
+                    ],
+                    [
+                        'clock_in' => $clockIn,
+                        'clock_out' => $clockOut,
+                        'status' => 'present',
+                        'review_status' => null,
+                        'is_late' => $this->isLateForImportedAttendance($employee, $date, $clockIn, $data['shift'] ?? null),
+                    ]
+                );
+
+                $rowImported = true;
+            }
+
+            if ($hasOvertimeTime) {
+                if (! $overtimeClockIn || ! $overtimeClockOut) {
+                    $warnings[] = "Baris {$lineNumber}: overtime check in/out tidak lengkap.";
+                } elseif ($this->upsertImportedOvertime($employee, $date, $data, $overtimeClockIn, $overtimeClockOut, $overtimeBreak, $clockOut)) {
+                    $rowImported = true;
+                } else {
+                    $warnings[] = "Baris {$lineNumber}: durasi overtime tidak valid.";
+                }
+            }
+
+            if ($rowImported) {
+                $imported++;
+            } else {
+                $skipped++;
+            }
+        }
+
+        $message = "Import presensi selesai: {$imported} berhasil, {$skipped} dilewati.";
+        if ($warnings) {
+            $message .= ' ' . implode(' ', array_slice($warnings, 0, 5));
+        }
+
+        return back()->with($imported > 0 ? 'success' : 'error', $message);
+    }
+
     public function update(Request $request)
     {
         $request->validate([
@@ -174,24 +298,11 @@ class AttendanceRecapController extends Controller
             'status' => 'required|in:present,absent,leave,holiday',
         ]);
 
-        // Auto-calculate is_late based on shift start_time
         $isLate = false;
-        if ($request->clock_in) {
+        if ($request->status === 'present' && $request->clock_in) {
             $emp = Employee::with('scheduleTemplate.days.shift')->find($request->employee_id);
             $date = Carbon::parse($request->date);
-
-            // Get shift: override > template
-            $override = ScheduleAssignment::with('shift')
-                ->where('employee_id', $emp->id)
-                ->where('date', $date->format('Y-m-d'))
-                ->first();
-
-            $shift = $override?->shift
-                ?? $emp->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
-
-            if ($shift && !$shift->is_off && $shift->start_time) {
-                $isLate = $request->clock_in > substr($shift->start_time, 0, 5);
-            }
+            $isLate = $this->isLateForImportedAttendance($emp, $date, $request->clock_in);
         }
 
         Attendance::updateOrCreate(
@@ -208,6 +319,416 @@ class AttendanceRecapController extends Controller
         );
 
         return back()->with('success', 'Data presensi berhasil diperbarui.');
+    }
+
+    private function readImportRows(UploadedFile $file): array
+    {
+        $extension = strtolower($file->getClientOriginalExtension());
+
+        if ($extension === 'xlsx') {
+            return $this->readXlsxRows($file->getRealPath());
+        }
+
+        return $this->readCsvRows($file->getRealPath());
+    }
+
+    private function readCsvRows(string $path): array
+    {
+        $handle = fopen($path, 'r');
+        $rows = [];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            if ($rows === [] && isset($row[0])) {
+                $row[0] = preg_replace('/^\xEF\xBB\xBF/', '', $row[0]);
+            }
+
+            $rows[] = $row;
+        }
+
+        fclose($handle);
+
+        return $rows;
+    }
+
+    private function readXlsxRows(string $path): array
+    {
+        if (! class_exists(ZipArchive::class)) {
+            return [];
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($path) !== true) {
+            return [];
+        }
+
+        $sharedStrings = $this->readXlsxSharedStrings($zip);
+        $sheetXml = $zip->getFromName($this->xlsxWorksheetPath($zip, ['ATTENDENCE', 'ATTENDANCE']));
+        $zip->close();
+
+        if (! $sheetXml) {
+            return [];
+        }
+
+        $sheet = simplexml_load_string($sheetXml);
+        $rows = [];
+
+        foreach ($sheet->sheetData->row ?? [] as $xmlRow) {
+            $row = [];
+            $maxColumnIndex = -1;
+            foreach ($xmlRow->c as $cell) {
+                $attributes = $cell->attributes();
+                $cellRef = (string) ($attributes['r'] ?? '');
+                $columnIndex = $this->xlsxColumnIndex($cellRef);
+                $maxColumnIndex = max($maxColumnIndex, $columnIndex);
+                $type = (string) ($attributes['t'] ?? '');
+                $value = (string) ($cell->v ?? '');
+
+                if ($type === 's') {
+                    $value = $sharedStrings[(int) $value] ?? '';
+                } elseif ($type === 'inlineStr') {
+                    $value = (string) ($cell->is->t ?? '');
+                }
+
+                $row[$columnIndex] = $value;
+            }
+
+            if ($row !== []) {
+                ksort($row);
+                $denseRow = [];
+                for ($index = 0; $index <= $maxColumnIndex; $index++) {
+                    $denseRow[] = $row[$index] ?? '';
+                }
+                $rows[] = $denseRow;
+            }
+        }
+
+        return $rows;
+    }
+
+    private function xlsxWorksheetPath(ZipArchive $zip, array $preferredSheets): string
+    {
+        $workbookXml = $zip->getFromName('xl/workbook.xml');
+        $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+
+        if (! $workbookXml || ! $relsXml) {
+            return 'xl/worksheets/sheet1.xml';
+        }
+
+        $workbook = simplexml_load_string($workbookXml);
+        $relations = simplexml_load_string($relsXml);
+        $relationTargets = [];
+
+        foreach ($relations->Relationship ?? [] as $relation) {
+            $attributes = $relation->attributes();
+            $relationTargets[(string) $attributes['Id']] = (string) $attributes['Target'];
+        }
+
+        $fallbackPath = null;
+        foreach ($workbook->sheets->sheet ?? [] as $sheet) {
+            $attributes = $sheet->attributes();
+            $relationAttributes = $sheet->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships');
+            $relationId = (string) ($relationAttributes['id'] ?? '');
+            $target = $relationTargets[$relationId] ?? '';
+            $path = $this->normalizeXlsxWorksheetPath($target);
+            $sheetName = (string) ($attributes['name'] ?? '');
+
+            $fallbackPath ??= $path;
+            foreach ($preferredSheets as $preferredSheet) {
+                if (strcasecmp($sheetName, $preferredSheet) === 0) {
+                    return $path;
+                }
+            }
+        }
+
+        return $fallbackPath ?: 'xl/worksheets/sheet1.xml';
+    }
+
+    private function normalizeXlsxWorksheetPath(string $target): string
+    {
+        if ($target === '') {
+            return 'xl/worksheets/sheet1.xml';
+        }
+
+        if (str_starts_with($target, '/')) {
+            return ltrim($target, '/');
+        }
+
+        return 'xl/'.ltrim($target, '/');
+    }
+
+    private function readXlsxSharedStrings(ZipArchive $zip): array
+    {
+        $xml = $zip->getFromName('xl/sharedStrings.xml');
+        if (! $xml) {
+            return [];
+        }
+
+        $strings = [];
+        $shared = simplexml_load_string($xml);
+
+        foreach ($shared->si ?? [] as $item) {
+            if (isset($item->t)) {
+                $strings[] = (string) $item->t;
+                continue;
+            }
+
+            $text = '';
+            foreach ($item->r ?? [] as $run) {
+                $text .= (string) ($run->t ?? '');
+            }
+            $strings[] = $text;
+        }
+
+        return $strings;
+    }
+
+    private function xlsxColumnIndex(string $cellRef): int
+    {
+        preg_match('/^[A-Z]+/', $cellRef, $matches);
+        $letters = $matches[0] ?? 'A';
+        $index = 0;
+
+        foreach (str_split($letters) as $letter) {
+            $index = ($index * 26) + (ord($letter) - 64);
+        }
+
+        return $index - 1;
+    }
+
+    private function normalizeImportHeader(?string $header): string
+    {
+        $header = strtolower(trim((string) $header));
+        $header = preg_replace('/[^a-z0-9]+/', '_', $header);
+
+        return trim($header, '_');
+    }
+
+    private function combineImportRow(array $headers, array $row): array
+    {
+        $data = [];
+
+        foreach ($headers as $index => $header) {
+            if ($header === '') {
+                continue;
+            }
+
+            $data[$header] = trim((string) ($row[$index] ?? ''));
+        }
+
+        return $data;
+    }
+
+    private function isBlankImportRow(array $data): bool
+    {
+        return collect($data)->every(fn ($value) => trim((string) $value) === '');
+    }
+
+    private function normalizeImportDate($value): ?Carbon
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (is_numeric($value) && (float) $value > 20000) {
+            return Carbon::create(1899, 12, 30)->addDays((int) $value)->startOfDay();
+        }
+
+        foreach (['Y-m-d', 'd/m/Y', 'd-m-Y', 'm/d/Y'] as $format) {
+            try {
+                $date = Carbon::createFromFormat($format, $value);
+                if ($date && $date->format($format) === $value) {
+                    return $date->startOfDay();
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        try {
+            return Carbon::parse($value)->startOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function normalizeImportTime($value): ?string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (is_numeric($value) && (float) $value > 0 && (float) $value < 1) {
+            $seconds = (int) round((float) $value * 86400);
+
+            return gmdate('H:i:s', $seconds);
+        }
+
+        if (preg_match('/^\d{1,2}[.:]\d{2}([.:]\d{2})?$/', $value)) {
+            $parts = preg_split('/[.:]/', $value);
+            $hour = (int) $parts[0];
+            $minute = (int) $parts[1];
+            $second = (int) ($parts[2] ?? 0);
+
+            if ($hour <= 23 && $minute <= 59 && $second <= 59) {
+                return sprintf('%02d:%02d:%02d', $hour, $minute, $second);
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeImportDurationMinutes($value): int
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return 0;
+        }
+
+        if (is_numeric($value)) {
+            $number = (float) $value;
+
+            if ($number > 0 && $number < 1) {
+                return (int) round($number * 1440);
+            }
+
+            return max(0, (int) round($number));
+        }
+
+        if (preg_match('/^\d{1,2}[.:]\d{2}([.:]\d{2})?$/', $value)) {
+            $parts = preg_split('/[.:]/', $value);
+            $hours = (int) $parts[0];
+            $minutes = (int) $parts[1];
+            $seconds = (int) ($parts[2] ?? 0);
+
+            return max(0, ($hours * 60) + $minutes + (int) round($seconds / 60));
+        }
+
+        return 0;
+    }
+
+    private function upsertImportedOvertime(
+        Employee $employee,
+        Carbon $date,
+        array $data,
+        string $clockIn,
+        string $clockOut,
+        int $breakDuration,
+        ?string $shiftEndTime
+    ): bool {
+        $totalDuration = $this->calculateImportedOvertimeDuration($clockIn, $clockOut);
+
+        if ($totalDuration <= 0) {
+            return false;
+        }
+
+        $breakDuration = min($breakDuration, $totalDuration);
+        $actualDuration = max(0, $totalDuration - $breakDuration);
+        $overtimeType = $this->importedOvertimeType($data['shift'] ?? null);
+
+        OvertimeRequest::updateOrCreate(
+            [
+                'employee_id' => $employee->id,
+                'date' => $date->format('Y-m-d'),
+            ],
+            [
+                'overtime_type' => $overtimeType,
+                'planned_start' => $overtimeType === 'holiday' ? $clockIn : null,
+                'planned_end' => $overtimeType === 'holiday' ? $clockOut : null,
+                'pre_shift_duration' => 0,
+                'pre_shift_break' => 0,
+                'post_shift_duration' => $overtimeType === 'workday' ? $totalDuration : 0,
+                'post_shift_break' => 0,
+                'break_duration' => $breakDuration,
+                'total_duration' => $totalDuration,
+                'approved_duration' => null,
+                'approved_break' => null,
+                'actual_duration' => $actualDuration,
+                'shift_end_time' => $shiftEndTime,
+                'actual_clock_in' => $clockIn,
+                'actual_clock_out' => $clockOut,
+                'reason' => 'Import attendance overtime',
+                'status' => 'approved',
+                'current_step' => 1,
+            ]
+        );
+
+        return true;
+    }
+
+    private function calculateImportedOvertimeDuration(string $clockIn, string $clockOut): int
+    {
+        $start = Carbon::createFromFormat('H:i:s', $clockIn);
+        $end = Carbon::createFromFormat('H:i:s', $clockOut);
+
+        if ($end->lessThanOrEqualTo($start)) {
+            $end->addDay();
+        }
+
+        return (int) $start->diffInMinutes($end);
+    }
+
+    private function importedOvertimeType($shift): string
+    {
+        $shift = strtolower(trim((string) $shift));
+        $normalizedShift = preg_replace('/[^a-z0-9]+/', '_', $shift);
+
+        if (str_contains($shift, 'holiday') || str_contains($shift, 'libur') || str_contains($normalizedShift, 'dayoff') || str_contains($normalizedShift, 'day_off')) {
+            return 'holiday';
+        }
+
+        if (in_array($normalizedShift, ['off', 'day_off', 'dayoff', 'national_holiday'], true)) {
+            return 'holiday';
+        }
+
+        return 'workday';
+    }
+
+    private function isLateForImportedAttendance(Employee $employee, Carbon $date, ?string $clockIn, $importedShift = null): bool
+    {
+        if (! $clockIn) {
+            return false;
+        }
+
+        $employee->loadMissing('scheduleTemplate.days.shift');
+        $override = ScheduleAssignment::with('shift')
+            ->where('employee_id', $employee->id)
+            ->where('date', $date->format('Y-m-d'))
+            ->first();
+
+        if ($override?->shift) {
+            $shift = $override->shift;
+
+            if ($shift->is_off || ! $shift->start_time) {
+                return false;
+            }
+
+            return $clockIn > substr($shift->start_time, 0, 8);
+        }
+
+        if ($this->importedOvertimeType($importedShift) === 'holiday') {
+            return false;
+        }
+
+        $holiday = Holiday::where('company_id', $employee->company_id)
+            ->where('date', $date->format('Y-m-d'))
+            ->exists();
+
+        if ($holiday) {
+            return false;
+        }
+
+        $shift = $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
+
+        if (! $shift || $shift->is_off || ! $shift->start_time) {
+            return false;
+        }
+
+        return $clockIn > substr($shift->start_time, 0, 8);
     }
 
     public function employeeDetail(Request $request, $id)
@@ -277,9 +798,8 @@ class AttendanceRecapController extends Controller
             }
 
             // Check leave
-            $leave = $leaves->first(function ($l) use ($date) {
-                return $date->between($l->start_date, $l->end_date);
-            });
+            $leave = AttendanceLateExcuse::firstForDate($leaves, $date);
+            $lateExcuse = AttendanceLateExcuse::isLateArrivalLeave($leave) ? $leave : null;
 
             $status = 'no_schedule';
             $statusLabel = '-';
@@ -287,7 +807,7 @@ class AttendanceRecapController extends Controller
                 $status = 'holiday';
                 $statusLabel = $holiday->name;
                 $stats['libur']++;
-            } elseif ($leave) {
+            } elseif ($leave && !$lateExcuse) {
                 $status = 'leave';
                 $statusLabel = $leave->leaveType->name ?? 'Cuti';
                 $stats['cuti']++;
@@ -296,13 +816,15 @@ class AttendanceRecapController extends Controller
                 $statusLabel = 'OFF';
                 $stats['off']++;
             } elseif ($att && $att->status === 'present') {
-                if ($att->is_late) {
+                if ($att->is_late && !$lateExcuse) {
                     $status = 'late';
                     $statusLabel = 'Terlambat';
                     $stats['terlambat']++;
                 } else {
                     $status = 'present';
-                    $statusLabel = 'Hadir';
+                    $statusLabel = $att->is_late && $lateExcuse
+                        ? AttendanceLateExcuse::STATUS_LABEL
+                        : 'Hadir';
                 }
                 $stats['hadir']++;
             } elseif ($shift && !$shift->is_off && $date->lte(Carbon::today())) {
@@ -322,6 +844,7 @@ class AttendanceRecapController extends Controller
                 'attendance' => $att,
                 'holiday' => $holiday,
                 'leave' => $leave,
+                'late_excuse' => $lateExcuse,
                 'status' => $status,
                 'status_label' => $statusLabel,
             ];

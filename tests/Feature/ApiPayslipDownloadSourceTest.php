@@ -24,4 +24,18 @@ class ApiPayslipDownloadSourceTest extends TestCase
 
         $this->assertStringContainsString("'loan' => PayslipLoanSummary::forComponent(\$comp)", $source);
     }
+
+    public function test_payslip_download_sources_use_safe_filenames(): void
+    {
+        $apiSource = file_get_contents(app_path('Http/Controllers/Api/PayslipController.php'));
+        $adminSource = file_get_contents(app_path('Http/Controllers/Admin/PayslipController.php'));
+        $mailSource = file_get_contents(app_path('Mail/PayslipPublishedMail.php'));
+
+        $this->assertStringContainsString('PayslipFilename::make', $apiSource);
+        $this->assertStringContainsString('PayslipFilename::make', $adminSource);
+        $this->assertStringContainsString('PayslipFilename::make', $mailSource);
+        $this->assertStringNotContainsString("'Payslip_' . \$detail->employee->employee_code", $apiSource);
+        $this->assertStringNotContainsString("'Payslip_' . \$detail->employee->employee_code", $adminSource);
+        $this->assertStringNotContainsString("'Payslip_'.\$this->detail->employee->employee_code", $mailSource);
+    }
 }

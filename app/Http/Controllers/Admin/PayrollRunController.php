@@ -19,6 +19,7 @@ use App\Models\PayrollRunDetail;
 use App\Models\ScheduleAssignment;
 use App\Services\BpjsCalculator;
 use App\Services\Pph21Calculator;
+use App\Support\LoanPayrollComponentSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -509,6 +510,10 @@ class PayrollRunController extends Controller
             foreach ($empComponents as $ec) {
                 $comp = $ec->component;
                 if ($comp->is_auto) {
+                    continue;
+                }
+
+                if (LoanPayrollComponentSync::isLoanComponentName($comp->name)) {
                     continue;
                 }
 

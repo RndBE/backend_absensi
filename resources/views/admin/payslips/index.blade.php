@@ -3,8 +3,12 @@
 
 @section('content')
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
-    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">receipt</span> Payslip Karyawan</h3>
+        <button type="button" class="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-[12px] font-semibold text-white transition hover:bg-indigo-700 cursor-pointer" data-payslip-import-open>
+            <span class="material-symbols-outlined text-[15px] shrink-0">upload</span>
+            Import Payslip
+        </button>
     </div>
     <div class="p-5">
         {{-- Filters --}}
@@ -72,6 +76,46 @@
         </div>
     </div>
 </div>
+
+<div id="payslipImportModal" class="hidden fixed inset-0 z-[90] items-center justify-center px-4 py-6">
+    <div class="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]" data-payslip-import-close></div>
+    <form action="{{ route('admin.payslips.import') }}" method="POST" enctype="multipart/form-data" class="relative w-full max-w-[420px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl" data-payslip-import-form>
+        @csrf
+        <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <div>
+                <h3 class="text-[15px] font-bold text-gray-900">Import Payslip</h3>
+                <p class="mt-0.5 text-[11px] text-gray-500">Pilih periode dan file payroll.</p>
+            </div>
+            <button type="button" class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 cursor-pointer" data-payslip-import-close>
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        </div>
+        <div class="space-y-3 px-4 py-4">
+            <div>
+                <label class="mb-1.5 block text-[12px] font-semibold text-gray-700">Periode</label>
+                <input type="month" name="period" value="{{ request('period', now()->format('Y-m')) }}" required class="h-[38px] w-full rounded-lg border border-gray-300 px-3 text-[13px] font-semibold text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+                <label class="mb-1.5 block text-[12px] font-semibold text-gray-700">File Import</label>
+                <label class="inline-flex h-[38px] min-w-0 w-full items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 text-[12px] font-semibold text-gray-700 transition hover:bg-gray-100 cursor-pointer" title="Format import: employee_code,basic_salary,Tunjangan Makan,Lembur,BPJS Kesehatan">
+                    <span class="material-symbols-outlined text-[15px] shrink-0">upload_file</span>
+                    <span class="truncate" data-payslip-import-file-name>Pilih CSV/XLSX</span>
+                    <span class="sr-only">Format import: employee_code,basic_salary,Tunjangan Makan,Lembur,BPJS Kesehatan</span>
+                    <input type="file" name="payslip_file" accept=".csv,.txt,.xlsx" required class="sr-only" onchange="this.form.querySelector('[data-payslip-import-file-name]').textContent = this.files[0]?.name || 'Pilih CSV/XLSX'">
+                </label>
+                <p class="mt-2 text-[11px] leading-4 text-gray-500">Bisa CSV/XLSX template atau report salary sheet PAYSLIP.</p>
+            </div>
+        </div>
+        <div class="flex items-center justify-end gap-2 border-t border-gray-100 bg-gray-50 px-4 py-3">
+            <button type="button" class="inline-flex h-[38px] items-center rounded-lg border border-gray-300 bg-white px-4 text-[12px] font-semibold text-gray-700 transition hover:bg-gray-100 cursor-pointer" data-payslip-import-close>Batal</button>
+            <button class="inline-flex h-[38px] items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-[12px] font-semibold text-white transition hover:bg-indigo-700 cursor-pointer">
+                <span class="material-symbols-outlined text-[15px] shrink-0">upload</span>
+                Import
+            </button>
+        </div>
+    </form>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 <script>
 const payslipSearch = document.getElementById('payslipSearch');
@@ -114,5 +158,33 @@ if (payslipSearch) {
     payslipSearch.addEventListener('input', applyPayslipSearch);
     applyPayslipSearch();
 }
+
+const payslipImportModal = document.getElementById('payslipImportModal');
+const payslipImportOpen = document.querySelector('[data-payslip-import-open]');
+const payslipImportCloses = document.querySelectorAll('[data-payslip-import-close]');
+
+function openPayslipImportModal() {
+    if (!payslipImportModal) return;
+    payslipImportModal.classList.remove('hidden');
+    payslipImportModal.classList.add('flex');
+}
+
+function closePayslipImportModal() {
+    if (!payslipImportModal) return;
+    payslipImportModal.classList.add('hidden');
+    payslipImportModal.classList.remove('flex');
+}
+
+if (payslipImportOpen) {
+    payslipImportOpen.addEventListener('click', openPayslipImportModal);
+}
+
+payslipImportCloses.forEach((button) => {
+    button.addEventListener('click', closePayslipImportModal);
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closePayslipImportModal();
+});
 </script>
 @endsection

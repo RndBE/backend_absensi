@@ -49,6 +49,7 @@
                 <option value="contract" {{ request('status') === 'contract' ? 'selected' : '' }}>Kontrak</option>
                 <option value="intern" {{ request('status') === 'intern' ? 'selected' : '' }}>Magang</option>
                 <option value="probation" {{ request('status') === 'probation' ? 'selected' : '' }}>Probation</option>
+                <option value="outsourcing" {{ request('status') === 'outsourcing' ? 'selected' : '' }}>Outsourcing</option>
             </select>
             @if(request()->filled('department_id') || request()->filled('status'))
                 <a href="{{ route('admin.employees.index') }}" class="inline-flex items-center px-3 py-2.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all duration-200">Reset</a>
@@ -95,8 +96,12 @@
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">Kontrak</span>
                             @elseif($emp->employment_status === 'intern')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-gray-100 text-gray-600">Magang</span>
-                            @else
+                            @elseif($emp->employment_status === 'probation')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Probation</span>
+                            @elseif($emp->employment_status === 'outsourcing')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-cyan-100 text-cyan-800">Outsourcing</span>
+                            @else
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-slate-100 text-slate-700">{{ ucfirst($emp->employment_status ?? '-') }}</span>
                             @endif
                         </td>
                         <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $emp->join_date?->format('d/m/Y') ?? '-' }}</td>

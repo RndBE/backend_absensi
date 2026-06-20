@@ -116,6 +116,45 @@ class PayrollPayslipEmailPublishTest extends TestCase
         });
     }
 
+    public function test_payslip_email_attachment_filename_replaces_slashes_in_employee_code(): void
+    {
+        Mail::fake();
+
+        $company = Company::create(['name' => 'PT Payroll Email']);
+        $employee = Employee::create([
+            'employee_code' => '004/SOFTW/XII/2025',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Payslip',
+            'email' => 'employee-slash@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+        ]);
+        $run = PayrollRun::create([
+            'period' => '2026-05',
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'total_earning' => 5000000,
+            'total_deduction' => 0,
+            'net_salary' => 5000000,
+            'components' => [],
+        ])->load(['employee', 'payrollRun']);
+
+        Mail::to($employee->email)->send(new PayslipPublishedMail($detail, $company, 'fake-pdf-binary'));
+
+        Mail::assertSent(PayslipPublishedMail::class, function (PayslipPublishedMail $mail) use ($employee) {
+            $mail->build();
+
+            return $mail->hasTo($employee->email)
+                && $mail->hasAttachedData('fake-pdf-binary', 'Payslip_004-SOFTW-XII-2025_2026-05.pdf', ['mime' => 'application/pdf']);
+        });
+    }
+
     public function test_payslip_email_header_uses_text_brand_without_remote_image(): void
     {
         $company = Company::create(['name' => 'PT Payroll Email']);
@@ -202,6 +241,149 @@ class PayrollPayslipEmailPublishTest extends TestCase
         $this->assertStringNotContainsString('BPJS Kesehatan Perusahaan', $emailPdfHtml);
     }
 
+    public function test_payslip_web_renders_imported_info_components_as_benefits(): void
+    {
+        $company = Company::create(['name' => 'PT Payroll Email']);
+        $employee = Employee::create([
+            'employee_code' => 'EMP-INFO',
+            'company_id' => $company->id,
+            'department_id' => null,
+            'full_name' => 'Employee Info',
+            'email' => 'info-web@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+        ]);
+        $run = PayrollRun::create([
+            'period' => '2026-05',
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'total_earning' => 5000000,
+            'total_deduction' => 0,
+            'net_salary' => 5000000,
+            'components' => [
+                ['name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'amount' => 240000],
+                ['name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'amount' => 9600, 'detail' => '4% x Rp 240.000'],
+                ['name' => 'Rate BPJS Ketenagakerjaan', 'type' => 'info', 'amount' => 360000],
+                ['name' => 'JHT Perusahaan', 'type' => 'info', 'amount' => 13320, 'detail' => '3.7% x Rp 360.000'],
+            ],
+        ])->load(['employee', 'payrollRun']);
+        $bpjsData = ['items' => [], 'total' => 0];
+        $loanSummary = ['items' => [], 'total' => 0];
+        $currentAdmin = $employee;
+
+        $html = view('admin.payslips.show', compact('detail', 'company', 'bpjsData', 'loanSummary', 'currentAdmin'))->render();
+
+        $this->assertStringContainsString('Benefits*', $html);
+        $this->assertStringContainsString('Rate BPJS Kesehatan', $html);
+        $this->assertStringContainsString('240.000', $html);
+        $this->assertStringContainsString('Rate BPJS Ketenagakerjaan', $html);
+        $this->assertStringContainsString('360.000', $html);
+        $this->assertStringContainsString('622.920', $html);
+        $this->assertStringContainsString('BPJS Kesehatan Perusahaan: 4% x Rp 240.000', $html);
+        $this->assertStringContainsString('JHT Perusahaan: 3.7% x Rp 360.000', $html);
+    }
+
+    public function test_payslip_pdf_renders_imported_info_components_as_benefits(): void
+    {
+        $company = Company::create(['name' => 'PT Payroll Email']);
+        $employee = Employee::create([
+            'employee_code' => 'EMP-INFO-PDF',
+            'company_id' => $company->id,
+            'department_id' => null,
+            'full_name' => 'Employee Info Pdf',
+            'email' => 'info-pdf@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+        ]);
+        $run = PayrollRun::create([
+            'period' => '2026-05',
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'total_earning' => 5000000,
+            'total_deduction' => 0,
+            'net_salary' => 5000000,
+            'components' => [
+                ['name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'amount' => 240000],
+                ['name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'amount' => 9600, 'detail' => '4% x Rp 240.000'],
+                ['name' => 'Rate BPJS Ketenagakerjaan', 'type' => 'info', 'amount' => 360000],
+                ['name' => 'JHT Perusahaan', 'type' => 'info', 'amount' => 13320, 'detail' => '3.7% x Rp 360.000'],
+            ],
+        ])->load(['employee', 'payrollRun']);
+        $bpjsData = ['items' => [], 'total' => 0];
+        $loanSummary = ['items' => [], 'total' => 0];
+        $logoBase64 = null;
+
+        $html = Blade::render(
+            file_get_contents(resource_path('views/admin/payslips/pdf.blade.php')),
+            compact('detail', 'company', 'logoBase64', 'bpjsData', 'loanSummary')
+        );
+
+        $this->assertStringContainsString('Benefits*', $html);
+        $this->assertStringContainsString('Rate BPJS Kesehatan', $html);
+        $this->assertStringContainsString('240.000', $html);
+        $this->assertStringContainsString('Rate BPJS Ketenagakerjaan', $html);
+        $this->assertStringContainsString('360.000', $html);
+        $this->assertStringContainsString('622.920', $html);
+        $this->assertStringContainsString('BPJS Kesehatan Perusahaan: 4% x Rp 240.000', $html);
+        $this->assertStringContainsString('JHT Perusahaan: 3.7% x Rp 360.000', $html);
+    }
+
+    public function test_payslip_benefits_generates_formula_notes_from_bpjs_raw_data(): void
+    {
+        $benefits = \App\Support\PayslipBenefits::from([
+            'items' => [
+                ['label' => 'Rate BPJS Kesehatan', 'amount' => 2624387, 'is_basis' => true],
+                ['label' => 'BPJS Kesehatan Perusahaan', 'amount' => 104975, 'is_basis' => false],
+                ['label' => 'JHT Perusahaan (Jaminan Hari Tua)', 'amount' => 97102, 'is_basis' => false],
+            ],
+            'raw' => [
+                'kesehatan' => ['basis' => 2624387, 'company' => 104975],
+                'jht' => ['basis' => 2624387, 'company' => 97102],
+                'jkk' => ['basis' => 2624387, 'company' => 6299],
+                'jkm' => ['basis' => 2624387, 'company' => 7873],
+            ],
+        ]);
+
+        $notes = collect($benefits['notes'])->map(fn ($note) => $note['label'].': '.$note['detail'])->all();
+
+        $this->assertContains('BPJS Kesehatan Perusahaan: 4% x Rp 2.624.387', $notes);
+        $this->assertContains('JHT Perusahaan: 3.7% x Rp 2.624.387', $notes);
+        $this->assertContains('JKK Perusahaan: 0.24% x Rp 2.624.387', $notes);
+        $this->assertContains('JKM Perusahaan: 0.3% x Rp 2.624.387', $notes);
+    }
+
+    public function test_payslip_benefits_infers_company_contributions_from_imported_rate_basis(): void
+    {
+        $benefits = \App\Support\PayslipBenefits::from([], [
+            ['name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'amount' => 0],
+            ['name' => 'Rate BPJS Ketenagakerjaan', 'type' => 'info', 'amount' => 2624387],
+        ]);
+
+        $items = collect($benefits['items']);
+        $notes = collect($benefits['notes'])->map(fn ($note) => $note['label'].': '.$note['detail'])->all();
+
+        $this->assertSame(2624387.0, $items->firstWhere('label', 'Rate BPJS Ketenagakerjaan')['amount']);
+        $this->assertSame(6299.0, $items->firstWhere('label', 'JKK (Jaminan Kecelakaan Kerja)')['amount']);
+        $this->assertSame(7873.0, $items->firstWhere('label', 'JKM (Jaminan Kematian)')['amount']);
+        $this->assertSame(97102.0, $items->firstWhere('label', 'JHT Perusahaan (Jaminan Hari Tua)')['amount']);
+        $this->assertSame(2735661.0, $benefits['total']);
+        $this->assertContains('JKK Perusahaan: 0.24% x Rp 2.624.387', $notes);
+        $this->assertContains('JKM Perusahaan: 0.3% x Rp 2.624.387', $notes);
+        $this->assertContains('JHT Perusahaan: 3.7% x Rp 2.624.387', $notes);
+    }
+
     public function test_payslip_pdf_uses_legacy_layout_with_indonesian_income_and_expense_labels(): void
     {
         $company = Company::create(['name' => 'PT Payroll Email']);
@@ -270,7 +452,10 @@ class PayrollPayslipEmailPublishTest extends TestCase
             'payroll_logs',
             'payroll_runs',
             'employee_payrolls',
+            'attendance_requests',
             'employees',
+            'leave_requests',
+            'overtime_requests',
             'companies',
         ] as $table) {
             Schema::dropIfExists($table);
@@ -334,6 +519,14 @@ class PayrollPayslipEmailPublishTest extends TestCase
             $table->text('notes')->nullable();
             $table->timestamps();
         });
+
+        foreach (['leave_requests', 'overtime_requests', 'attendance_requests'] as $tableName) {
+            Schema::create($tableName, function (Blueprint $table) {
+                $table->id();
+                $table->string('status')->nullable();
+                $table->timestamps();
+            });
+        }
 
         Schema::create('employee_payrolls', function (Blueprint $table) {
             $table->id();

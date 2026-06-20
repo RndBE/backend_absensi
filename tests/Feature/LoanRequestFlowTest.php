@@ -50,6 +50,20 @@ class LoanRequestFlowTest extends TestCase
         $this->assertStringNotContainsString('Persetujuan Pinjaman', $index);
     }
 
+    public function test_loan_form_supports_manual_and_automatic_monthly_installment_modes(): void
+    {
+        $form = file_get_contents(resource_path('views/admin/loan-requests/_form.blade.php'));
+
+        $this->assertStringContainsString('data-loan-installment-form', $form);
+        $this->assertStringContainsString('name="installment_mode"', $form);
+        $this->assertStringContainsString('value="auto"', $form);
+        $this->assertStringContainsString('value="manual"', $form);
+        $this->assertStringContainsString('data-monthly-installment-input', $form);
+        $this->assertStringContainsString('data-auto-installment-preview', $form);
+        $this->assertStringContainsString('Dihitung otomatis saat disimpan', $form);
+        $this->assertStringContainsString('addEventListener(\'change\'', $form);
+    }
+
     public function test_approval_maps_do_not_include_loan_requests(): void
     {
         $approvalSources = [

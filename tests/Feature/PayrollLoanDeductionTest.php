@@ -6,7 +6,9 @@ use App\Http\Controllers\Admin\PayrollRunController;
 use App\Models\Company;
 use App\Models\Employee;
 use App\Models\EmployeePayroll;
+use App\Models\EmployeePayrollComponent;
 use App\Models\LoanRequest;
+use App\Models\PayrollComponent;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunDetail;
 use Illuminate\Database\Schema\Blueprint;
@@ -294,6 +296,85 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertSame(0.0, (float) $loan->remaining_amount);
         $this->assertSame('paid', $loan->status);
         $this->assertNotNull($loan->paid_at);
+    }
+
+    public function test_synced_pinjaman_assignment_is_not_counted_twice_in_payroll(): void
+    {
+        $company = Company::create(['name' => 'PT Payroll Loan Sync']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-005',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll Sync',
+            'email' => 'admin5@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-005',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Loan Sync',
+            'email' => 'employee5@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        $pinjaman = PayrollComponent::create([
+            'name' => 'Pinjaman',
+            'type' => 'deduction',
+            'category' => 'recurring',
+            'is_taxable' => false,
+            'is_auto' => false,
+        ]);
+
+        EmployeePayrollComponent::create([
+            'employee_id' => $employee->id,
+            'payroll_component_id' => $pinjaman->id,
+            'amount' => 500000,
+            'start_date' => '2026-06-01',
+            'is_active' => true,
+        ]);
+
+        LoanRequest::create([
+            'employee_id' => $employee->id,
+            'amount' => 2000000,
+            'installment_count' => 4,
+            'monthly_installment' => 500000,
+            'remaining_amount' => 2000000,
+            'start_period' => '2026-06',
+            'status' => 'active',
+        ]);
+
+        $run = PayrollRun::create([
+            'period' => '2026-06',
+            'created_by' => $admin->id,
+        ]);
+
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+        $components = collect($detail->components);
+
+        $this->assertNull($components->firstWhere('name', 'Pinjaman'));
+        $this->assertCount(1, $components->where('name', 'Potongan Pinjaman'));
+        $this->assertSame(500000.0, (float) $components->firstWhere('name', 'Potongan Pinjaman')['amount']);
     }
 
     private function createPayrollLoanSchema(): void

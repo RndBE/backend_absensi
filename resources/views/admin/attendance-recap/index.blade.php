@@ -35,6 +35,12 @@
     {{-- Header --}}
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">analytics</span> Rekap Presensi</h3>
+        @if($canManageAttendance)
+            <button type="button" class="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-[12px] font-semibold text-white transition hover:bg-indigo-700 cursor-pointer" data-attendance-import-open>
+                <span class="material-symbols-outlined text-[15px] shrink-0">upload</span>
+                Import
+            </button>
+        @endif
     </div>
 
     {{-- Date + Filters --}}
@@ -202,6 +208,43 @@
         </table>
     </div>
 </div>
+
+@if($canManageAttendance)
+<div id="attendanceImportModal" class="hidden fixed inset-0 z-[90] items-center justify-center px-4 py-6">
+    <div class="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]" data-attendance-import-close></div>
+    <form action="{{ route('admin.attendance-recap.import') }}" method="POST" enctype="multipart/form-data" class="relative w-full max-w-[420px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl" data-attendance-import-form>
+        @csrf
+        <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <div>
+                <h3 class="text-[15px] font-bold text-gray-900">Import Presensi</h3>
+                <p class="mt-0.5 text-[11px] text-gray-500">Pilih file presensi manual.</p>
+            </div>
+            <button type="button" class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 cursor-pointer" data-attendance-import-close>
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        </div>
+        <div class="space-y-3 px-4 py-4">
+            <div>
+                <label class="mb-1.5 block text-[12px] font-semibold text-gray-700">File Import</label>
+                <label class="inline-flex h-[38px] min-w-0 w-full items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 text-[12px] font-semibold text-gray-700 transition hover:bg-gray-100 cursor-pointer" title="Format import: employee_code,date,clock_in,clock_out">
+                    <span class="material-symbols-outlined text-[15px] shrink-0">upload_file</span>
+                    <span class="truncate" data-import-file-name>Pilih CSV/XLSX</span>
+                    <span class="sr-only">Format import: employee_code,date,clock_in,clock_out</span>
+                    <input type="file" name="attendance_file" accept=".csv,.txt,.xlsx" required class="sr-only" onchange="this.form.querySelector('[data-import-file-name]').textContent = this.files[0]?.name || 'Pilih CSV/XLSX'">
+                </label>
+                <p class="mt-2 text-[11px] leading-4 text-gray-500">Format import: employee_code,date,clock_in,clock_out.</p>
+            </div>
+        </div>
+        <div class="flex items-center justify-end gap-2 border-t border-gray-100 bg-gray-50 px-4 py-3">
+            <button type="button" class="inline-flex h-[38px] items-center rounded-lg border border-gray-300 bg-white px-4 text-[12px] font-semibold text-gray-700 transition hover:bg-gray-100 cursor-pointer" data-attendance-import-close>Batal</button>
+            <button type="submit" class="inline-flex h-[38px] items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-[12px] font-semibold text-white transition hover:bg-indigo-700 cursor-pointer">
+                <span class="material-symbols-outlined text-[15px] shrink-0">upload</span>
+                Import
+            </button>
+        </div>
+    </form>
+</div>
+@endif
 
 {{-- Edit Offcanvas --}}
 @if($canManageAttendance)
@@ -373,6 +416,34 @@ if (attendanceRecapSearch) {
     attendanceRecapSearch.addEventListener('input', applyAttendanceRecapSearch);
     applyAttendanceRecapSearch();
 }
+
+const attendanceImportModal = document.getElementById('attendanceImportModal');
+const attendanceImportOpen = document.querySelector('[data-attendance-import-open]');
+const attendanceImportCloses = document.querySelectorAll('[data-attendance-import-close]');
+
+function openAttendanceImportModal() {
+    if (!attendanceImportModal) return;
+    attendanceImportModal.classList.remove('hidden');
+    attendanceImportModal.classList.add('flex');
+}
+
+function closeAttendanceImportModal() {
+    if (!attendanceImportModal) return;
+    attendanceImportModal.classList.add('hidden');
+    attendanceImportModal.classList.remove('flex');
+}
+
+if (attendanceImportOpen) {
+    attendanceImportOpen.addEventListener('click', openAttendanceImportModal);
+}
+
+attendanceImportCloses.forEach((button) => {
+    button.addEventListener('click', closeAttendanceImportModal);
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeAttendanceImportModal();
+});
 
 const recapData = @json($attData);
 let detailMap = null;

@@ -22,6 +22,7 @@ class ApiAttendanceClockInTest extends TestCase
         Schema::dropIfExists('schedule_assignments');
         Schema::dropIfExists('schedule_template_days');
         Schema::dropIfExists('schedule_templates');
+        Schema::dropIfExists('holidays');
         Schema::dropIfExists('notifications');
         Schema::dropIfExists('attendances');
         Schema::dropIfExists('overtime_requests');
@@ -82,6 +83,15 @@ class ApiAttendanceClockInTest extends TestCase
             $table->unsignedBigInteger('employee_id');
             $table->unsignedBigInteger('shift_id');
             $table->date('date');
+            $table->timestamps();
+        });
+
+        Schema::create('holidays', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id')->default(1);
+            $table->date('date');
+            $table->string('name');
+            $table->boolean('is_national')->default(true);
             $table->timestamps();
         });
 
@@ -211,6 +221,77 @@ class ApiAttendanceClockInTest extends TestCase
             'employee_id' => 1,
             'clock_in' => '14:34:00',
             'is_late' => true,
+        ]);
+    }
+
+    public function test_clock_in_on_national_holiday_is_not_marked_late(): void
+    {
+        DB::table('settings')->insert([
+            ['key' => 'require_photo', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'require_gps', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'face_verification_enabled', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        DB::table('shifts')->insert([
+            'id' => 1,
+            'company_id' => 1,
+            'name' => 'Pagi',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'is_off' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('schedule_templates')->insert([
+            'id' => 1,
+            'company_id' => 1,
+            'name' => '6 Hari Kerja (Pagi)',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('schedule_template_days')->insert([
+            'template_id' => 1,
+            'day_of_week' => 2,
+            'shift_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('holidays')->insert([
+            'company_id' => 1,
+            'date' => '2026-05-26',
+            'name' => 'Libur Nasional Test',
+            'is_national' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('employees')->insert([
+            'id' => 1,
+            'company_id' => 1,
+            'work_schedule_id' => null,
+            'schedule_template_id' => 1,
+            'employee_code' => 'EMP001',
+            'full_name' => 'Employee One',
+            'email' => 'employee@example.test',
+            'password' => 'password',
+            'role' => 'employee',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/api/attendance/clock-in', 'POST');
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        (new AttendanceController())->clockIn($request);
+
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'clock_in' => '14:34:00',
+            'is_late' => false,
         ]);
     }
 

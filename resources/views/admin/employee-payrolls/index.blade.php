@@ -133,5 +133,6 @@ if (employeePayrollSearch) {
     employeePayrollSearch.addEventListener('input', applyEmployeePayrollSearch);
     applyEmployeePayrollSearch();
 }
+
 </script>
 @endsection

@@ -8,7 +8,7 @@
         <h2 class="text-[20px] font-bold text-gray-900">Laporan Lembur</h2>
     </div>
     <a href="{{ route('admin.reports.export-overtime', request()->query()) }}" class="inline-flex items-center gap-1.5 px-4 py-2.5 text-[12.5px] font-semibold text-white bg-gradient-to-br from-amber-600 to-amber-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
-        <span class="material-symbols-outlined text-[16px]">download</span> Export CSV
+        <span class="material-symbols-outlined text-[16px]">download</span> Export Excel
     </a>
 </div>
 

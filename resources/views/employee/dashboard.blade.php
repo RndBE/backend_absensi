@@ -5,6 +5,7 @@
 @php
     $hasClockIn = (bool) $todayAttendance?->clock_in;
     $hasClockOut = (bool) $todayAttendance?->clock_out;
+    $todayLateExcuse = $todayAttendance?->is_late ? ($lateExcuseDates->get($today->toDateString()) ?? null) : null;
     $actionType = ! $hasClockIn ? 'clock-in' : (! $hasClockOut ? 'clock-out' : null);
     $actionLabel = ! $hasClockIn ? 'Clock In Sekarang' : (! $hasClockOut ? 'Clock Out Sekarang' : 'Presensi Selesai');
 @endphp
@@ -132,7 +133,7 @@
 
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 stat-border-blue">
-            <div class="flex items-center gap-2 text-[12px] font-bold text-gray-500 uppercase tracking-wide">
+            <div class="flex items-center gap-2 text-[12px] font-bold text-gra y-500 uppercase tracking-wide">
                 <span class="material-symbols-outlined text-[17px] text-blue-500">calendar_month</span>
                 Jadwal Hari Ini
             </div>
@@ -147,7 +148,9 @@
             </div>
             <div class="mt-3 text-[28px] font-black text-gray-900 leading-none">{{ $todayAttendance?->clock_in ? substr($todayAttendance->clock_in, 0, 5) : '-' }}</div>
             <div class="mt-2">
-                @if($todayAttendance?->is_late)
+                @if($todayLateExcuse)
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
+                @elseif($todayAttendance?->is_late)
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Terlambat</span>
                 @elseif($todayAttendance?->clock_in)
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Tercatat</span>
@@ -208,6 +211,10 @@
                 </thead>
                 <tbody>
                     @forelse($recentAttendances as $attendance)
+                        @php
+                            $attendanceDateKey = $attendance->date?->format('Y-m-d');
+                            $hasLateExcuse = $attendance->is_late && $attendanceDateKey && $lateExcuseDates->has($attendanceDateKey);
+                        @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $attendance->date?->format('d/m/Y') }}</td>
                             <td class="px-4 py-3.5 text-[13px] font-semibold text-emerald-600 border-b border-gray-100">{{ $attendance->clock_in ? substr($attendance->clock_in, 0, 5) : '-' }}</td>
@@ -217,6 +224,8 @@
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Review</span>
                                 @elseif($attendance->review_status === 'rejected')
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-800">Ditolak</span>
+                                @elseif($hasLateExcuse)
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
                                 @elseif($attendance->is_late)
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Terlambat</span>
                                 @else

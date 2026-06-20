@@ -156,12 +156,14 @@
                                 'permanent' => 'bg-emerald-100 text-emerald-800',
                                 'contract' => 'bg-blue-100 text-blue-800',
                                 'intern' => 'bg-gray-100 text-gray-600',
+                                'outsourcing' => 'bg-cyan-100 text-cyan-800',
                                 default => 'bg-amber-100 text-amber-800',
                             };
                             $statusLabel = match ($employee->employment_status) {
                                 'permanent' => 'Tetap',
                                 'contract' => 'Kontrak',
                                 'intern' => 'Magang',
+                                'outsourcing' => 'Outsourcing',
                                 default => 'Probation',
                             };
                         @endphp
@@ -186,7 +188,7 @@
                         <div class="text-[13.5px] font-medium text-gray-800">
                             {{ $employee->join_date?->format('d M Y') ?? '-' }}</div>
                     </div>
-                    @if(in_array($employee->employment_status, ['contract', 'intern', 'probation']))
+                    @if(in_array($employee->employment_status, ['contract', 'intern', 'probation', 'outsourcing']))
                         <div>
                             <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Kontrak Mulai
                             </div>
@@ -432,7 +434,7 @@
                             @endif
                         </span>
                     </div>
-                    @if(in_array($employee->employment_status, ['contract', 'intern', 'probation']) && $employee->contract_end_date)
+                    @if(in_array($employee->employment_status, ['contract', 'intern', 'probation', 'outsourcing']) && $employee->contract_end_date)
                         <div class="flex items-center justify-between">
                             <span class="text-[12.5px] text-gray-500">Sisa Kontrak</span>
                             @php

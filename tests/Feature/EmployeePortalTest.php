@@ -22,6 +22,7 @@ class EmployeePortalTest extends TestCase
         Schema::dropIfExists('schedule_assignments');
         Schema::dropIfExists('schedule_template_days');
         Schema::dropIfExists('schedule_templates');
+        Schema::dropIfExists('holidays');
         Schema::dropIfExists('request_attachments');
         Schema::dropIfExists('approval_logs');
         Schema::dropIfExists('employee_approvers');
@@ -92,6 +93,15 @@ class EmployeePortalTest extends TestCase
             $table->unsignedBigInteger('employee_id');
             $table->unsignedBigInteger('shift_id');
             $table->date('date');
+            $table->timestamps();
+        });
+
+        Schema::create('holidays', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id')->default(1);
+            $table->date('date');
+            $table->string('name');
+            $table->boolean('is_national')->default(true);
             $table->timestamps();
         });
 
@@ -312,6 +322,85 @@ class EmployeePortalTest extends TestCase
             ->assertDontSee('Bantuan Presensi');
     }
 
+    public function test_employee_dashboard_shows_clock_times_on_national_holiday_attendance(): void
+    {
+        Carbon::setTestNow('2026-12-25 13:00:00');
+        $this->seedEmployee();
+
+        DB::table('holidays')->insert([
+            'company_id' => 1,
+            'date' => '2026-12-25',
+            'name' => 'Natal Nasional',
+            'is_national' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-12-25',
+            'clock_in' => '09:00:00',
+            'clock_out' => '12:30:00',
+            'status' => 'present',
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Natal Nasional')
+            ->assertSee('09:00')
+            ->assertSee('12:30')
+            ->assertSee('Presensi Selesai');
+    }
+
+    public function test_employee_dashboard_shows_approved_late_arrival_permission_instead_of_late_status(): void
+    {
+        $this->seedEmployee();
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-06-15',
+            'clock_in' => '09:30:00',
+            'clock_out' => null,
+            'status' => 'present',
+            'review_status' => null,
+            'is_late' => true,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_types')->insert([
+            'id' => 3,
+            'name' => 'Izin Datang Terlambat',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 3,
+            'start_date' => '2026-06-15',
+            'end_date' => '2026-06-15',
+            'total_days' => 1,
+            'reason' => 'Macet',
+            'status' => 'approved',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Izin Terlambat')
+            ->assertDontSee('>Terlambat<', false);
+    }
+
     public function test_employee_can_open_profile_page(): void
     {
         $this->seedEmployee();
@@ -496,6 +585,46 @@ class EmployeePortalTest extends TestCase
             ->assertOk()
             ->assertSee('Cuti Tahunan - sisa 12 hari')
             ->assertSee('Cuti Melahirkan - sisa 90 hari');
+    }
+
+    public function test_employee_leave_create_auto_calculates_total_days_from_selected_dates(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/leaves/create')
+            ->assertOk()
+            ->assertSee('id="leaveStartDate"', false)
+            ->assertSee('id="leaveEndDate"', false)
+            ->assertSee('id="leaveTotalDays"', false)
+            ->assertSee('calculateLeaveTotalDays', false)
+            ->assertSee('readonly', false);
+    }
+
+    public function test_employee_leave_store_recalculates_total_days_from_dates(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/leaves', [
+                'leave_type_id' => 1,
+                'start_date' => '2026-06-20',
+                'end_date' => '2026-06-22',
+                'total_days' => '1',
+                'reason' => 'Keperluan keluarga',
+            ])
+            ->assertRedirect(route('employee.leaves.index'));
+
+        $this->assertDatabaseHas('leave_requests', [
+            'employee_id' => 1,
+            'leave_type_id' => 1,
+            'start_date' => '2026-06-20',
+            'end_date' => '2026-06-22',
+            'total_days' => 3,
+            'status' => 'pending',
+        ]);
     }
 
     public function test_employee_cannot_submit_leave_type_without_balance_from_web_portal(): void

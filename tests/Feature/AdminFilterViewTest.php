@@ -58,6 +58,22 @@ class AdminFilterViewTest extends TestCase
         $this->assertStringNotContainsString('material-symbols-outlined text-[22px] w-10 h-10', $view);
     }
 
+    public function test_attendance_recap_import_controls_use_compact_header_layout(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/attendance-recap/index.blade.php'));
+
+        $this->assertStringContainsString('data-attendance-import-open', $view);
+        $this->assertStringContainsString('id="attendanceImportModal"', $view);
+        $this->assertStringContainsString('data-attendance-import-close', $view);
+        $this->assertStringContainsString('data-attendance-import-form', $view);
+        $this->assertStringContainsString('max-w-[420px]', $view);
+        $this->assertStringContainsString('h-[38px]', $view);
+        $this->assertStringContainsString('min-w-0', $view);
+        $this->assertStringContainsString('Format import: employee_code,date,clock_in,clock_out', $view);
+        $this->assertStringNotContainsString('max-w-[480px]', $view);
+        $this->assertStringNotContainsString('data-import-file-name>employee_code,date,clock_in,clock_out</div>', $view);
+    }
+
     public function test_employee_index_uses_fuse_search_and_preserves_backend_dropdown_filters(): void
     {
         $view = file_get_contents(resource_path('views/admin/employees/index.blade.php'));
@@ -76,6 +92,22 @@ class AdminFilterViewTest extends TestCase
         $this->assertStringNotContainsString('name="search"', $view);
         $this->assertStringNotContainsString('$request->search', $controller);
         $this->assertStringNotContainsString('paginate(15)', $controller);
+    }
+
+    public function test_employee_views_include_outsourcing_employment_status(): void
+    {
+        $index = file_get_contents(resource_path('views/admin/employees/index.blade.php'));
+        $create = file_get_contents(resource_path('views/admin/employees/create.blade.php'));
+        $edit = file_get_contents(resource_path('views/admin/employees/edit.blade.php'));
+        $show = file_get_contents(resource_path('views/admin/employees/show.blade.php'));
+
+        $this->assertStringContainsString('value="outsourcing"', $index);
+        $this->assertStringContainsString('Outsourcing', $index);
+        $this->assertStringContainsString('value="outsourcing"', $create);
+        $this->assertStringContainsString('value="outsourcing"', $edit);
+        $this->assertStringContainsString("'outsourcing' => 'Outsourcing'", $show);
+        $this->assertStringContainsString("['contract','intern','probation','outsourcing']", $create);
+        $this->assertStringContainsString("['contract','intern','probation','outsourcing']", $edit);
     }
 
     public function test_payroll_component_index_uses_fuse_search_with_type_tabs(): void
@@ -134,6 +166,22 @@ class AdminFilterViewTest extends TestCase
         $this->assertStringNotContainsString('$request->search', $controller);
         $this->assertStringNotContainsString('paginate(20)', $controller);
         $this->assertStringContainsString('request(\'period\')', $view);
+    }
+
+    public function test_payslip_import_controls_use_compact_header_layout(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/payslips/index.blade.php'));
+
+        $this->assertStringContainsString('data-payslip-import-open', $view);
+        $this->assertStringContainsString('id="payslipImportModal"', $view);
+        $this->assertStringContainsString('data-payslip-import-close', $view);
+        $this->assertStringContainsString('data-payslip-import-form', $view);
+        $this->assertStringContainsString('max-w-[420px]', $view);
+        $this->assertStringContainsString('h-[38px]', $view);
+        $this->assertStringContainsString('min-w-0', $view);
+        $this->assertStringContainsString('Format import: employee_code,basic_salary,Tunjangan Makan,Lembur,BPJS Kesehatan', $view);
+        $this->assertStringNotContainsString('max-w-[480px]', $view);
+        $this->assertStringNotContainsString('data-payslip-import-file-name>employee_code,basic_salary,Tunjangan Makan,Lembur,BPJS Kesehatan</div>', $view);
     }
 
     public function test_policy_and_travel_zone_pages_use_standard_admin_card_layout(): void

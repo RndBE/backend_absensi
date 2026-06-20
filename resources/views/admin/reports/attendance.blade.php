@@ -8,7 +8,7 @@
         <h2 class="text-[20px] font-bold text-gray-900">Laporan Absensi</h2>
     </div>
     <a href="{{ route('admin.reports.export-attendance', request()->query()) }}" class="inline-flex items-center gap-1.5 px-4 py-2.5 text-[12.5px] font-semibold text-white bg-gradient-to-br from-blue-600 to-blue-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
-        <span class="material-symbols-outlined text-[16px]">download</span> Export CSV
+        <span class="material-symbols-outlined text-[16px]">download</span> Export Excel
     </a>
 </div>
 

@@ -31,15 +31,15 @@
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Mulai</label>
-                <input type="date" name="start_date" value="{{ old('start_date') }}" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="date" id="leaveStartDate" name="start_date" value="{{ old('start_date') }}" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
             </div>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Selesai</label>
-                <input type="date" name="end_date" value="{{ old('end_date') }}" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="date" id="leaveEndDate" name="end_date" value="{{ old('end_date') }}" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
             </div>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Total Hari</label>
-                <input type="number" name="total_days" value="{{ old('total_days', 1) }}" min="0.5" step="0.5" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="number" id="leaveTotalDays" name="total_days" value="{{ old('total_days', 1) }}" min="1" step="1" required readonly class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg bg-gray-50 text-gray-700 outline-none focus:border-indigo-500 cursor-not-allowed">
             </div>
         </div>
 
@@ -55,4 +55,32 @@
         </button>
     </form>
 </div>
+
+<script>
+    function calculateLeaveTotalDays() {
+        const startInput = document.getElementById('leaveStartDate');
+        const endInput = document.getElementById('leaveEndDate');
+        const totalInput = document.getElementById('leaveTotalDays');
+
+        if (!startInput || !endInput || !totalInput || !startInput.value || !endInput.value) {
+            return;
+        }
+
+        const startDate = new Date(`${startInput.value}T00:00:00`);
+        const endDate = new Date(`${endInput.value}T00:00:00`);
+        const dayInMilliseconds = 24 * 60 * 60 * 1000;
+        const totalDays = Math.floor((endDate - startDate) / dayInMilliseconds) + 1;
+
+        totalInput.value = totalDays > 0 ? totalDays : 1;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const startInput = document.getElementById('leaveStartDate');
+        const endInput = document.getElementById('leaveEndDate');
+
+        startInput?.addEventListener('change', calculateLeaveTotalDays);
+        endInput?.addEventListener('change', calculateLeaveTotalDays);
+        calculateLeaveTotalDays();
+    });
+</script>
 @endsection

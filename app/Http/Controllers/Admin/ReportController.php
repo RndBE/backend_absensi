@@ -9,6 +9,7 @@ use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
 use App\Models\PayrollRunDetail;
 use App\Models\Department;
+use App\Support\SimpleXlsxExporter;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -80,7 +81,7 @@ class ReportController extends Controller
 
         $data = $query->orderBy('date')->orderBy('employee_id')->get();
 
-        return $this->streamCsv("attendance_{$month}.csv", [
+        return $this->streamXlsx("attendance_{$month}.xlsx", [
             'Tanggal', 'Kode Karyawan', 'Nama', 'Departemen', 'Clock In', 'Clock Out', 'Status', 'Terlambat',
         ], $data->map(fn($a) => [
             $a->date->format('Y-m-d'),
@@ -91,7 +92,7 @@ class ReportController extends Controller
             $a->clock_out ?? '-',
             $a->status,
             $a->is_late ? 'Ya' : 'Tidak',
-        ]));
+        ]), 'Laporan Absensi');
     }
 
     // ========================
@@ -142,7 +143,7 @@ class ReportController extends Controller
 
         $data = $query->orderByDesc('start_date')->get();
 
-        return $this->streamCsv("leave_{$year}.csv", [
+        return $this->streamXlsx("leave_{$year}.xlsx", [
             'Kode Karyawan', 'Nama', 'Jenis Cuti', 'Tanggal Mulai', 'Tanggal Selesai', 'Jumlah Hari', 'Status', 'Alasan',
         ], $data->map(fn($l) => [
             $l->employee->employee_code ?? '',
@@ -153,7 +154,7 @@ class ReportController extends Controller
             $l->total_days,
             $l->status,
             $l->reason ?? '',
-        ]));
+        ]), 'Laporan Cuti');
     }
 
     // ========================
@@ -208,7 +209,7 @@ class ReportController extends Controller
 
         $data = $query->orderByDesc('date')->get();
 
-        return $this->streamCsv("overtime_{$month}.csv", [
+        return $this->streamXlsx("overtime_{$month}.xlsx", [
             'Tanggal', 'Kode Karyawan', 'Nama', 'Tipe', 'Pre-Shift (menit)', 'Post-Shift (menit)',
             'Total (menit)', 'Break (menit)', 'Aktual (menit)', 'Aktual (jam)', 'Clock Out', 'Status', 'Alasan',
         ], $data->map(fn($o) => [
@@ -225,7 +226,7 @@ class ReportController extends Controller
             $o->actual_clock_out ? substr($o->actual_clock_out, 0, 5) : '-',
             $o->status,
             $o->reason ?? '',
-        ]));
+        ]), 'Laporan Lembur');
     }
 
     // ========================
@@ -285,32 +286,20 @@ class ReportController extends Controller
             ];
         });
 
-        return $this->streamCsv("payroll_{$period}.csv", [
+        return $this->streamXlsx("payroll_{$period}.xlsx", [
             'Kode', 'Nama', 'Jabatan', 'Gaji Pokok', 'Lembur', 'Total Earning', 'BPJS Karyawan', 'PPh 21', 'Total Potongan', 'Gaji Bersih', 'BPJS Perusahaan',
-        ], $rows);
+        ], $rows, 'Laporan Payroll');
     }
 
     // ========================
     // HELPER
     // ========================
-    private function streamCsv(string $filename, array $headers, $rows)
+    private function streamXlsx(string $filename, array $headers, $rows, string $sheetName)
     {
-        $httpHeaders = [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ];
-
-        $callback = function () use ($headers, $rows) {
-            $file = fopen('php://output', 'w');
-            // BOM for Excel UTF-8
-            fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($file, $headers);
-            foreach ($rows as $row) {
-                fputcsv($file, is_array($row) ? $row : $row->toArray());
-            }
-            fclose($file);
-        };
-
-        return response()->stream($callback, 200, $httpHeaders);
+        return response()->streamDownload(function () use ($headers, $rows, $sheetName) {
+            echo SimpleXlsxExporter::make($headers, $rows, $sheetName);
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 }

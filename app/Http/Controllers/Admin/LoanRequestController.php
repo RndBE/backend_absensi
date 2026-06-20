@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\LoanRequest;
+use App\Support\LoanPayrollComponentSync;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -49,7 +50,8 @@ class LoanRequestController extends Controller
     {
         $data = $this->prepareLoanData($this->validatedData($request));
 
-        LoanRequest::create($data);
+        $loan = LoanRequest::create($data);
+        LoanPayrollComponentSync::syncEmployee($loan->employee_id);
 
         return redirect()->route('admin.loan-requests.index')
             ->with('success', 'Data pinjaman berhasil ditambahkan.');
@@ -76,6 +78,7 @@ class LoanRequestController extends Controller
         $data = $this->prepareLoanData($this->validatedData($request));
 
         $loanRequest->update($data);
+        LoanPayrollComponentSync::syncEmployee($loanRequest->employee_id);
 
         return redirect()->route('admin.loan-requests.show', $loanRequest->id)
             ->with('success', 'Data pinjaman berhasil diperbarui.');
@@ -84,7 +87,9 @@ class LoanRequestController extends Controller
     public function destroy(int $id)
     {
         $loanRequest = $this->findLoanForCurrentCompany($id);
+        $employeeId = $loanRequest->employee_id;
         $loanRequest->delete();
+        LoanPayrollComponentSync::syncEmployee($employeeId);
 
         return redirect()->route('admin.loan-requests.index')
             ->with('success', 'Data pinjaman berhasil dihapus.');
