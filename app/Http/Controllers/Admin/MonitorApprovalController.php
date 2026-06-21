@@ -9,6 +9,7 @@ use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
+use App\Models\Lpj;
 use App\Models\TravelReport;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -21,6 +22,7 @@ class MonitorApprovalController extends Controller
         'attendance' => ['label' => 'Koreksi Presensi', 'model' => AttendanceRequest::class, 'request_type' => 'attendance'],
         'budget' => ['label' => 'Anggaran',         'model' => BudgetRequest::class,    'request_type' => 'budget'],
         'travel' => ['label' => 'LHP',              'model' => TravelReport::class,     'request_type' => 'travel_report'],
+        'lpj'    => ['label' => 'LPJ',              'model' => Lpj::class,              'request_type' => 'lpj'],
     ];
 
     public function index(Request $request)

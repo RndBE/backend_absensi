@@ -30,6 +30,7 @@ class ShiftController extends Controller
             'end_time'      => 'nullable|date_format:H:i',
             'color'         => 'required|string|max:7',
             'is_off'        => 'sometimes|boolean',
+            'is_overnight'  => 'sometimes|boolean',
             'work_hours'    => 'nullable|integer|min:1|max:24',
             'auto_overtime' => 'sometimes|boolean',
         ]);
@@ -43,6 +44,7 @@ class ShiftController extends Controller
             'end_time'      => $isOff ? null : $request->end_time,
             'color'         => $request->color,
             'is_off'        => $isOff,
+            'is_overnight'  => !$isOff && $request->boolean('is_overnight'),
             'sort_order'    => Shift::where('company_id', $admin->company_id)->max('sort_order') + 1,
             'work_hours'    => (!$isOff && $request->boolean('auto_overtime')) ? $request->work_hours : null,
             'auto_overtime' => !$isOff && $request->boolean('auto_overtime'),
@@ -61,6 +63,7 @@ class ShiftController extends Controller
             'end_time'      => 'nullable|date_format:H:i',
             'color'         => 'required|string|max:7',
             'is_off'        => 'sometimes|boolean',
+            'is_overnight'  => 'sometimes|boolean',
             'work_hours'    => 'nullable|integer|min:1|max:24',
             'auto_overtime' => 'sometimes|boolean',
         ]);
@@ -73,6 +76,7 @@ class ShiftController extends Controller
             'end_time'      => $isOff ? null : $request->end_time,
             'color'         => $request->color,
             'is_off'        => $isOff,
+            'is_overnight'  => !$isOff && $request->boolean('is_overnight'),
             'work_hours'    => (!$isOff && $request->boolean('auto_overtime')) ? $request->work_hours : null,
             'auto_overtime' => !$isOff && $request->boolean('auto_overtime'),
         ]);

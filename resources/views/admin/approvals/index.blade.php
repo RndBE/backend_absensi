@@ -51,6 +51,12 @@
                 LHP
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'travel_report' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $travelReport->count() }}</span>
             </a>
+            <a href="{{ route('admin.approvals.index', ['tab' => 'lpj']) }}"
+               class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
+                      {{ $tab === 'lpj' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
+                LPJ
+                <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'lpj' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $lpj->count() }}</span>
+            </a>
             @if($admin->role === 'superadmin')
             <a href="{{ route('admin.approvals.index', ['tab' => 'data-change']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
@@ -396,6 +402,64 @@
                     </tr>
                     @empty
                     <tr><td colspan="5" class="px-4 py-10 text-center text-gray-400 text-sm">Tidak ada LHP yang menunggu persetujuan.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        @endif
+
+        {{-- LPJ Tab --}}
+        @if($tab === 'lpj')
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Karyawan</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Nomor LPJ</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Kegiatan</th>
+                        <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Anggaran</th>
+                        <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Realisasi</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($lpj as $l)
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <div class="flex items-center gap-2">
+                                <div class="w-7 h-7 rounded-full bg-gradient-to-br from-violet-400 to-violet-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($l->employee->full_name ?? '?', 0, 1) }}</div>
+                                <div>
+                                    <div class="text-[13px] font-semibold text-gray-800">{{ $l->employee->full_name ?? '-' }}</div>
+                                    <div class="text-[11px] text-gray-400">{{ $l->employee->department->name ?? '' }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $l->nomor_lpj ?? '-' }}</td>
+                        <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100 max-w-[180px] truncate">{{ $l->budgetRequest?->title ?? '-' }}</td>
+                        <td class="px-4 py-3.5 text-[13px] text-right text-gray-700 border-b border-gray-100">Rp {{ number_format($l->total_anggaran, 0, ',', '.') }}</td>
+                        <td class="px-4 py-3.5 text-[13px] text-right text-gray-700 border-b border-gray-100">Rp {{ number_format($l->total_realisasi, 0, ',', '.') }}</td>
+                        <td class="px-4 py-3.5 border-b border-gray-100">
+                            <div class="flex gap-2 items-center">
+                                <a href="{{ route('admin.lpj.show', $l->id) }}" class="inline-flex items-center px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100">
+                                    <span class="material-symbols-outlined text-[14px] align-text-bottom mr-0.5">visibility</span> Detail
+                                </a>
+                                <form action="{{ route('admin.approvals.approve', ['type' => 'lpj', 'id' => $l->id]) }}" method="POST" class="inline">
+                                    @csrf
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Setujui LPJ ini?">
+                                        <span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Setujui
+                                    </button>
+                                </form>
+                                <form action="{{ route('admin.approvals.reject', ['type' => 'lpj', 'id' => $l->id]) }}" method="POST" class="inline">
+                                    @csrf
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Tolak LPJ ini?">
+                                        <span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Tolak
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    @empty
+                    <tr><td colspan="6" class="text-center py-12 text-gray-400 text-sm">Tidak ada LPJ pending</td></tr>
                     @endforelse
                 </tbody>
             </table>

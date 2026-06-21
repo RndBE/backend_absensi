@@ -304,7 +304,7 @@
     <div class="p-5">
         <form action="{{ route('admin.employees.approvers.store', $employee->id) }}" method="POST" id="approvalForm">
             @csrf
-            @php $types = ['leave' => 'Cuti', 'overtime' => 'Lembur', 'attendance' => 'Presensi', 'budget' => 'Anggaran', 'travel_report' => 'LHP']; @endphp
+            @php $types = ['leave' => 'Cuti', 'overtime' => 'Lembur', 'attendance' => 'Presensi', 'budget' => 'Anggaran', 'travel_report' => 'LHP', 'lpj' => 'LPJ']; @endphp
 
             <div class="flex gap-0 border-b-2 border-gray-200 mb-5">
                 @foreach($types as $tKey => $tLabel)

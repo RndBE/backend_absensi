@@ -22,6 +22,18 @@ class AttendanceController extends Controller
             ->where('date', Carbon::today()->toDateString())
             ->first();
 
+        // Overnight shift: cek open attendance dari kemarin yang belum clock-out
+        $overnightAttendance = null;
+        if (! $todayAttendance) {
+            $overnightAttendance = Attendance::where('employee_id', $employee->id)
+                ->where('date', Carbon::yesterday()->toDateString())
+                ->whereNotNull('clock_in')
+                ->whereNull('clock_out')
+                ->first();
+        }
+
+        $activeAttendance = $todayAttendance ?? $overnightAttendance;
+
         return view('employee.attendance.show', [
             'employee' => $employee,
             'type' => $type,
@@ -29,7 +41,7 @@ class AttendanceController extends Controller
             'endpoint' => $type === 'clock-in'
                 ? route('employee.attendance.clock-in')
                 : route('employee.attendance.clock-out'),
-            'todayAttendance' => $todayAttendance,
+            'todayAttendance' => $activeAttendance,
             'settings' => [
                 'office_latitude' => (float) Setting::getValue('office_latitude', '0'),
                 'office_longitude' => (float) Setting::getValue('office_longitude', '0'),

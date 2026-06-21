@@ -49,6 +49,8 @@ use App\Http\Controllers\Employee\LeaveController as EmployeeLeaveController;
 use App\Http\Controllers\Employee\OvertimeController as EmployeeOvertimeController;
 use App\Http\Controllers\Employee\ProfileController as EmployeeProfileController;
 use App\Http\Controllers\Employee\TravelReportController as EmployeeTravelReportController;
+use App\Http\Controllers\Employee\LpjController as EmployeeLpjController;
+use App\Http\Controllers\Admin\LpjController;
 use App\Http\Middleware\AdminActivityLogger;
 use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\AdminPermissionMiddleware;
@@ -88,12 +90,17 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/travel-reports/{id}', [EmployeeTravelReportController::class, 'show'])->name('travel-reports.show');
     Route::get('/travel-reports/{id}/edit', [EmployeeTravelReportController::class, 'edit'])->name('travel-reports.edit');
     Route::put('/travel-reports/{id}', [EmployeeTravelReportController::class, 'update'])->name('travel-reports.update');
+    // LPJ
+    Route::get('/lpj', [EmployeeLpjController::class, 'index'])->name('lpj.index');
+    Route::get('/lpj/create', [EmployeeLpjController::class, 'create'])->name('lpj.create');
+    Route::post('/lpj', [EmployeeLpjController::class, 'store'])->name('lpj.store');
+    Route::get('/lpj/{id}', [EmployeeLpjController::class, 'show'])->name('lpj.show');
     Route::get('/approvals', [EmployeeApprovalController::class, 'index'])->name('approvals.index');
     Route::post('/approvals/{type}/{id}/approve', [EmployeeApprovalController::class, 'approve'])
-        ->whereIn('type', ['leave', 'overtime', 'attendance', 'budget', 'travel_report'])
+        ->whereIn('type', ['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'])
         ->name('approvals.approve');
     Route::post('/approvals/{type}/{id}/reject', [EmployeeApprovalController::class, 'reject'])
-        ->whereIn('type', ['leave', 'overtime', 'attendance', 'budget', 'travel_report'])
+        ->whereIn('type', ['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'])
         ->name('approvals.reject');
     Route::get('/face-photo', [EmployeeFacePhotoController::class, 'show'])->name('face-photo.show');
     Route::post('/face-photo', [EmployeeFacePhotoController::class, 'store'])->name('face-photo.store');
@@ -249,6 +256,12 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::put('/travel-reports/{id}', [TravelReportController::class, 'update'])->name('travel-reports.update');
     Route::get('/travel-reports/{id}/print', [TravelReportController::class, 'print'])->name('travel-reports.print');
     Route::delete('/travel-reports/{id}', [TravelReportController::class, 'destroy'])->name('travel-reports.destroy');
+
+    // LPJ
+    Route::get('/lpj', [LpjController::class, 'index'])->name('lpj.index');
+    Route::get('/lpj/{id}', [LpjController::class, 'show'])->name('lpj.show');
+    Route::get('/lpj/{id}/export-excel', [LpjController::class, 'exportExcel'])->name('lpj.export-excel');
+    Route::delete('/lpj/{id}', [LpjController::class, 'destroy'])->name('lpj.destroy');
 
     // Budget Payments
     Route::post('/budget-requests/{id}/payments', [BudgetPaymentController::class, 'store'])->name('budget-payments.store');

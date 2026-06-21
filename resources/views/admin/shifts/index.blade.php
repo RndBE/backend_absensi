@@ -23,6 +23,11 @@
                         <div>
                             <div class="text-[14px] font-bold text-gray-900 flex items-center gap-2">
                                 {{ $shift->name }}
+                                @if($shift->is_overnight)
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
+                                        <span class="material-symbols-outlined text-[12px]">nights_stay</span> Ganti Hari
+                                    </span>
+                                @endif
                                 @if($shift->auto_overtime && $shift->work_hours)
                                     @php
                                         $otMinutes = $shift->getOvertimeMinutes();
@@ -38,7 +43,7 @@
                                 @if($shift->is_off)
                                     Libur / Off Day
                                 @else
-                                    {{ substr($shift->start_time, 0, 5) }} - {{ substr($shift->end_time, 0, 5) }}
+                                    {{ substr($shift->start_time, 0, 5) }} - {{ substr($shift->end_time, 0, 5) }}{!! $shift->is_overnight ? ' <span class="text-blue-500 font-semibold">+1</span>' : '' !!}
                                     @if($shift->work_hours)
                                         · Std {{ $shift->work_hours }} jam
                                     @endif
@@ -85,6 +90,14 @@
                             <label class="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 mb-1 cursor-pointer">
                                 <input type="checkbox" name="is_off" value="1" {{ $shift->is_off ? 'checked' : '' }}
                                     class="accent-indigo-500" onchange="toggleOffEdit(this, {{ $shift->id }})"> Off Day
+                            </label>
+                        </div>
+                        <div class="shift-time-fields-edit-{{ $shift->id }} {{ $shift->is_off ? 'opacity-40 pointer-events-none' : '' }}">
+                            <label class="flex items-center gap-1.5 text-[11px] font-medium text-blue-700 mb-1 cursor-pointer"
+                                title="Aktifkan jika shift berakhir di hari berikutnya (misal: 22:00 - 06:00)">
+                                <input type="checkbox" name="is_overnight" value="1" {{ $shift->is_overnight ? 'checked' : '' }}
+                                    class="accent-blue-500">
+                                <span class="material-symbols-outlined text-[12px]">nights_stay</span> Ganti Hari
                             </label>
                         </div>
 
@@ -147,6 +160,13 @@
                     <div>
                         <label class="flex items-center gap-1.5 text-[12px] font-medium text-gray-600 mb-1 cursor-pointer">
                             <input type="checkbox" name="is_off" value="1" class="accent-indigo-500" id="add-is-off" onchange="toggleAddOff()"> Hari Libur
+                        </label>
+                    </div>
+                    <div id="add-overnight-section">
+                        <label class="flex items-center gap-1.5 text-[12px] font-medium text-blue-700 mb-1 cursor-pointer"
+                            title="Aktifkan jika shift berakhir di hari berikutnya (misal: 22:00 - 06:00)">
+                            <input type="checkbox" name="is_overnight" value="1" id="add-is-overnight" class="accent-blue-500">
+                            <span class="material-symbols-outlined text-[13px]">nights_stay</span> Ganti Hari
                         </label>
                     </div>
 
@@ -220,7 +240,7 @@ function updateOTPreviewEdit(shiftId) {
 // ─────────────────────────────────────────────
 function toggleAddOff() {
     const isOff = document.getElementById('add-is-off').checked;
-    ['add-time-fields', 'add-time-fields-end', 'add-auto-ot-section', 'add-work-hours-section'].forEach(id => {
+    ['add-time-fields', 'add-time-fields-end', 'add-overnight-section', 'add-auto-ot-section', 'add-work-hours-section'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         if (isOff) {
@@ -229,7 +249,11 @@ function toggleAddOff() {
             el.classList.remove('opacity-40', 'pointer-events-none');
         }
     });
-    if (isOff) document.getElementById('add-work-hours-section').classList.add('hidden');
+    if (isOff) {
+        document.getElementById('add-work-hours-section').classList.add('hidden');
+        const overnight = document.getElementById('add-is-overnight');
+        if (overnight) overnight.checked = false;
+    }
 }
 
 function toggleAddWorkHours() {

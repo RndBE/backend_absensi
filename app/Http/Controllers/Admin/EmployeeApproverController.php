@@ -14,7 +14,7 @@ class EmployeeApproverController extends Controller
         $admin = Employee::find(session('admin_id'));
 
         $chains = [];
-        foreach (['leave', 'overtime', 'attendance', 'budget', 'travel_report'] as $type) {
+        foreach (['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'] as $type) {
             $chains[$type] = EmployeeApprover::getChain($employeeId, $type);
         }
 
@@ -35,12 +35,14 @@ class EmployeeApproverController extends Controller
             'chains.budget.*' => 'integer|exists:employees,id',
             'chains.travel_report' => 'nullable|array',
             'chains.travel_report.*' => 'integer|exists:employees,id',
+            'chains.lpj' => 'nullable|array',
+            'chains.lpj.*' => 'integer|exists:employees,id',
         ]);
 
         $employee = Employee::findOrFail($employeeId);
         $chains = $request->chains;
 
-        foreach (['leave', 'overtime', 'attendance', 'budget', 'travel_report'] as $type) {
+        foreach (['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'] as $type) {
             $approverIds = $chains[$type] ?? [];
             // Filter out empty/null values
             $approverIds = array_values(array_filter($approverIds, fn($id) => !empty($id)));

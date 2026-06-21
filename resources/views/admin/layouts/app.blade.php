@@ -80,6 +80,7 @@
                     ['label' => 'Anggaran', 'icon' => 'request_quote', 'key' => 'budget', 'items' => [
                         ['route' => 'admin.budget-requests.index', 'icon' => 'request_quote', 'label' => 'Pengajuan Anggaran', 'match' => 'admin.budget-requests.*'],
                         ['route' => 'admin.travel-reports.index', 'icon' => 'flight_takeoff', 'label' => 'LHP', 'match' => 'admin.travel-reports.*'],
+                        ['route' => 'admin.lpj.index', 'icon' => 'receipt_long', 'label' => 'LPJ', 'match' => 'admin.lpj.*'],
                         ['route' => 'admin.policies.index', 'icon' => 'policy', 'label' => 'Kebijakan', 'match' => 'admin.policies.*'],
                         ['route' => 'admin.travel-zones.index', 'icon' => 'map', 'label' => 'Zona Perjalanan', 'match' => 'admin.travel-zones.*'],
                     ]],

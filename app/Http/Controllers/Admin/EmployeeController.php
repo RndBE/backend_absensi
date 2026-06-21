@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Storage;
 
 class EmployeeController extends Controller
 {
-    private const APPROVAL_REQUEST_TYPES = ['leave', 'overtime', 'attendance', 'budget', 'travel_report'];
+    private const APPROVAL_REQUEST_TYPES = ['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'];
 
     public function index(Request $request)
     {

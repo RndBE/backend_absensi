@@ -278,7 +278,21 @@ class AttendanceController extends Controller
         $employee = $request->user();
         $today = Carbon::today();
 
-        // Check if already clocked in
+        // Blok clock-in baru jika masih ada shift overnight yang belum clock-out (kemarin)
+        $openOvernight = Attendance::where('employee_id', $employee->id)
+            ->where('date', Carbon::yesterday()->toDateString())
+            ->whereNotNull('clock_in')
+            ->whereNull('clock_out')
+            ->first();
+
+        if ($openOvernight) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda masih memiliki sesi shift malam yang belum clock out. Silakan clock out terlebih dahulu.',
+            ], 422);
+        }
+
+        // Check if already clocked in today
         $existing = Attendance::where('employee_id', $employee->id)
             ->where('date', $today->toDateString())
             ->first();

@@ -11,7 +11,7 @@ class Shift extends Model
 {
     protected $fillable = [
         'company_id', 'name', 'start_time', 'end_time',
-        'color', 'is_off', 'sort_order',
+        'color', 'is_off', 'is_overnight', 'sort_order',
         'work_hours', 'auto_overtime',
     ];
 
@@ -19,6 +19,7 @@ class Shift extends Model
     {
         return [
             'is_off'        => 'boolean',
+            'is_overnight'  => 'boolean',
             'auto_overtime' => 'boolean',
         ];
     }
@@ -36,7 +37,9 @@ class Shift extends Model
     public function getTimeRangeAttribute(): string
     {
         if ($this->is_off) return 'Libur';
-        return ($this->start_time ? substr($this->start_time, 0, 5) : '') . ' - ' . ($this->end_time ? substr($this->end_time, 0, 5) : '');
+        $end = ($this->end_time ? substr($this->end_time, 0, 5) : '');
+        if ($this->is_overnight && $end) $end .= ' +1';
+        return ($this->start_time ? substr($this->start_time, 0, 5) : '') . ' - ' . $end;
     }
 
     /**

@@ -119,6 +119,7 @@
                         'attendance' => 'bg-cyan-100 text-cyan-700',
                         'budget'     => 'bg-green-100 text-green-700',
                         'travel'     => 'bg-indigo-100 text-indigo-700',
+                        'lpj'        => 'bg-violet-100 text-violet-700',
                         default      => 'bg-gray-100 text-gray-600',
                     };
 
@@ -154,6 +155,7 @@
                         'attendance' => $item->date->format('d/m/Y') . ' · In: ' . ($item->clock_in ?? '-') . ' Out: ' . ($item->clock_out ?? '-'),
                         'budget'     => ($item->title ?? 'Anggaran') . ' · ' . 'Rp ' . number_format($item->total_amount ?? 0, 0, ',', '.'),
                         'travel'     => ($item->destination_city ?? '-') . ' · ' . ($item->departure_date?->format('d/m') ?? '-') . ' s/d ' . ($item->return_date?->format('d/m/Y') ?? '-'),
+                        'lpj'        => ($item->nomor_lpj ?? '-') . ' · ' . ($item->budgetRequest?->title ?? '-') . ' · Rp ' . number_format($item->total_realisasi ?? 0, 0, ',', '.'),
                         default      => '',
                     };
                 @endphp

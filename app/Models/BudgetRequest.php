@@ -60,6 +60,11 @@ class BudgetRequest extends Model
         return $this->hasOne(TravelReport::class);
     }
 
+    public function lpj()
+    {
+        return $this->hasOne(Lpj::class);
+    }
+
     public function payments()
     {
         return $this->hasMany(BudgetPayment::class);
