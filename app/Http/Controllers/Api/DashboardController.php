@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Employee;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
+use App\Support\AttendanceOpenShift;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -25,6 +26,20 @@ class DashboardController extends Controller
         $todayAttendance = Attendance::where('employee_id', $employee->id)
             ->where('date', $today)
             ->first();
+        $activeAttendance = $todayAttendance;
+
+        if (! $activeAttendance) {
+            $yesterday = $today->copy()->subDay();
+            $openYesterdayAttendance = Attendance::where('employee_id', $employee->id)
+                ->where('date', $yesterday->toDateString())
+                ->whereNotNull('clock_in')
+                ->whereNull('clock_out')
+                ->first();
+
+            if ($openYesterdayAttendance && AttendanceOpenShift::isOvernight($employee, $yesterday)) {
+                $activeAttendance = $openYesterdayAttendance;
+            }
+        }
 
         // === Resolve today's shift (new system first, fallback to legacy) ===
         $workScheduleData = null;
@@ -120,12 +135,12 @@ class DashboardController extends Controller
                     'role' => $employee->role,
                 ],
                 'work_schedule' => $workScheduleData,
-                'today_attendance' => $todayAttendance ? [
-                    'clock_in' => $todayAttendance->clock_in,
-                    'clock_out' => $todayAttendance->clock_out,
-                    'status' => $todayAttendance->status,
-                    'is_late' => $todayAttendance->is_late,
-                    'is_remote' => $todayAttendance->is_remote,
+                'today_attendance' => $activeAttendance ? [
+                    'clock_in' => $activeAttendance->clock_in,
+                    'clock_out' => $activeAttendance->clock_out,
+                    'status' => $activeAttendance->status,
+                    'is_late' => $activeAttendance->is_late,
+                    'is_remote' => $activeAttendance->is_remote,
                 ] : null,
                 'attendance_settings' => [
                     'office_latitude' => (float) Setting::getValue('office_latitude', '0'),

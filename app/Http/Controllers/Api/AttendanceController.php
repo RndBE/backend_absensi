@@ -14,6 +14,7 @@ use App\Models\Setting;
 use App\Services\FaceVerificationService;
 use App\Services\FcmService;
 use App\Support\AdminPermission;
+use App\Support\AttendanceOpenShift;
 use App\Support\AttendanceLateExcuse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -278,14 +279,14 @@ class AttendanceController extends Controller
         $employee = $request->user();
         $today = Carbon::today();
 
-        // Blok clock-in baru jika masih ada shift overnight yang belum clock-out (kemarin)
+        // Blok clock-in baru hanya jika sesi kemarin memang shift overnight.
         $openOvernight = Attendance::where('employee_id', $employee->id)
             ->where('date', Carbon::yesterday()->toDateString())
             ->whereNotNull('clock_in')
             ->whereNull('clock_out')
             ->first();
 
-        if ($openOvernight) {
+        if ($openOvernight && AttendanceOpenShift::isOvernight($employee, Carbon::yesterday())) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda masih memiliki sesi shift malam yang belum clock out. Silakan clock out terlebih dahulu.',

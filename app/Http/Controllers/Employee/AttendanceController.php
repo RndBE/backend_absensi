@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\Setting;
+use App\Support\AttendanceOpenShift;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -30,6 +31,10 @@ class AttendanceController extends Controller
                 ->whereNotNull('clock_in')
                 ->whereNull('clock_out')
                 ->first();
+
+            if ($overnightAttendance && ! AttendanceOpenShift::isOvernight($employee, Carbon::yesterday())) {
+                $overnightAttendance = null;
+            }
         }
 
         $activeAttendance = $todayAttendance ?? $overnightAttendance;

@@ -60,6 +60,7 @@ class ApiAttendanceClockInTest extends TestCase
             $table->time('start_time')->nullable();
             $table->time('end_time')->nullable();
             $table->boolean('is_off')->default(false);
+            $table->boolean('is_overnight')->default(false);
             $table->timestamps();
         });
 
@@ -375,6 +376,114 @@ class ApiAttendanceClockInTest extends TestCase
         $this->assertDatabaseMissing('notifications', ['employee_id' => 3]);
         $this->assertDatabaseMissing('notifications', ['employee_id' => 4]);
         $this->assertDatabaseMissing('notifications', ['employee_id' => 6]);
+    }
+
+    public function test_employee_with_regular_shift_can_clock_in_today_when_yesterday_was_not_clocked_out(): void
+    {
+        DB::table('settings')->insert([
+            ['key' => 'require_photo', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'require_gps', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'face_verification_enabled', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $this->seedEmployee();
+
+        DB::table('shifts')->insert([
+            'id' => 10,
+            'company_id' => 1,
+            'name' => 'Regular',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'is_off' => false,
+            'is_overnight' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('schedule_assignments')->insert([
+            'employee_id' => 1,
+            'shift_id' => 10,
+            'date' => '2026-05-25',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-05-25',
+            'clock_in' => '08:05:00',
+            'clock_out' => null,
+            'status' => 'present',
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/api/attendance/clock-in', 'POST');
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new AttendanceController())->clockIn($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertTrue(
+            DB::table('attendances')
+                ->where('employee_id', 1)
+                ->whereDate('date', '2026-05-26')
+                ->where('clock_in', '14:34:00')
+                ->exists()
+        );
+    }
+
+    public function test_employee_with_overnight_shift_must_clock_out_before_clocking_in_next_day(): void
+    {
+        DB::table('settings')->insert([
+            ['key' => 'require_photo', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'require_gps', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'face_verification_enabled', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $this->seedEmployee();
+
+        DB::table('shifts')->insert([
+            'id' => 11,
+            'company_id' => 1,
+            'name' => 'Security Malam',
+            'start_time' => '19:00:00',
+            'end_time' => '07:00:00',
+            'is_off' => false,
+            'is_overnight' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('schedule_assignments')->insert([
+            'employee_id' => 1,
+            'shift_id' => 11,
+            'date' => '2026-05-25',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-05-25',
+            'clock_in' => '19:05:00',
+            'clock_out' => null,
+            'status' => 'present',
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/api/attendance/clock-in', 'POST');
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new AttendanceController())->clockIn($request);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertStringContainsString('shift malam', $response->getData(true)['message']);
+        $this->assertFalse(
+            DB::table('attendances')
+                ->where('employee_id', 1)
+                ->whereDate('date', '2026-05-26')
+                ->exists()
+        );
     }
 
     public function test_existing_security_review_notification_still_sends_push_on_clock_out_without_duplicate_inbox_item(): void

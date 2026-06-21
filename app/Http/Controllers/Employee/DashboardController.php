@@ -9,6 +9,7 @@ use App\Models\Holiday;
 use App\Models\LeaveRequest;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
+use App\Support\AttendanceOpenShift;
 use App\Support\AttendanceLateExcuse;
 use App\Support\PendingApprovalCounter;
 use Illuminate\Http\Request;
@@ -26,6 +27,19 @@ class DashboardController extends Controller
         $todayAttendance = Attendance::where('employee_id', $employee->id)
             ->where('date', $today->toDateString())
             ->first();
+
+        if (! $todayAttendance) {
+            $yesterday = $today->copy()->subDay();
+            $openYesterdayAttendance = Attendance::where('employee_id', $employee->id)
+                ->where('date', $yesterday->toDateString())
+                ->whereNotNull('clock_in')
+                ->whereNull('clock_out')
+                ->first();
+
+            if ($openYesterdayAttendance && AttendanceOpenShift::isOvernight($employee, $yesterday)) {
+                $todayAttendance = $openYesterdayAttendance;
+            }
+        }
 
         $recentAttendances = Attendance::where('employee_id', $employee->id)
             ->whereYear('date', $today->year)
