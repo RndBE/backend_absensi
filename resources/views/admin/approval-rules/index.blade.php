@@ -173,6 +173,9 @@
                         <label class="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
                             <input type="checkbox" name="apply_types[]" value="travel_report" checked class="accent-indigo-600 w-4 h-4"> <span class="text-[13px]">LHP</span>
                         </label>
+                        <label class="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                            <input type="checkbox" name="apply_types[]" value="lpj" checked class="accent-indigo-600 w-4 h-4"> <span class="text-[13px]">LPJ</span>
+                        </label>
                     </div>
 
                     <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
