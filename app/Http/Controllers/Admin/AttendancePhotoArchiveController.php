@@ -14,7 +14,7 @@ class AttendancePhotoArchiveController extends Controller
     public function index(Request $request, AttendancePhotoArchiveService $service)
     {
         $admin = Employee::findOrFail(session('admin_id'));
-        $period = $request->period ?: now()->subMonthNoOverflow()->format('Y-m');
+        $period = $request->period ?: now()->format('Y-m');
 
         $archives = AttendancePhotoArchive::query()
             ->where('company_id', $admin->company_id)
