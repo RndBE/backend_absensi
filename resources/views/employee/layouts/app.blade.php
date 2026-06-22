@@ -24,6 +24,27 @@
         .employee-native-field::-webkit-calendar-picker-indicator {
             opacity: .75;
         }
+        .employee-date-shell {
+            position: relative;
+            display: block;
+        }
+        .employee-date-shell .employee-date-placeholder {
+            position: absolute;
+            left: .75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: #111827;
+            font-size: 13px;
+            line-height: 1;
+        }
+        .employee-date-shell:not(.employee-date-shell-has-value):not(:focus-within) input[type="date"]::-webkit-date-and-time-value {
+            color: transparent;
+        }
+        .employee-date-shell.employee-date-shell-has-value .employee-date-placeholder,
+        .employee-date-shell:focus-within .employee-date-placeholder {
+            display: none;
+        }
     </style>
     @stack('head')
 </head>
@@ -77,6 +98,21 @@
 
     <script>
         (function () {
+            function syncDateShell(shell) {
+                const input = shell.querySelector('input[type="date"]');
+                shell.classList.toggle('employee-date-shell-has-value', Boolean(input?.value));
+            }
+
+            document.querySelectorAll('[data-employee-date-shell]').forEach(syncDateShell);
+            document.addEventListener('input', (event) => {
+                const shell = event.target.closest?.('[data-employee-date-shell]');
+                if (shell) syncDateShell(shell);
+            });
+            document.addEventListener('change', (event) => {
+                const shell = event.target.closest?.('[data-employee-date-shell]');
+                if (shell) syncDateShell(shell);
+            });
+
             const flash = document.getElementById('employeePortalFlash');
             if (!flash) return;
 

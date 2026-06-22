@@ -42,7 +42,10 @@
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Surat</span>
-                    <input type="date" name="surat_tugas_date" value="{{ old('surat_tugas_date') }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <span class="employee-date-shell" data-employee-date-shell>
+                        <input type="date" name="surat_tugas_date" value="{{ old('surat_tugas_date') }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                        <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+                    </span>
                 </label>
             </div>
 

@@ -57,11 +57,17 @@
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Berangkat</span>
-                    <input type="date" name="departure_date" value="{{ old('departure_date', optional($report?->departure_date)->format('Y-m-d')) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <span class="employee-date-shell" data-employee-date-shell>
+                        <input type="date" name="departure_date" value="{{ old('departure_date', optional($report?->departure_date)->format('Y-m-d')) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                        <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+                    </span>
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Pulang</span>
-                    <input type="date" name="return_date" value="{{ old('return_date', optional($report?->return_date)->format('Y-m-d')) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <span class="employee-date-shell" data-employee-date-shell>
+                        <input type="date" name="return_date" value="{{ old('return_date', optional($report?->return_date)->format('Y-m-d')) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                        <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+                    </span>
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Jarak KM</span>
@@ -76,7 +82,10 @@
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Surat</span>
-                    <input type="date" name="surat_tugas_date" value="{{ old('surat_tugas_date', optional($report?->surat_tugas_date)->format('Y-m-d')) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <span class="employee-date-shell" data-employee-date-shell>
+                        <input type="date" name="surat_tugas_date" value="{{ old('surat_tugas_date', optional($report?->surat_tugas_date)->format('Y-m-d')) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                        <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+                    </span>
                 </label>
             </div>
 

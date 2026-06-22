@@ -15,7 +15,10 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Tanggal</span>
-            <input type="date" name="activities[{{ $index }}][date]" value="{{ $activity['date'] ?? '' }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+            <span class="employee-date-shell" data-employee-date-shell>
+                <input type="date" name="activities[{{ $index }}][date]" value="{{ $activity['date'] ?? '' }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+            </span>
         </label>
         <label class="sm:col-span-2">
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Deskripsi</span>

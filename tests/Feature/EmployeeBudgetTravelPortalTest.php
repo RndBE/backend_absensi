@@ -383,6 +383,12 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         $this->assertStringContainsString('background-color: #fff', $layout);
         $this->assertStringContainsString('color: #111827', $layout);
         $this->assertStringContainsString('::-webkit-date-and-time-value', $layout);
+        $this->assertStringContainsString('employee-date-shell', $layout);
+        $this->assertStringContainsString('data-employee-date-shell', file_get_contents(resource_path('views/employee/budget-requests/create.blade.php')));
+        $this->assertStringContainsString('data-employee-date-shell', file_get_contents(resource_path('views/employee/travel-reports/partials/form.blade.php')));
+        $this->assertStringContainsString('data-employee-date-shell', file_get_contents(resource_path('views/employee/travel-reports/partials/activity-row.blade.php')));
+        $this->assertStringContainsString('data-date-placeholder', file_get_contents(resource_path('views/employee/budget-requests/create.blade.php')));
+        $this->assertStringContainsString('data-date-placeholder', file_get_contents(resource_path('views/employee/travel-reports/partials/form.blade.php')));
     }
 
     public function test_employee_budget_city_estimate_route_returns_zone_data(): void
