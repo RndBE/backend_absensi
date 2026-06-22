@@ -373,7 +373,9 @@ class AttendanceController extends Controller
         $shiftStartTime = $this->getShiftStartTime($employee, $today);
         if ($shiftStartTime) {
             $scheduleStart = Carbon::parse($today->toDateString() . ' ' . $shiftStartTime);
-            $isLate = now()->gt($scheduleStart);
+            $clockInMinute = now()->copy()->startOfMinute();
+            $scheduleStartMinute = $scheduleStart->copy()->startOfMinute();
+            $isLate = $clockInMinute->gt($scheduleStartMinute);
         }
 
         $attendance = Attendance::updateOrCreate(

@@ -451,6 +451,51 @@ class EmployeePortalTest extends TestCase
         ]);
     }
 
+    public function test_employee_clock_in_within_start_minute_is_not_late(): void
+    {
+        Carbon::setTestNow('2026-06-15 09:00:30');
+        $this->seedEmployee(['schedule_template_id' => 1]);
+
+        DB::table('shifts')->insert([
+            'id' => 1,
+            'company_id' => 1,
+            'name' => 'Pagi',
+            'start_time' => '09:00:00',
+            'end_time' => '17:00:00',
+            'is_off' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('schedule_templates')->insert([
+            'id' => 1,
+            'company_id' => 1,
+            'name' => 'Office',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('schedule_template_days')->insert([
+            'template_id' => 1,
+            'day_of_week' => 1,
+            'shift_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->postJson('/employee/attendance/clock-in', [
+                'latitude' => '1.0456',
+                'longitude' => '104.0305',
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'date' => '2026-06-15 00:00:00',
+            'clock_in' => '09:00:30',
+            'is_late' => false,
+        ]);
+    }
+
     public function test_attendance_page_has_retry_location_control(): void
     {
         $this->seedEmployee();
