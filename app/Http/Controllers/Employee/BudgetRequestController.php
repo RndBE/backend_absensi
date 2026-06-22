@@ -28,7 +28,9 @@ class BudgetRequestController extends Controller
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
-        $period = $request->query('period') ? Carbon::parse($request->query('period').'-01') : now();
+        $period = $request->filled(['period_month', 'period_year'])
+            ? Carbon::createFromDate((int) $request->query('period_year'), (int) $request->query('period_month'), 1)
+            : ($request->query('period') ? Carbon::parse($request->query('period').'-01') : now());
 
         return view('employee.budget-requests.index', [
             'employee' => $employee,

@@ -951,6 +951,8 @@ class EmployeePortalTest extends TestCase
             ->get('/employee/overtimes')
             ->assertOk()
             ->assertSee('Pengajuan Lembur')
+            ->assertSee('employee-mobile-page-header', false)
+            ->assertSee('employee-mobile-action', false)
             ->assertSee('/employee/overtimes/create', false);
     }
 

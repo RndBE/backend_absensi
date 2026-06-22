@@ -3,8 +3,8 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="flex items-center justify-between gap-3">
-        <div>
+    <div class="employee-mobile-page-header flex items-start justify-between gap-3">
+        <div class="min-w-0">
             <a href="{{ route('employee.dashboard') }}" class="inline-flex items-center gap-1 text-[12px] font-semibold text-gray-500 hover:text-indigo-600 mb-2">
                 <span class="material-symbols-outlined text-[16px]">arrow_back</span>
                 Dashboard
@@ -12,7 +12,7 @@
             <h1 class="text-[22px] font-black text-gray-900">LHP</h1>
             <p class="text-[13px] text-gray-500 mt-1">Laporan hasil perjalanan dinas.</p>
         </div>
-        <a href="{{ route('employee.travel-reports.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[12px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm">
+        <a href="{{ route('employee.travel-reports.create') }}" class="employee-mobile-action inline-flex h-10 shrink-0 items-center justify-center gap-2 px-4 text-[12px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm">
             <span class="material-symbols-outlined text-[17px]">add</span>
             Buat LHP
         </a>

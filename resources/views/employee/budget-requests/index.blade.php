@@ -3,8 +3,8 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="flex items-center justify-between gap-3">
-        <div>
+    <div class="employee-mobile-page-header flex items-start justify-between gap-3">
+        <div class="min-w-0">
             <a href="{{ route('employee.dashboard') }}" class="inline-flex items-center gap-1 text-[12px] font-semibold text-gray-500 hover:text-indigo-600 mb-2">
                 <span class="material-symbols-outlined text-[16px]">arrow_back</span>
                 Dashboard
@@ -12,20 +12,46 @@
             <h1 class="text-[22px] font-black text-gray-900">Anggaran</h1>
             <p class="text-[13px] text-gray-500 mt-1">Budget dan reimbursement perjalanan/operasional.</p>
         </div>
-        <a href="{{ route('employee.budget-requests.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[12px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm">
+        <a href="{{ route('employee.budget-requests.create') }}" class="employee-mobile-action inline-flex h-10 shrink-0 items-center justify-center gap-2 px-4 text-[12px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm">
             <span class="material-symbols-outlined text-[17px]">add</span>
             Ajukan
         </a>
     </div>
 
-    <form method="GET" class="employee-budget-filter-form bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col items-start sm:flex-row gap-2 sm:items-end">
-        <label class="block">
+    @php
+        $periodMonths = [
+            1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr',
+            5 => 'Mei', 6 => 'Jun', 7 => 'Jul', 8 => 'Agu',
+            9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des',
+        ];
+        $periodYears = range($period->copy()->subYears(2)->year, now()->addYear()->year);
+    @endphp
+
+    <form method="GET" class="employee-period-filter-card bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 sm:p-4 flex items-end gap-2">
+        <div class="employee-period-input min-w-0 flex-1">
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Periode</span>
-            <input type="month" name="period" value="{{ $period->format('Y-m') }}" class="rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
-        </label>
-        <button class="inline-flex h-10 self-start items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 text-[12px] font-bold text-white">
+            <div class="grid grid-cols-[minmax(0,1fr)_84px] gap-2 sm:grid-cols-[150px_92px]">
+                <label class="relative min-w-0">
+                    <select name="period_month" class="employee-period-select h-10 w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 pr-8 text-[13px] font-semibold text-gray-900 shadow-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                        @foreach($periodMonths as $monthNumber => $monthLabel)
+                            <option value="{{ str_pad((string) $monthNumber, 2, '0', STR_PAD_LEFT) }}" @selected((int) $period->month === $monthNumber)>{{ $monthLabel }}</option>
+                        @endforeach
+                    </select>
+                    <span class="material-symbols-outlined pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[16px] text-gray-400">expand_more</span>
+                </label>
+                <label class="relative">
+                    <select name="period_year" class="employee-period-select h-10 w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 pr-7 text-[13px] font-semibold text-gray-900 shadow-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                        @foreach($periodYears as $year)
+                            <option value="{{ $year }}" @selected((int) $period->year === (int) $year)>{{ $year }}</option>
+                        @endforeach
+                    </select>
+                    <span class="material-symbols-outlined pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[16px] text-gray-400">expand_more</span>
+                </label>
+            </div>
+        </div>
+        <button type="submit" aria-label="Filter periode" title="Filter" class="employee-filter-submit inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-gray-900 text-[12px] font-bold text-white shadow-sm sm:w-auto sm:px-4">
             <span class="material-symbols-outlined text-[16px]">filter_alt</span>
-            Filter
+            <span class="hidden sm:inline">Filter</span>
         </button>
     </form>
 

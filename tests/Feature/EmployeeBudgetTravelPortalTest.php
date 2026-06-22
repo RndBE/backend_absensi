@@ -348,9 +348,15 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         $this->withSession(['employee_id' => 1])
             ->get('/employee/budget-requests')
             ->assertOk()
-            ->assertSee('employee-budget-filter-form', false)
-            ->assertSee('items-start', false)
-            ->assertSee('self-start', false)
+            ->assertSee('employee-mobile-page-header', false)
+            ->assertSee('employee-mobile-action', false)
+            ->assertSee('employee-period-filter-card', false)
+            ->assertSee('employee-period-input', false)
+            ->assertSee('employee-filter-submit', false)
+            ->assertSee('name="period_month"', false)
+            ->assertSee('name="period_year"', false)
+            ->assertSee('employee-period-select', false)
+            ->assertDontSee('type="month"', false)
             ->assertSee('Perjalanan Batam')
             ->assertSee('Rp 225.000');
     }
@@ -428,6 +434,14 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'destination_city' => 'Batam',
             'status' => 'pending',
         ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/travel-reports')
+            ->assertOk()
+            ->assertSee('employee-mobile-page-header', false)
+            ->assertSee('employee-mobile-action', false)
+            ->assertSee('Buat LHP');
+
         $this->assertDatabaseHas('travel_report_activities', [
             'description' => 'Meeting awal',
         ]);
