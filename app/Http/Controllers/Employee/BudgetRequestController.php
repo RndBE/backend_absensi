@@ -75,7 +75,7 @@ class BudgetRequestController extends Controller
             'items' => 'required|array|min:1',
             'items.*.type' => 'required|in:transport,meal,lumpsum,entertain,operasional,lainnya',
             'items.*.description' => 'nullable|string|max:500',
-            'items.*.amount' => 'required|numeric|min:1',
+            'items.*.amount' => 'required|numeric|min:0',
             'item_attachments_*' => 'nullable|array',
             'item_attachments_*.*' => 'file|max:5120',
         ]);

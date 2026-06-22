@@ -361,6 +361,37 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             ->assertSee('Rp 225.000');
     }
 
+    public function test_employee_can_submit_budget_request_item_with_zero_amount(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/budget-requests', [
+                'type' => 'budget',
+                'title' => 'Perjalanan Tanpa Biaya Makan',
+                'description' => 'Kunjungan klien',
+                'distance_km' => 12,
+                'items' => [
+                    ['type' => 'transport', 'description' => 'Taksi', 'amount' => 50000],
+                    ['type' => 'meal', 'description' => 'Uang makan ditanggung klien', 'amount' => 0],
+                ],
+            ])
+            ->assertRedirect(route('employee.budget-requests.index'))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseHas('budget_requests', [
+            'employee_id' => 1,
+            'title' => 'Perjalanan Tanpa Biaya Makan',
+            'total_amount' => 50000,
+            'status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('budget_request_items', [
+            'type' => 'meal',
+            'description' => 'Uang makan ditanggung klien',
+            'amount' => 0,
+        ]);
+    }
+
     public function test_employee_budget_and_lhp_forms_use_mobile_native_field_styles(): void
     {
         $views = [

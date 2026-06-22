@@ -23,7 +23,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Nominal</span>
-            <input type="number" min="1" name="items[{{ $index }}][amount]" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="0">
+            <input type="number" min="0" name="items[{{ $index }}][amount]" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="0">
         </label>
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Lampiran Item</span>
