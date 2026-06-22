@@ -50,6 +50,17 @@
                         <span class="text-[12px] text-gray-400">m</span>
                     </div>
                 </div>
+                <div class="border-t border-gray-100 pt-4">
+                    <label class="block text-[12px] font-semibold text-gray-600 mb-1.5">
+                        TomTom API Key
+                        <span class="text-gray-400 font-normal">— untuk hitung jarak jalan kota tujuan (opsional)</span>
+                    </label>
+                    <input type="text" name="tomtom_api_key" value="{{ $settings['tomtom_api_key'] }}" placeholder="Kosongkan untuk pakai jarak garis lurus" autocomplete="off" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 font-mono">
+                    <p class="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[14px]">info</span>
+                        Daftar gratis di developer.tomtom.com. Jika kosong/gagal, sistem otomatis memakai jarak garis lurus.
+                    </p>
+                </div>
                 {{-- Leaflet Map --}}
                 <div class="rounded-lg overflow-hidden border border-gray-200" style="position: relative; z-index: 0;">
                     <div id="officeMap" style="height: 280px; width: 100%;"></div>

@@ -108,11 +108,16 @@ class LeaveRequestController extends Controller
             $current->addDay();
         }
 
-        // Check balance
-        $balance = LeaveBalance::where('employee_id', $employee->id)
-            ->where('leave_type_id', $request->leave_type_id)
-            ->where('year', now()->year)
-            ->first();
+        // Hanya Cuti Tahunan yang berkuota; izin & tipe lain bebas saldo.
+        $leaveType = LeaveType::find($request->leave_type_id);
+        $requiresBalance = $leaveType && $leaveType->name === 'Cuti Tahunan';
+
+        $balance = $requiresBalance
+            ? LeaveBalance::where('employee_id', $employee->id)
+                ->where('leave_type_id', $request->leave_type_id)
+                ->where('year', now()->year)
+                ->first()
+            : null;
 
         if ($balance && $balance->remaining_days < $totalDays) {
             return back()->withInput()->with('error', "Sisa cuti tidak cukup. Tersisa: {$balance->remaining_days} hari, diajukan: {$totalDays} hari.");

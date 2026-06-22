@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
+use App\Models\LeaveType;
 use App\Models\Notification;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
@@ -176,24 +177,28 @@ class LeaveController extends Controller
             'attachments.*' => 'nullable|file|max:10240',
         ]);
 
-        // Check balance
-        $balance = LeaveBalance::where('employee_id', $request->user()->id)
-            ->where('leave_type_id', $request->leave_type_id)
-            ->where('year', now()->year)
-            ->first();
+        // Hanya Cuti Tahunan yang berkuota; izin & tipe lain bebas saldo.
+        $leaveType = LeaveType::find($request->leave_type_id);
 
-        if (! $balance) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Saldo cuti belum tersedia.',
-            ], 422);
-        }
+        if ($leaveType && $leaveType->name === 'Cuti Tahunan') {
+            $balance = LeaveBalance::where('employee_id', $request->user()->id)
+                ->where('leave_type_id', $request->leave_type_id)
+                ->where('year', now()->year)
+                ->first();
 
-        if ($balance && $balance->remaining_days < $request->total_days) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Saldo cuti tidak mencukupi.',
-            ], 422);
+            if (! $balance) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Saldo cuti belum tersedia.',
+                ], 422);
+            }
+
+            if ($balance->remaining_days < $request->total_days) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Saldo cuti tidak mencukupi.',
+                ], 422);
+            }
         }
 
         $leaveRequest = LeaveRequest::create([

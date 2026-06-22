@@ -33,7 +33,10 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'employee_approvers',
             'notifications',
             'travel_zones',
+            'city_distances',
             'attendances',
+            'attendance_requests',
+            'overtime_requests',
             'leave_requests',
             'settings',
             'employees',
@@ -85,6 +88,32 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->decimal('total_days', 4, 1)->default(1);
             $table->text('reason');
             $table->string('status')->default('pending');
+            $table->integer('current_step')->default(1);
+            $table->timestamps();
+        });
+
+        Schema::create('overtime_requests', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->date('date');
+            $table->string('overtime_type')->default('workday');
+            $table->integer('total_duration')->default(0);
+            $table->integer('break_duration')->default(0);
+            $table->text('reason');
+            $table->string('status')->default('pending');
+            $table->integer('current_step')->default(1);
+            $table->timestamps();
+        });
+
+        Schema::create('attendance_requests', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->date('date');
+            $table->time('clock_in')->nullable();
+            $table->time('clock_out')->nullable();
+            $table->text('reason');
+            $table->string('status')->default('pending');
+            $table->integer('current_step')->default(1);
             $table->timestamps();
         });
 
@@ -95,6 +124,17 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->unsignedInteger('min_km');
             $table->unsignedInteger('max_km')->nullable();
             $table->decimal('meal_allowance', 15, 2)->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('city_distances', function (Blueprint $table) {
+            $table->id();
+            $table->string('city_key')->unique();
+            $table->string('city_label');
+            $table->unsignedInteger('distance_km');
+            $table->decimal('lat', 10, 7)->nullable();
+            $table->decimal('lng', 10, 7)->nullable();
+            $table->string('source')->default('routing');
             $table->timestamps();
         });
 
@@ -308,6 +348,9 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         $this->withSession(['employee_id' => 1])
             ->get('/employee/budget-requests')
             ->assertOk()
+            ->assertSee('employee-budget-filter-form', false)
+            ->assertSee('items-start', false)
+            ->assertSee('self-start', false)
             ->assertSee('Perjalanan Batam')
             ->assertSee('Rp 225.000');
     }

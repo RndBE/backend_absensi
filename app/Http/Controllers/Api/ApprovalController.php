@@ -312,8 +312,8 @@ class ApprovalController extends Controller
             // Final approval — no more approvers in chain
             $item->update(['status' => 'approved']);
 
-            // Update leave balance if leave request
-            if ($modelClass === LeaveRequest::class) {
+            // Update leave balance if leave request — hanya Cuti Tahunan yang berkuota.
+            if ($modelClass === LeaveRequest::class && optional($item->leaveType)->name === 'Cuti Tahunan') {
                 $balance = LeaveBalance::where('employee_id', $item->employee_id)
                     ->where('leave_type_id', $item->leave_type_id)
                     ->where('year', now()->year)

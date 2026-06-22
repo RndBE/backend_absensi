@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CityDistance;
 use App\Models\Setting;
 use App\Models\TravelZone;
 use Illuminate\Http\Request;
@@ -19,8 +20,15 @@ class TravelZoneController extends Controller
         $request->validate(['city' => 'required|string|max:255']);
 
         $city = trim($request->city);
+        $cityKey = CityDistance::normalizeKey($city);
 
-        // Geocode kota via Nominatim
+        // 1. Sudah pernah dihitung / dikoreksi admin → pakai langsung (instan, tanpa API)
+        $cached = CityDistance::where('city_key', $cityKey)->first();
+        if ($cached) {
+            return $this->zoneResponse($cached->city_label, $cached->distance_km, $cached->lat, $cached->lng);
+        }
+
+        // 2. Geocode kota via Nominatim
         $coords = $this->geocodeCity($city);
         if (! $coords) {
             return response()->json([
@@ -40,12 +48,33 @@ class TravelZoneController extends Controller
             ], 422);
         }
 
-        // Hitung jarak garis lurus (km)
+        // 3. Jarak jalan via TomTom; fallback ke garis lurus (Haversine) bila gagal
+        $roadKm = $this->roadDistanceKm($officeLat, $officeLng, $coords['lat'], $coords['lng']);
         $distanceKm = (int) round(
-            $this->haversineKm($officeLat, $officeLng, $coords['lat'], $coords['lng'])
+            $roadKm ?? $this->haversineKm($officeLat, $officeLng, $coords['lat'], $coords['lng'])
         );
 
-        // Deteksi zona
+        // 4. Simpan permanen HANYA jika berhasil jarak jalan, agar fallback sementara
+        //    (TomTom down) tidak mengunci kota ke nilai garis lurus selamanya.
+        if ($roadKm !== null) {
+            CityDistance::create([
+                'city_key'    => $cityKey,
+                'city_label'  => $city,
+                'distance_km' => $distanceKm,
+                'lat'         => $coords['lat'],
+                'lng'         => $coords['lng'],
+                'source'      => 'routing',
+            ]);
+        }
+
+        return $this->zoneResponse($city, $distanceKm, $coords['lat'], $coords['lng']);
+    }
+
+    /**
+     * Bentuk respons jarak + zona yang cocok.
+     */
+    private function zoneResponse(string $city, int $distanceKm, ?float $lat, ?float $lng)
+    {
         $zone = TravelZone::findByKm($distanceKm);
 
         return response()->json([
@@ -53,8 +82,8 @@ class TravelZoneController extends Controller
             'data'    => [
                 'city'        => $city,
                 'distance_km' => $distanceKm,
-                'lat'         => $coords['lat'],
-                'lng'         => $coords['lng'],
+                'lat'         => $lat !== null ? (float) $lat : null,
+                'lng'         => $lng !== null ? (float) $lng : null,
                 'zone'        => $zone ? [
                     'id'             => $zone->id,
                     'zone'           => $zone->zone,
@@ -64,6 +93,36 @@ class TravelZoneController extends Controller
                 ] : null,
             ],
         ]);
+    }
+
+    /**
+     * Jarak jalan (km) via TomTom Routing API — rute tercepat (mempertimbangkan
+     * tol & lalu lintas), mirip Google. Mengembalikan null bila key kosong atau
+     * request gagal, agar pemanggil bisa fallback ke Haversine.
+     */
+    private function roadDistanceKm(float $lat1, float $lng1, float $lat2, float $lng2): ?float
+    {
+        $key = trim((string) Setting::getValue('tomtom_api_key', ''));
+        if ($key === '') return null;
+
+        try {
+            // TomTom memakai urutan lat,lng dan format "asal:tujuan" di path.
+            $locations = "$lat1,$lng1:$lat2,$lng2";
+            $response = Http::withoutVerifying()->timeout(8)
+                ->get("https://api.tomtom.com/routing/1/calculateRoute/{$locations}/json", [
+                    'key'        => $key,
+                    'routeType'  => 'fastest',
+                    'travelMode' => 'car',
+                ]);
+
+            if (! $response->ok()) return null;
+
+            $meters = $response->json('routes.0.summary.lengthInMeters');
+
+            return $meters !== null ? $meters / 1000 : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

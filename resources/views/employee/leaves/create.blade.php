@@ -21,7 +21,7 @@
                 @foreach($leaveTypes as $type)
                     @php $balance = $balances->get($type->id); @endphp
                     <option value="{{ $type->id }}" @selected(old('leave_type_id') == $type->id)>
-                        {{ $type->name }}{{ $balance ? ' - sisa '.$balance->remaining_days.' hari' : '' }}
+                        {{ $type->name }}{{ $balance && $type->name === 'Cuti Tahunan' ? ' - sisa '.$balance->remaining_days.' hari' : '' }}
                     </option>
                 @endforeach
             </select>

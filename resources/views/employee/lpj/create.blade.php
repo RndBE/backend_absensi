@@ -214,7 +214,15 @@ document.getElementById('budget_request_id').addEventListener('change', function
 
 // Init: load selected request items if pre-selected
 @if($selectedRequest)
-const preloadItems = @json($selectedRequest->items->map(fn($i) => ['id' => $i->id, 'uraian' => $i->description, 'type' => $i->type_label, 'anggaran' => $i->amount]));
+@php
+    $preloadItems = $selectedRequest->items->map(fn($i) => [
+        'id'       => $i->id,
+        'uraian'   => $i->description,
+        'type'     => $i->type_label,
+        'anggaran' => $i->amount,
+    ])->values();
+@endphp
+const preloadItems = @json($preloadItems);
 preloadItems.forEach(item => addRow(item));
 @else
 addRow();

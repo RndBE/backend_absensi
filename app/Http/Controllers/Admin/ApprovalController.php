@@ -297,7 +297,8 @@ class ApprovalController extends Controller
 
     private function onFinalApproval(string $modelClass, $item): void
     {
-        if ($modelClass === LeaveRequest::class) {
+        // Hanya Cuti Tahunan yang berkuota; saldo izin tidak dikurangi agar tidak minus.
+        if ($modelClass === LeaveRequest::class && optional($item->leaveType)->name === 'Cuti Tahunan') {
             $balance = LeaveBalance::where('employee_id', $item->employee_id)
                 ->where('leave_type_id', $item->leave_type_id)
                 ->where('year', now()->year)->first();

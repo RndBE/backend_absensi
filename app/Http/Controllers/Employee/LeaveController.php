@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
+use App\Models\LeaveType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -73,21 +74,26 @@ class LeaveController extends Controller
             ->diffInDays(Carbon::parse($validated['end_date'])->startOfDay()) + 1;
         $validated['total_days'] = $totalDays;
 
-        $balance = LeaveBalance::where('employee_id', $employee->id)
-            ->where('leave_type_id', $validated['leave_type_id'])
-            ->where('year', now()->year)
-            ->first();
+        // Hanya Cuti Tahunan yang berkuota; izin & tipe lain bebas saldo.
+        $leaveType = LeaveType::find($validated['leave_type_id']);
 
-        if (! $balance) {
-            return back()
-                ->withInput()
-                ->with('error', 'Saldo cuti belum tersedia.');
-        }
+        if ($leaveType && $leaveType->name === 'Cuti Tahunan') {
+            $balance = LeaveBalance::where('employee_id', $employee->id)
+                ->where('leave_type_id', $validated['leave_type_id'])
+                ->where('year', now()->year)
+                ->first();
 
-        if ($balance && (float) $balance->remaining_days < (float) $validated['total_days']) {
-            return back()
-                ->withInput()
-                ->with('error', 'Saldo cuti tidak mencukupi.');
+            if (! $balance) {
+                return back()
+                    ->withInput()
+                    ->with('error', 'Saldo cuti belum tersedia.');
+            }
+
+            if ((float) $balance->remaining_days < (float) $validated['total_days']) {
+                return back()
+                    ->withInput()
+                    ->with('error', 'Saldo cuti tidak mencukupi.');
+            }
         }
 
         LeaveRequest::create($validated + [

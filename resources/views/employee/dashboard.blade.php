@@ -121,6 +121,13 @@
                 'color' => 'bg-rose-50 text-rose-600',
             ],
             [
+                'href' => route('employee.lpj.index'),
+                'icon' => 'receipt_long',
+                'title' => 'LPJ',
+                'description' => 'Pertanggungjawaban',
+                'color' => 'bg-indigo-50 text-indigo-600',
+            ],
+            [
                 'href' => route('employee.approvals.index'),
                 'icon' => 'fact_check',
                 'title' => 'Persetujuan Tim',

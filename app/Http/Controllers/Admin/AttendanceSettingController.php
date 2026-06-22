@@ -23,6 +23,7 @@ class AttendanceSettingController extends Controller
         'auto_clockout_enabled' => '0',
         'auto_clockout_time' => '18:00',
         'face_verification_enabled' => '1',
+        'tomtom_api_key' => '',
     ];
 
     public function index()
@@ -56,6 +57,7 @@ class AttendanceSettingController extends Controller
         $textKeys = [
             'office_latitude', 'office_longitude', 'office_radius_meters',
             'office_address', 'clockin_reminder_time', 'auto_clockout_time',
+            'tomtom_api_key',
         ];
 
         foreach ($booleanKeys as $key) {

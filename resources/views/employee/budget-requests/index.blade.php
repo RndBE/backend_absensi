@@ -18,12 +18,12 @@
         </a>
     </div>
 
-    <form method="GET" class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col sm:flex-row gap-2 sm:items-end">
+    <form method="GET" class="employee-budget-filter-form bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col items-start sm:flex-row gap-2 sm:items-end">
         <label class="block">
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Periode</span>
             <input type="month" name="period" value="{{ $period->format('Y-m') }}" class="rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
         </label>
-        <button class="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-[12px] font-bold text-white">
+        <button class="inline-flex h-10 self-start items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 text-[12px] font-bold text-white">
             <span class="material-symbols-outlined text-[16px]">filter_alt</span>
             Filter
         </button>
