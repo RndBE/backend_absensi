@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Employee;
 
 use App\Http\Controllers\Controller;
+use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\OvertimeRequest;
 use Illuminate\Http\Request;
@@ -37,6 +38,28 @@ class OvertimeController extends Controller
         ]);
     }
 
+    /**
+     * Jam clock-in/out aktual karyawan pada tanggal tertentu — untuk auto-isi
+     * jam mulai/selesai lembur hari libur.
+     */
+    public function attendanceTimes(Request $request)
+    {
+        $request->validate(['date' => 'required|date']);
+
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->whereDate('date', $request->query('date'))
+            ->first();
+
+        return response()->json([
+            'found'     => (bool) $attendance,
+            'clock_in'  => $attendance && $attendance->clock_in ? substr($attendance->clock_in, 0, 5) : null,
+            'clock_out' => $attendance && $attendance->clock_out ? substr($attendance->clock_out, 0, 5) : null,
+        ]);
+    }
+
     public function store(Request $request)
     {
         $durationRule = ['nullable', 'regex:/^(?:\d+|(?:[01]\d|2[0-3]):[0-5]\d)$/'];
@@ -67,7 +90,10 @@ class OvertimeController extends Controller
 
             $start = Carbon::parse($validated['planned_start']);
             $end = Carbon::parse($validated['planned_end']);
-            $totalDuration = max(0, $end->diffInMinutes($start));
+            if ($end->lessThan($start)) {
+                $end->addDay(); // lembur melewati tengah malam
+            }
+            $totalDuration = (int) $start->diffInMinutes($end);
             $breakDuration = $this->durationToMinutes($validated['break_duration'] ?? 0);
 
             OvertimeRequest::create([

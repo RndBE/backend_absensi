@@ -266,7 +266,12 @@
             </div>
         </div>
 
-        <div id="holidayFields" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div id="holidayFields" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3"
+             data-attendance-times-url="{{ route('employee.overtimes.attendance-times') }}">
+            <p class="col-span-1 sm:col-span-3 text-[11px] text-gray-400 flex items-center gap-1 -mb-1">
+                <span class="material-symbols-outlined text-[14px]">info</span>
+                Jam terisi otomatis dari clock-in/out Anda di tanggal tersebut. Bisa diubah manual.
+            </p>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Mulai</label>
                 <input type="time" name="planned_start" value="{{ old('planned_start') }}" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
@@ -338,11 +343,39 @@ document.querySelectorAll('[data-duration-control]').forEach((control) => {
     syncDurationControl(control);
 });
 
+const holidayFields = document.getElementById('holidayFields');
+const dateInput = document.querySelector('input[name="date"]');
+const startInput = document.querySelector('input[name="planned_start"]');
+const endInput = document.querySelector('input[name="planned_end"]');
+const attendanceTimesUrl = holidayFields?.dataset.attendanceTimesUrl;
+
+async function prefillHolidayTimes({ force = false } = {}) {
+    const isHoliday = document.getElementById('overtimeType').value === 'holiday';
+    if (!isHoliday || !attendanceTimesUrl || !dateInput?.value) return;
+    // Jangan timpa input yang sudah diisi manual, kecuali tanggal baru diganti.
+    if (!force && (startInput?.value || endInput?.value)) return;
+
+    try {
+        const resp = await fetch(`${attendanceTimesUrl}?date=${encodeURIComponent(dateInput.value)}`, {
+            headers: { 'Accept': 'application/json' },
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (startInput && data.clock_in) startInput.value = data.clock_in;
+        if (endInput && data.clock_out) endInput.value = data.clock_out;
+    } catch (e) {
+        // Abaikan — biarkan diisi manual.
+    }
+}
+
 function toggleOvertimeType() {
     const isHoliday = document.getElementById('overtimeType').value === 'holiday';
     document.getElementById('workdayFields').classList.toggle('hidden', isHoliday);
-    document.getElementById('holidayFields').classList.toggle('hidden', !isHoliday);
+    holidayFields.classList.toggle('hidden', !isHoliday);
+    if (isHoliday) prefillHolidayTimes();
 }
+
+dateInput?.addEventListener('change', () => prefillHolidayTimes({ force: true }));
 toggleOvertimeType();
 </script>
 @endpush

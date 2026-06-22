@@ -808,7 +808,7 @@ class AttendanceController extends Controller
             // Effective end = whichever is earlier (clock_out or planned_end)
             $effectiveEnd = $clockOutTime->lessThan($plannedEnd) ? $clockOutTime : $plannedEnd;
 
-            $workMinutes = max(0, $effectiveEnd->diffInMinutes($effectiveStart, false));
+            $workMinutes = max(0, (int) $effectiveStart->diffInMinutes($effectiveEnd));
 
             // Subtract break, cap to max approved
             $maxOt = max(0, $duration - $breakMin);

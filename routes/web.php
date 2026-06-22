@@ -75,6 +75,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::post('/leaves', [EmployeeLeaveController::class, 'store'])->name('leaves.store');
     Route::get('/overtimes', [EmployeeOvertimeController::class, 'index'])->name('overtimes.index');
     Route::get('/overtimes/create', [EmployeeOvertimeController::class, 'create'])->name('overtimes.create');
+    Route::get('/overtimes/attendance-times', [EmployeeOvertimeController::class, 'attendanceTimes'])->name('overtimes.attendance-times');
     Route::post('/overtimes', [EmployeeOvertimeController::class, 'store'])->name('overtimes.store');
     Route::get('/attendance-requests', [EmployeeAttendanceRequestController::class, 'index'])->name('attendance-requests.index');
     Route::get('/attendance-requests/create', [EmployeeAttendanceRequestController::class, 'create'])->name('attendance-requests.create');

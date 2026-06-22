@@ -61,7 +61,7 @@ class Shift extends Model
             $end->addDay();
         }
 
-        $totalMinutes    = $end->diffInMinutes($start);
+        $totalMinutes    = (int) $start->diffInMinutes($end);
         $standardMinutes = $this->work_hours * 60;
 
         return max(0, $totalMinutes - $standardMinutes);
@@ -78,6 +78,6 @@ class Shift extends Model
         $end   = Carbon::parse($this->end_time);
         if ($end->lte($start)) $end->addDay();
 
-        return $end->diffInMinutes($start);
+        return (int) $start->diffInMinutes($end);
     }
 }

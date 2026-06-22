@@ -64,7 +64,10 @@ class OvertimeController extends Controller
 
             $start = Carbon::parse($request->planned_start);
             $end = Carbon::parse($request->planned_end);
-            $totalMinutes = max(0, $end->diffInMinutes($start));
+            if ($end->lessThan($start)) {
+                $end->addDay(); // lembur melewati tengah malam
+            }
+            $totalMinutes = (int) $start->diffInMinutes($end);
             $breakMinutes = $request->break_duration ?? 0;
 
             $overtimeRequest = OvertimeRequest::create([
