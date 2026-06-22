@@ -401,6 +401,86 @@ class EmployeePortalTest extends TestCase
             ->assertDontSee('>Terlambat<', false);
     }
 
+    public function test_employee_dashboard_shows_approved_early_departure_permission(): void
+    {
+        $this->seedEmployee();
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-06-15',
+            'clock_in' => '08:00:00',
+            'clock_out' => '14:00:00',
+            'status' => 'present',
+            'review_status' => null,
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_types')->insert([
+            'id' => 4,
+            'name' => 'Izin Pulang Cepat',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 4,
+            'start_date' => '2026-06-15',
+            'end_date' => '2026-06-15',
+            'total_days' => 1,
+            'reason' => 'Keperluan mendadak',
+            'status' => 'approved',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Izin Pulang Cepat');
+    }
+
+    public function test_employee_dashboard_shows_manual_partial_day_permission_statuses(): void
+    {
+        $this->seedEmployee();
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-06-15',
+            'clock_in' => '09:30:00',
+            'clock_out' => '14:00:00',
+            'status' => 'late_excuse',
+            'review_status' => null,
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-06-14',
+            'clock_in' => '08:30:00',
+            'clock_out' => '14:00:00',
+            'status' => 'early_departure',
+            'review_status' => null,
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Izin Terlambat')
+            ->assertSee('Izin Pulang Cepat');
+    }
+
     public function test_employee_can_open_profile_page(): void
     {
         $this->seedEmployee();
@@ -974,6 +1054,9 @@ class EmployeePortalTest extends TestCase
             ->assertSee('data-step-action', false)
             ->assertSee('overtime-stepper-row', false)
             ->assertSee('overtime-stepper-button', false)
+            ->assertSee('overtime-mobile-native-field', false)
+            ->assertSee('overtime-mobile-select-field', false)
+            ->assertSee('overtime-select-wrapper', false)
             ->assertDontSee('type="time" name="pre_shift_duration"', false)
             ->assertSee('data-overtime-section="before-shift"', false)
             ->assertSee('data-overtime-section="after-shift"', false);

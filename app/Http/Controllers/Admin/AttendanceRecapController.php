@@ -14,6 +14,7 @@ use App\Support\AttendanceLateExcuse;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Str;
 use ZipArchive;
 
 class AttendanceRecapController extends Controller
@@ -46,7 +47,9 @@ class AttendanceRecapController extends Controller
         $employees = $query->orderBy('department_id')->orderBy('full_name')->get();
 
         // Load attendances for this date
-        $attendances = Attendance::where('date', $date->format('Y-m-d'))
+        $dateString = $date->format('Y-m-d');
+
+        $attendances = Attendance::whereDate('date', $dateString)
             ->whereIn('employee_id', $employees->pluck('id'))
             ->get()
             ->keyBy('employee_id');
@@ -69,7 +72,7 @@ class AttendanceRecapController extends Controller
 
         // Build recap rows
         $rows = [];
-        $stats = ['hadir' => 0, 'terlambat' => 0, 'cuti' => 0, 'alpha' => 0, 'off' => 0, 'libur' => 0];
+        $stats = ['hadir' => 0, 'terlambat' => 0, 'sakit' => 0, 'cuti' => 0, 'alpha' => 0, 'off' => 0, 'libur' => 0];
 
         foreach ($employees as $emp) {
             $row = [
@@ -118,6 +121,8 @@ class AttendanceRecapController extends Controller
                     // Has schedule — check leave first
                     $leave = $leaves->get($emp->id);
                     $lateExcuse = AttendanceLateExcuse::isLateArrivalLeave($leave) ? $leave : null;
+                    $earlyDeparture = AttendanceLateExcuse::isEarlyDepartureLeave($leave) ? $leave : null;
+                    $partialDayLeave = $lateExcuse || $earlyDeparture;
                     if ($leave) {
                         $row['leave'] = $leave;
                     }
@@ -125,10 +130,16 @@ class AttendanceRecapController extends Controller
                         $row['late_excuse'] = $lateExcuse;
                     }
 
-                    if ($leave && !$lateExcuse) {
-                        $row['status'] = 'leave';
-                        $row['status_label'] = 'Cuti: ' . ($leave->leaveType->name ?? 'Cuti');
-                        $stats['cuti']++;
+                    if ($leave && !$partialDayLeave) {
+                        if ($this->isSickLeave($leave)) {
+                            $row['status'] = 'sick';
+                            $row['status_label'] = 'Sakit';
+                            $stats['sakit']++;
+                        } else {
+                            $row['status'] = 'leave';
+                            $row['status_label'] = 'Cuti: ' . ($leave->leaveType->name ?? 'Cuti');
+                            $stats['cuti']++;
+                        }
                     } else {
                         // Check attendance
                         $att = $row['attendance'];
@@ -136,10 +147,18 @@ class AttendanceRecapController extends Controller
                             if ($att->review_status === 'pending') {
                                 $row['status'] = 'review';
                                 $row['status_label'] = 'Butuh Review';
+                            } elseif ($att->status === 'sick') {
+                                $row['status'] = 'sick';
+                                $row['status_label'] = 'Sakit';
+                                $stats['sakit']++;
                             } elseif ($att->review_status === 'rejected' || $att->status === 'absent') {
                                 $row['status'] = 'absent';
                                 $row['status_label'] = 'Alpha';
                                 $stats['alpha']++;
+                            } elseif ($manualPermissionLabel = AttendanceLateExcuse::manualPermissionStatusLabel($att->status)) {
+                                $row['status'] = 'present';
+                                $row['status_label'] = $manualPermissionLabel;
+                                $stats['hadir']++;
                             } elseif ($att->is_late && !$lateExcuse) {
                                 $row['status'] = 'late';
                                 $row['status_label'] = 'Terlambat';
@@ -148,7 +167,7 @@ class AttendanceRecapController extends Controller
                                 $row['status'] = 'present';
                                 $row['status_label'] = $att->is_late && $lateExcuse
                                     ? AttendanceLateExcuse::STATUS_LABEL
-                                    : 'Hadir';
+                                    : ($earlyDeparture ? AttendanceLateExcuse::EARLY_DEPARTURE_STATUS_LABEL : 'Hadir');
                                 $stats['hadir']++;
                             }
                         } else {
@@ -295,28 +314,31 @@ class AttendanceRecapController extends Controller
             'date' => 'required|date',
             'clock_in' => 'nullable|date_format:H:i',
             'clock_out' => 'nullable|date_format:H:i',
-            'status' => 'required|in:present,absent,leave,holiday',
+            'status' => 'required|in:present,absent,sick,leave,holiday,late_excuse,early_departure',
         ]);
 
+        $date = Carbon::parse($request->date);
+        $dateString = $date->format('Y-m-d');
         $isLate = false;
         if ($request->status === 'present' && $request->clock_in) {
             $emp = Employee::with('scheduleTemplate.days.shift')->find($request->employee_id);
-            $date = Carbon::parse($request->date);
             $isLate = $this->isLateForImportedAttendance($emp, $date, $request->clock_in);
         }
 
-        Attendance::updateOrCreate(
-            [
+        $attendance = Attendance::where('employee_id', $request->employee_id)
+            ->whereDate('date', $dateString)
+            ->first() ?? new Attendance([
                 'employee_id' => $request->employee_id,
-                'date' => $request->date,
-            ],
-            [
-                'clock_in' => $request->clock_in,
-                'clock_out' => $request->clock_out,
-                'status' => $request->status,
-                'is_late' => $isLate,
-            ]
-        );
+                'date' => $dateString,
+            ]);
+
+        $attendance->fill([
+            'clock_in' => $request->clock_in,
+            'clock_out' => $request->clock_out,
+            'status' => $request->status,
+            'is_late' => $isLate,
+        ]);
+        $attendance->save();
 
         return back()->with('success', 'Data presensi berhasil diperbarui.');
     }
@@ -781,7 +803,7 @@ class AttendanceRecapController extends Controller
         $dayNames = ['', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
 
         $rows = [];
-        $stats = ['hadir' => 0, 'terlambat' => 0, 'alpha' => 0, 'cuti' => 0, 'off' => 0, 'libur' => 0];
+        $stats = ['hadir' => 0, 'terlambat' => 0, 'sakit' => 0, 'alpha' => 0, 'cuti' => 0, 'off' => 0, 'libur' => 0];
 
         for ($d = 1; $d <= $daysInMonth; $d++) {
             $date = $startOfMonth->copy()->addDays($d - 1);
@@ -800,6 +822,8 @@ class AttendanceRecapController extends Controller
             // Check leave
             $leave = AttendanceLateExcuse::firstForDate($leaves, $date);
             $lateExcuse = AttendanceLateExcuse::isLateArrivalLeave($leave) ? $leave : null;
+            $earlyDeparture = AttendanceLateExcuse::isEarlyDepartureLeave($leave) ? $leave : null;
+            $partialDayLeave = $lateExcuse || $earlyDeparture;
 
             $status = 'no_schedule';
             $statusLabel = '-';
@@ -807,14 +831,28 @@ class AttendanceRecapController extends Controller
                 $status = 'holiday';
                 $statusLabel = $holiday->name;
                 $stats['libur']++;
-            } elseif ($leave && !$lateExcuse) {
-                $status = 'leave';
-                $statusLabel = $leave->leaveType->name ?? 'Cuti';
-                $stats['cuti']++;
+            } elseif ($leave && !$partialDayLeave) {
+                if ($this->isSickLeave($leave)) {
+                    $status = 'sick';
+                    $statusLabel = 'Sakit';
+                    $stats['sakit']++;
+                } else {
+                    $status = 'leave';
+                    $statusLabel = $leave->leaveType->name ?? 'Cuti';
+                    $stats['cuti']++;
+                }
             } elseif ($shift && $shift->is_off) {
                 $status = 'off';
                 $statusLabel = 'OFF';
                 $stats['off']++;
+            } elseif ($att && $att->status === 'sick') {
+                $status = 'sick';
+                $statusLabel = 'Sakit';
+                $stats['sakit']++;
+            } elseif ($att && AttendanceLateExcuse::manualPermissionStatusLabel($att->status)) {
+                $status = 'present';
+                $statusLabel = AttendanceLateExcuse::manualPermissionStatusLabel($att->status);
+                $stats['hadir']++;
             } elseif ($att && $att->status === 'present') {
                 if ($att->is_late && !$lateExcuse) {
                     $status = 'late';
@@ -824,7 +862,7 @@ class AttendanceRecapController extends Controller
                     $status = 'present';
                     $statusLabel = $att->is_late && $lateExcuse
                         ? AttendanceLateExcuse::STATUS_LABEL
-                        : 'Hadir';
+                        : ($earlyDeparture ? AttendanceLateExcuse::EARLY_DEPARTURE_STATUS_LABEL : 'Hadir');
                 }
                 $stats['hadir']++;
             } elseif ($shift && !$shift->is_off && $date->lte(Carbon::today())) {
@@ -853,5 +891,12 @@ class AttendanceRecapController extends Controller
         return view('admin.attendance-recap.employee-detail', compact(
             'employee', 'period', 'rows', 'stats'
         ));
+    }
+
+    private function isSickLeave(?LeaveRequest $leave): bool
+    {
+        $name = Str::lower((string) ($leave?->leaveType?->name ?? ''));
+
+        return Str::contains($name, ['sakit', 'sick', 'medical']);
     }
 }

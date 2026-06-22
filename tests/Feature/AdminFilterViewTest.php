@@ -43,12 +43,14 @@ class AdminFilterViewTest extends TestCase
         $this->assertStringContainsString('border-l-4', $view);
         $this->assertStringContainsString('border-l-emerald-500', $view);
         $this->assertStringContainsString('border-l-amber-500', $view);
+        $this->assertStringContainsString('border-l-violet-500', $view);
         $this->assertStringContainsString('border-l-blue-500', $view);
         $this->assertStringContainsString('border-l-red-500', $view);
         $this->assertStringContainsString('border-l-slate-400', $view);
         $this->assertStringContainsString('border-l-rose-500', $view);
         $this->assertStringContainsString('bg-emerald-50', $view);
         $this->assertStringContainsString('bg-amber-50', $view);
+        $this->assertStringContainsString('bg-violet-50', $view);
         $this->assertStringContainsString('bg-blue-50', $view);
         $this->assertStringContainsString('bg-red-50', $view);
         $this->assertStringContainsString('bg-slate-50', $view);
@@ -56,6 +58,77 @@ class AdminFilterViewTest extends TestCase
         $this->assertStringContainsString('w-10 h-10 rounded-lg ring-1 ring-inset flex items-center justify-center shrink-0', $view);
         $this->assertStringContainsString('material-symbols-outlined text-[22px] leading-none', $view);
         $this->assertStringNotContainsString('material-symbols-outlined text-[22px] w-10 h-10', $view);
+    }
+
+    public function test_attendance_recap_manual_status_includes_sick_option(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/attendance-recap/index.blade.php'));
+
+        $this->assertStringContainsString("'sakit' =>", $view);
+        $this->assertStringContainsString("'status' => 'sick'", $view);
+        $this->assertStringContainsString('<option value="sick"', $view);
+        $this->assertStringContainsString('Sakit', $view);
+    }
+
+    public function test_attendance_recap_manual_status_includes_partial_day_permission_options(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/attendance-recap/index.blade.php'));
+
+        $this->assertStringContainsString("'late_excuse' =>", $view);
+        $this->assertStringContainsString("'status' => 'late_excuse'", $view);
+        $this->assertStringContainsString("'early_departure' =>", $view);
+        $this->assertStringContainsString("'status' => 'early_departure'", $view);
+        $this->assertStringContainsString('Hadir - Izin Terlambat', $view);
+        $this->assertStringContainsString('Hadir - Izin Pulang Cepat', $view);
+    }
+
+    public function test_attendance_recap_employee_detail_displays_sick_status(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/attendance-recap/employee-detail.blade.php'));
+
+        $this->assertStringContainsString('grid grid-cols-7', $view);
+        $this->assertStringContainsString("{{ \$stats['sakit'] }}", $view);
+        $this->assertStringContainsString("'sick' => 'bg-violet-100 text-violet-700'", $view);
+        $this->assertStringContainsString('Sakit', $view);
+    }
+
+    public function test_attendance_recap_employee_detail_exposes_inline_edit_controls(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/attendance-recap/employee-detail.blade.php'));
+
+        $this->assertStringContainsString("can(\$currentAdmin, 'attendance.manage')", $view);
+        $this->assertStringContainsString("route('admin.attendance-recap.update')", $view);
+        $this->assertStringContainsString('data-inline-clock-cell', $view);
+        $this->assertStringContainsString('data-clock-display', $view);
+        $this->assertStringContainsString('data-clock-form', $view);
+        $this->assertStringContainsString('startInlineClockEdit(this)', $view);
+        $this->assertStringContainsString('cancelInlineClockEdit(this)', $view);
+        $this->assertStringContainsString('name="clock_in"', $view);
+        $this->assertStringContainsString('name="clock_out"', $view);
+        $this->assertStringContainsString('name="status"', $view);
+        $this->assertStringContainsString('Edit Clock In', $view);
+        $this->assertStringContainsString('Edit Clock Out', $view);
+        $this->assertStringContainsString("\$row['attendance']?->clock_in", $view);
+        $this->assertStringContainsString("\$row['attendance']?->clock_out", $view);
+        $this->assertStringNotContainsString('id="editOffcanvas"', $view);
+        $this->assertStringNotContainsString('openEdit(', $view);
+        $this->assertStringNotContainsString("\$row['clock_in']", $view);
+        $this->assertStringNotContainsString("\$row['clock_out']", $view);
+    }
+
+    public function test_attendance_recap_detail_offcanvas_uses_status_aware_content(): void
+    {
+        $indexView = file_get_contents(resource_path('views/admin/attendance-recap/index.blade.php'));
+        $detailView = file_get_contents(resource_path('views/admin/attendance-recap/employee-detail.blade.php'));
+
+        foreach ([$indexView, $detailView] as $view) {
+            $this->assertStringContainsString("'status' => \$row['status']", $view);
+            $this->assertStringContainsString("'status_label' => \$row['status_label']", $view);
+            $this->assertStringContainsString('buildAttendanceStatusBadges(att)', $view);
+            $this->assertStringContainsString('status === \'sick\'', $view);
+            $this->assertStringContainsString('Tidak ada clock in/out untuk status', $view);
+            $this->assertStringContainsString('hasClockEvidence', $view);
+        }
     }
 
     public function test_attendance_recap_import_controls_use_compact_header_layout(): void

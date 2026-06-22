@@ -54,6 +54,23 @@
         line-height: 1;
     }
 
+    .overtime-mobile-native-field,
+    .overtime-mobile-select-field {
+        -webkit-appearance: none;
+        appearance: none;
+        background-color: #ffffff;
+        color: #0f172a;
+        color-scheme: light;
+    }
+
+    .overtime-mobile-native-field::-webkit-date-and-time-value {
+        text-align: left;
+    }
+
+    .overtime-mobile-native-field::-webkit-calendar-picker-indicator {
+        opacity: 0.75;
+    }
+
     @media (max-width: 380px) {
         .overtime-stepper-row {
             grid-template-columns: 16px minmax(66px, 1fr) 6px minmax(66px, 1fr) 40px;
@@ -119,14 +136,17 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Tanggal</label>
-                <input type="date" name="date" value="{{ old('date') }}" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="date" name="date" value="{{ old('date') }}" required class="overtime-mobile-native-field h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] font-semibold text-gray-900 shadow-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
             </div>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Tipe Lembur</label>
-                <select name="overtime_type" id="overtimeType" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500" onchange="toggleOvertimeType()">
-                    <option value="workday" @selected(old('overtime_type') !== 'holiday')>Hari Kerja</option>
-                    <option value="holiday" @selected(old('overtime_type') === 'holiday')>Hari Libur / Off</option>
-                </select>
+                <div class="overtime-select-wrapper relative">
+                    <select name="overtime_type" id="overtimeType" class="overtime-mobile-select-field h-10 w-full rounded-lg border border-gray-200 bg-white px-3 pr-9 text-[13px] font-semibold text-gray-900 shadow-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" onchange="toggleOvertimeType()">
+                        <option value="workday" @selected(old('overtime_type') !== 'holiday')>Hari Kerja</option>
+                        <option value="holiday" @selected(old('overtime_type') === 'holiday')>Hari Libur / Off</option>
+                    </select>
+                    <span class="material-symbols-outlined pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[16px] text-gray-400">expand_more</span>
+                </div>
             </div>
         </div>
 

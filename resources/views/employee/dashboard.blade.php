@@ -5,7 +5,9 @@
 @php
     $hasClockIn = (bool) $todayAttendance?->clock_in;
     $hasClockOut = (bool) $todayAttendance?->clock_out;
-    $todayLateExcuse = $todayAttendance?->is_late ? ($lateExcuseDates->get($today->toDateString()) ?? null) : null;
+    $todayManualPermissionLabel = \App\Support\AttendanceLateExcuse::manualPermissionStatusLabel($todayAttendance?->status);
+    $todayLateExcuse = $todayManualPermissionLabel === null && $todayAttendance?->is_late ? ($lateExcuseDates->get($today->toDateString()) ?? null) : null;
+    $todayEarlyDeparture = $todayManualPermissionLabel === null && $todayAttendance ? ($earlyDepartureDates->get($today->toDateString()) ?? null) : null;
     $actionType = ! $hasClockIn ? 'clock-in' : (! $hasClockOut ? 'clock-out' : null);
     $actionLabel = ! $hasClockIn ? 'Clock In Sekarang' : (! $hasClockOut ? 'Clock Out Sekarang' : 'Presensi Selesai');
 @endphp
@@ -169,7 +171,9 @@
             </div>
             <div class="mt-3 text-[28px] font-black text-gray-900 leading-none">{{ $todayAttendance?->clock_in ? substr($todayAttendance->clock_in, 0, 5) : '-' }}</div>
             <div class="mt-2">
-                @if($todayLateExcuse)
+                @if($todayAttendance?->status === \App\Support\AttendanceLateExcuse::LATE_EXCUSE_STATUS)
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
+                @elseif($todayLateExcuse)
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
                 @elseif($todayAttendance?->is_late)
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Terlambat</span>
@@ -188,7 +192,11 @@
             </div>
             <div class="mt-3 text-[28px] font-black text-gray-900 leading-none">{{ $todayAttendance?->clock_out ? substr($todayAttendance->clock_out, 0, 5) : '-' }}</div>
             <div class="mt-2">
-                @if($todayAttendance?->clock_out)
+                @if($todayAttendance?->status === \App\Support\AttendanceLateExcuse::EARLY_DEPARTURE_STATUS && $todayAttendance?->clock_out)
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
+                @elseif($todayEarlyDeparture && $todayAttendance?->clock_out)
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
+                @elseif($todayAttendance?->clock_out)
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">Tercatat</span>
                 @elseif($todayAttendance?->clock_in)
                     <span class="text-[12px] text-gray-400">Belum clock out</span>
@@ -234,7 +242,9 @@
                     @forelse($recentAttendances as $attendance)
                         @php
                             $attendanceDateKey = $attendance->date?->format('Y-m-d');
-                            $hasLateExcuse = $attendance->is_late && $attendanceDateKey && $lateExcuseDates->has($attendanceDateKey);
+                            $manualPermissionLabel = \App\Support\AttendanceLateExcuse::manualPermissionStatusLabel($attendance->status);
+                            $hasLateExcuse = $manualPermissionLabel === null && $attendance->is_late && $attendanceDateKey && $lateExcuseDates->has($attendanceDateKey);
+                            $hasEarlyDeparture = $manualPermissionLabel === null && $attendanceDateKey && $earlyDepartureDates->has($attendanceDateKey);
                         @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $attendance->date?->format('d/m/Y') }}</td>
@@ -245,10 +255,16 @@
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Review</span>
                                 @elseif($attendance->review_status === 'rejected')
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-800">Ditolak</span>
+                                @elseif($attendance->status === \App\Support\AttendanceLateExcuse::LATE_EXCUSE_STATUS)
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
+                                @elseif($attendance->status === \App\Support\AttendanceLateExcuse::EARLY_DEPARTURE_STATUS)
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
                                 @elseif($hasLateExcuse)
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
                                 @elseif($attendance->is_late)
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Terlambat</span>
+                                @elseif($hasEarlyDeparture)
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
                                 @else
                                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Hadir</span>
                                 @endif

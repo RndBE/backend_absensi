@@ -289,6 +289,220 @@ class AttendanceRecapImportTest extends TestCase
         $this->assertFalse((bool) $attendance->is_late);
     }
 
+    public function test_admin_can_mark_attendance_recap_as_sick(): void
+    {
+        $this->withoutMiddleware()
+            ->withSession(['admin_id' => 99])
+            ->post(route('admin.attendance-recap.update'), [
+                'employee_id' => 1,
+                'date' => '2026-06-18',
+                'clock_in' => null,
+                'clock_out' => null,
+                'status' => 'sick',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Data presensi berhasil diperbarui.');
+
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'date' => '2026-06-18 00:00:00',
+            'status' => 'sick',
+            'is_late' => false,
+        ]);
+
+        $request = \Illuminate\Http\Request::create('/admin/attendance-recap', 'GET', [
+            'date' => '2026-06-18',
+        ]);
+        $view = (new \App\Http\Controllers\Admin\AttendanceRecapController())->index($request);
+
+        $rows = $view->getData()['rows'];
+        $row = collect($rows)->firstWhere('employee.id', 1);
+
+        $this->assertSame('sick', $row['status']);
+        $this->assertSame('Sakit', $row['status_label']);
+        $this->assertSame(1, $view->getData()['stats']['sakit']);
+    }
+
+    public function test_admin_can_mark_attendance_recap_as_late_arrival_permission(): void
+    {
+        $this->withoutMiddleware()
+            ->withSession(['admin_id' => 99])
+            ->post(route('admin.attendance-recap.update'), [
+                'employee_id' => 1,
+                'date' => '2026-06-18',
+                'clock_in' => '09:30',
+                'clock_out' => '17:00',
+                'status' => 'late_excuse',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Data presensi berhasil diperbarui.');
+
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'date' => '2026-06-18 00:00:00',
+            'status' => 'late_excuse',
+            'is_late' => false,
+        ]);
+
+        $request = \Illuminate\Http\Request::create('/admin/attendance-recap', 'GET', [
+            'date' => '2026-06-18',
+        ]);
+        $view = (new \App\Http\Controllers\Admin\AttendanceRecapController())->index($request);
+
+        $row = collect($view->getData()['rows'])->firstWhere('employee.id', 1);
+
+        $this->assertSame('present', $row['status']);
+        $this->assertSame('Hadir - Izin Terlambat', $row['status_label']);
+        $this->assertSame(1, $view->getData()['stats']['hadir']);
+        $this->assertSame(0, $view->getData()['stats']['terlambat']);
+    }
+
+    public function test_admin_can_mark_attendance_recap_as_early_departure_permission(): void
+    {
+        $this->withoutMiddleware()
+            ->withSession(['admin_id' => 99])
+            ->post(route('admin.attendance-recap.update'), [
+                'employee_id' => 1,
+                'date' => '2026-06-18',
+                'clock_in' => '08:30',
+                'clock_out' => '14:00',
+                'status' => 'early_departure',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Data presensi berhasil diperbarui.');
+
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'date' => '2026-06-18 00:00:00',
+            'status' => 'early_departure',
+            'is_late' => false,
+        ]);
+
+        $request = \Illuminate\Http\Request::create('/admin/attendance-recap', 'GET', [
+            'date' => '2026-06-18',
+        ]);
+        $view = (new \App\Http\Controllers\Admin\AttendanceRecapController())->index($request);
+
+        $row = collect($view->getData()['rows'])->firstWhere('employee.id', 1);
+
+        $this->assertSame('present', $row['status']);
+        $this->assertSame('Hadir - Izin Pulang Cepat', $row['status_label']);
+        $this->assertSame(1, $view->getData()['stats']['hadir']);
+        $this->assertSame(0, $view->getData()['stats']['terlambat']);
+    }
+
+    public function test_approved_sick_leave_is_counted_as_sick_in_attendance_recap(): void
+    {
+        DB::table('leave_types')->insert([
+            'id' => 10,
+            'name' => 'Izin Sakit',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 10,
+            'start_date' => '2026-06-18',
+            'end_date' => '2026-06-18',
+            'status' => 'approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        session(['admin_id' => 99]);
+
+        $dailyView = (new \App\Http\Controllers\Admin\AttendanceRecapController())->index(
+            \Illuminate\Http\Request::create('/admin/attendance-recap', 'GET', [
+                'date' => '2026-06-18',
+            ])
+        );
+
+        $dailyRows = $dailyView->getData()['rows'];
+        $dailyRow = collect($dailyRows)->firstWhere('employee.id', 1);
+
+        $this->assertSame('sick', $dailyRow['status']);
+        $this->assertSame('Sakit', $dailyRow['status_label']);
+        $this->assertSame(1, $dailyView->getData()['stats']['sakit']);
+        $this->assertSame(0, $dailyView->getData()['stats']['cuti']);
+
+        $monthlyView = (new \App\Http\Controllers\Admin\AttendanceRecapController())->employeeDetail(
+            \Illuminate\Http\Request::create('/admin/attendance-recap/employee/1', 'GET', [
+                'period' => '2026-06',
+            ]),
+            1
+        );
+
+        $monthlyRows = $monthlyView->getData()['rows'];
+        $monthlyRow = collect($monthlyRows)->firstWhere('day', 18);
+
+        $this->assertSame('sick', $monthlyRow['status']);
+        $this->assertSame('Sakit', $monthlyRow['status_label']);
+        $this->assertSame(1, $monthlyView->getData()['stats']['sakit']);
+    }
+
+    public function test_approved_early_departure_permission_is_counted_as_present_in_attendance_recap(): void
+    {
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-06-18',
+            'clock_in' => '08:00:00',
+            'clock_out' => '14:00:00',
+            'status' => 'present',
+            'review_status' => null,
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_types')->insert([
+            'id' => 11,
+            'name' => 'Izin Pulang Cepat',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 11,
+            'start_date' => '2026-06-18',
+            'end_date' => '2026-06-18',
+            'status' => 'approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        session(['admin_id' => 99]);
+
+        $dailyView = (new \App\Http\Controllers\Admin\AttendanceRecapController())->index(
+            \Illuminate\Http\Request::create('/admin/attendance-recap', 'GET', [
+                'date' => '2026-06-18',
+            ])
+        );
+
+        $dailyRow = collect($dailyView->getData()['rows'])->firstWhere('employee.id', 1);
+
+        $this->assertSame('present', $dailyRow['status']);
+        $this->assertSame('Hadir - Izin Pulang Cepat', $dailyRow['status_label']);
+        $this->assertSame(1, $dailyView->getData()['stats']['hadir']);
+        $this->assertSame(0, $dailyView->getData()['stats']['cuti']);
+
+        $monthlyView = (new \App\Http\Controllers\Admin\AttendanceRecapController())->employeeDetail(
+            \Illuminate\Http\Request::create('/admin/attendance-recap/employee/1', 'GET', [
+                'period' => '2026-06',
+            ]),
+            1
+        );
+
+        $monthlyRow = collect($monthlyView->getData()['rows'])->firstWhere('day', 18);
+
+        $this->assertSame('present', $monthlyRow['status']);
+        $this->assertSame('Hadir - Izin Pulang Cepat', $monthlyRow['status_label']);
+        $this->assertSame(1, $monthlyView->getData()['stats']['hadir']);
+        $this->assertSame(0, $monthlyView->getData()['stats']['cuti']);
+    }
+
     public function test_admin_can_import_overtime_columns_from_attendence_sheet(): void
     {
         $file = $this->uploadedAttendanceReportXlsx(withOvertime: true);

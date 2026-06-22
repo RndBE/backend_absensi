@@ -57,6 +57,7 @@ class DashboardController extends Controller
             ->where('end_date', '>=', $monthStart->toDateString())
             ->get();
         $lateExcuseDates = AttendanceLateExcuse::lateExcuseDates($approvedLeaves, $monthStart, $monthEnd);
+        $earlyDepartureDates = AttendanceLateExcuse::earlyDepartureDates($approvedLeaves, $monthStart, $monthEnd);
 
         return view('employee.dashboard', [
             'employee' => $employee,
@@ -64,6 +65,7 @@ class DashboardController extends Controller
             'todayAttendance' => $todayAttendance,
             'recentAttendances' => $recentAttendances,
             'lateExcuseDates' => $lateExcuseDates,
+            'earlyDepartureDates' => $earlyDepartureDates,
             'schedule' => $this->todaySchedule($employee, $today),
             'pendingApprovalCount' => app(PendingApprovalCounter::class)->countForApprover($employee),
             'settings' => [

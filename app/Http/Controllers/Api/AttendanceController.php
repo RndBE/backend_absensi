@@ -153,10 +153,12 @@ class AttendanceController extends Controller
             // Leave check
             $leave = AttendanceLateExcuse::firstForDate($leaves, $date);
             $lateExcuse = AttendanceLateExcuse::isLateArrivalLeave($leave) ? $leave : null;
+            $earlyDeparture = AttendanceLateExcuse::isEarlyDepartureLeave($leave) ? $leave : null;
+            $partialDayLeave = $lateExcuse || $earlyDeparture;
 
             // Manual override wins over holiday; template only applies on non-holidays.
             $shift = null;
-            if (!$leave || $lateExcuse) {
+            if (!$leave || $partialDayLeave) {
                 if (isset($overrides[$dateStr])) {
                     $shift = $overrides[$dateStr]->shift;
                 } elseif (!$holiday && isset($templateDays[$dow])) {
@@ -170,12 +172,12 @@ class AttendanceController extends Controller
             // Calculate stats
             if ($holiday && !$shift) {
                 $stats['libur']++;
-            } elseif ($leave && !$lateExcuse) {
+            } elseif ($leave && !$partialDayLeave) {
                 $stats['cuti']++;
             } elseif ($shift && $shift->is_off) {
                 $stats['off']++;
             } elseif ($att) {
-                if ($att->is_late && !$lateExcuse) {
+                if (! AttendanceLateExcuse::manualPermissionStatusLabel($att->status) && $att->is_late && !$lateExcuse) {
                     $stats['terlambat']++;
                 }
                 $stats['hadir']++;
@@ -189,11 +191,14 @@ class AttendanceController extends Controller
                 'day_name' => $dayNames[$dow],
                 'is_today' => $date->isToday(),
                 'holiday' => $holiday ? $holiday->name : null,
-                'leave' => $leave && !$lateExcuse ? [
+                'leave' => $leave && !$partialDayLeave ? [
                     'type' => $leave->leaveType->name ?? 'Cuti',
                 ] : null,
                 'late_excuse' => $lateExcuse ? [
                     'type' => $lateExcuse->leaveType->name ?? AttendanceLateExcuse::SHORT_LABEL,
+                ] : null,
+                'early_leave' => $earlyDeparture ? [
+                    'type' => $earlyDeparture->leaveType->name ?? AttendanceLateExcuse::EARLY_DEPARTURE_SHORT_LABEL,
                 ] : null,
                 'shift' => $shift ? [
                     'name' => $shift->name,
@@ -214,9 +219,10 @@ class AttendanceController extends Controller
                     'clock_out_lng' => $att->clock_out_lng,
                     'status' => $att->status,
                     'is_late' => $att->is_late,
-                    'status_label' => $att->is_late && $lateExcuse
-                        ? AttendanceLateExcuse::STATUS_LABEL
-                        : ($att->is_late ? 'Terlambat' : 'Hadir'),
+                    'status_label' => AttendanceLateExcuse::manualPermissionStatusLabel($att->status)
+                        ?? ($att->is_late && $lateExcuse
+                            ? AttendanceLateExcuse::STATUS_LABEL
+                            : ($att->is_late ? 'Terlambat' : ($earlyDeparture ? AttendanceLateExcuse::EARLY_DEPARTURE_STATUS_LABEL : 'Hadir'))),
                     'is_remote' => $att->is_remote,
                     'remote_notes' => $att->remote_notes,
                 ] : null,

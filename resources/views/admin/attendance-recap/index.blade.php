@@ -7,11 +7,12 @@
     $canManageAttendance = $adminPermission->can($currentAdmin, 'attendance.manage');
 @endphp
 {{-- Stat Cards --}}
-<div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
+<div class="grid grid-cols-2 md:grid-cols-7 gap-3 mb-5">
     @php
         $statCards = [
             ['label' => 'Hadir', 'value' => $stats['hadir'], 'icon' => 'check_circle', 'accent' => 'border-l-emerald-500', 'iconBox' => 'bg-emerald-50 text-emerald-600 ring-emerald-100', 'valueClass' => 'text-emerald-700'],
             ['label' => 'Terlambat', 'value' => $stats['terlambat'], 'icon' => 'schedule', 'accent' => 'border-l-amber-500', 'iconBox' => 'bg-amber-50 text-amber-600 ring-amber-100', 'valueClass' => 'text-amber-700'],
+            ['label' => 'Sakit', 'value' => $stats['sakit'], 'icon' => 'sick', 'accent' => 'border-l-violet-500', 'iconBox' => 'bg-violet-50 text-violet-600 ring-violet-100', 'valueClass' => 'text-violet-700'],
             ['label' => 'Cuti', 'value' => $stats['cuti'], 'icon' => 'beach_access', 'accent' => 'border-l-blue-500', 'iconBox' => 'bg-blue-50 text-blue-600 ring-blue-100', 'valueClass' => 'text-blue-700'],
             ['label' => 'Alpha', 'value' => $stats['alpha'], 'icon' => 'cancel', 'accent' => 'border-l-red-500', 'iconBox' => 'bg-red-50 text-red-600 ring-red-100', 'valueClass' => 'text-red-700'],
             ['label' => 'Off', 'value' => $stats['off'], 'icon' => 'bedtime', 'accent' => 'border-l-slate-400', 'iconBox' => 'bg-slate-50 text-slate-600 ring-slate-100', 'valueClass' => 'text-slate-700'],
@@ -86,6 +87,7 @@
                 <option value="">Semua Status</option>
                 <option value="present" {{ $filterStatus === 'present' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Hadir</option>
                 <option value="late" {{ $filterStatus === 'late' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">schedule</span> Terlambat</option>
+                <option value="sick" {{ $filterStatus === 'sick' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">sick</span> Sakit</option>
                 <option value="leave" {{ $filterStatus === 'leave' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">beach_access</span> Cuti</option>
                 <option value="absent" {{ $filterStatus === 'absent' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Alpha</option>
                 <option value="off" {{ $filterStatus === 'off' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">bedtime</span> Off</option>
@@ -119,6 +121,7 @@
                     $statusBadge = match($row['status']) {
                         'present' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
                         'late' => 'bg-amber-50 text-amber-700 border-amber-200',
+                        'sick' => 'bg-violet-50 text-violet-700 border-violet-200',
                         'leave' => 'bg-blue-50 text-blue-700 border-blue-200',
                         'absent' => 'bg-red-50 text-red-700 border-red-200',
                         'off' => 'bg-gray-100 text-gray-500 border-gray-200',
@@ -285,11 +288,21 @@
 
             <div class="mb-4">
                 <label class="block text-[12px] font-semibold text-gray-600 mb-1.5">Status</label>
+                @php
+                    $manualStatusOptions = [
+                        'hadir' => ['status' => 'present', 'icon' => 'check_circle', 'label' => 'Hadir'],
+                        'late_excuse' => ['status' => 'late_excuse', 'icon' => 'schedule', 'label' => 'Hadir - Izin Terlambat'],
+                        'early_departure' => ['status' => 'early_departure', 'icon' => 'logout', 'label' => 'Hadir - Izin Pulang Cepat'],
+                        'alpha' => ['status' => 'absent', 'icon' => 'cancel', 'label' => 'Alpha'],
+                        'sakit' => ['status' => 'sick', 'icon' => 'sick', 'label' => 'Sakit'],
+                        'cuti' => ['status' => 'leave', 'icon' => 'beach_access', 'label' => 'Cuti'],
+                        'libur' => ['status' => 'holiday', 'icon' => 'block', 'label' => 'Libur'],
+                    ];
+                @endphp
                 <select name="status" id="editStatus" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none appearance-none bg-white bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_8px_center] bg-no-repeat bg-[length:14px] pr-8 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                    <option value="present"><span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Hadir</option>
-                    <option value="absent"><span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Alpha</option>
-                    <option value="leave"><span class="material-symbols-outlined text-[14px] align-text-bottom">beach_access</span> Cuti</option>
-                    <option value="holiday"><span class="material-symbols-outlined text-[12px] align-text-bottom">block</span> Libur</option>
+                    @foreach($manualStatusOptions as $option)
+                        <option value="{{ $option['status'] }}"><span class="material-symbols-outlined text-[14px] align-text-bottom">{{ $option['icon'] }}</span> {{ $option['label'] }}</option>
+                    @endforeach
                 </select>
             </div>
 
@@ -356,6 +369,8 @@ function closeEdit() {
             'id' => $att->id,
             'name' => $row['employee']->full_name,
             'department' => $row['employee']->department->name ?? '-',
+            'status' => $row['status'],
+            'status_label' => $row['status_label'],
             'clock_in' => $att->clock_in,
             'clock_out' => $att->clock_out,
             'clock_in_lat' => $att->clock_in_lat,
@@ -492,6 +507,115 @@ function openDetail(id) {
             if (detailMap) { detailMap.remove(); detailMap = null; }
             detailMap = L.map('detailMapContainer').setView([att.clock_in_lat, att.clock_in_lng], 16);
             L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OSM' }).addTo(detailMap);
+            L.marker([att.clock_in_lat, att.clock_in_lng]).addTo(detailMap).bindPopup('<b>Clock In</b><br>' + (att.clock_in || '-'));
+            if (att.clock_out_lat && att.clock_out_lng) {
+                L.marker([att.clock_out_lat, att.clock_out_lng]).addTo(detailMap).bindPopup('<b>Clock Out</b><br>' + (att.clock_out || '-'));
+                detailMap.fitBounds([[att.clock_in_lat, att.clock_in_lng], [att.clock_out_lat, att.clock_out_lng]], { padding: [40, 40] });
+            }
+        }
+    }, 100);
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    }[char]));
+}
+
+function buildAttendanceStatusBadges(att) {
+    let status = att.status || (att.is_late ? 'late' : 'present');
+    if (status === 'present' && att.is_late) status = 'late';
+
+    let badgeClass = 'bg-emerald-100 text-emerald-800';
+    let icon = 'check_circle';
+    let label = att.status_label || 'Hadir';
+
+    if (status === 'sick') {
+        badgeClass = 'bg-violet-100 text-violet-800';
+        icon = 'sick';
+        label = att.status_label || 'Sakit';
+    } else if (status === 'late') {
+        badgeClass = 'bg-amber-100 text-amber-800';
+        icon = 'schedule';
+        label = att.status_label || 'Terlambat';
+    } else if (status === 'absent') {
+        badgeClass = 'bg-red-100 text-red-800';
+        icon = 'cancel';
+        label = att.status_label || 'Alpha';
+    } else if (status === 'leave') {
+        badgeClass = 'bg-blue-100 text-blue-800';
+        icon = 'beach_access';
+    } else if (status === 'holiday') {
+        badgeClass = 'bg-rose-100 text-rose-800';
+        icon = 'block';
+    }
+
+    let html = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ' + badgeClass + '"><span class="material-symbols-outlined text-[13px]">' + icon + '</span>' + escapeHtml(label) + '</span>';
+    if (att.is_remote) {
+        html += '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-700"><span class="material-symbols-outlined text-[13px]">share_location</span>Remote</span>';
+    }
+
+    return html;
+}
+
+function hasClockEvidence(att) {
+    return Boolean(att.clock_in || att.clock_out || att.clock_in_photo || att.clock_out_photo || att.clock_in_photo_archived || att.clock_out_photo_archived);
+}
+
+function buildNoClockDetail(att) {
+    return '<div class="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[13px] font-semibold text-violet-700">Tidak ada clock in/out untuk status ' + escapeHtml(att.status_label || 'ini') + '.</div>';
+}
+
+function openDetail(id) {
+    const att = recapData[id];
+    if (!att) return;
+    document.getElementById('detailName').textContent = att.name + ' - ' + att.department;
+
+    let html = '';
+    html += '<div class="flex items-center gap-2 flex-wrap">';
+    html += buildAttendanceStatusBadges(att);
+    html += '</div>';
+
+    if (hasClockEvidence(att) || att.status === 'present' || att.status === 'late') {
+        html += '<div class="grid grid-cols-2 gap-3">';
+        html += buildTimeCard('Clock In', att.clock_in, att.clock_in_photo, 'emerald', att.clock_in_photo_archived);
+        html += buildTimeCard('Clock Out', att.clock_out, att.clock_out_photo, 'blue', att.clock_out_photo_archived);
+        html += '</div>';
+    } else {
+        html += buildNoClockDetail(att);
+    }
+
+    if (att.clock_in_lat && att.clock_in_lng) {
+        html += '<div><p class="text-[12px] font-semibold text-gray-600 mb-2"><span class="material-symbols-outlined text-[14px] align-text-bottom">map</span> Lokasi GPS</p>';
+        html += '<div id="detailMapContainer" class="w-full h-[220px] rounded-xl border border-gray-200 overflow-hidden"></div>';
+        html += '<div class="mt-2 flex items-center gap-3 text-[11px] text-gray-400">';
+        html += '<span>In: ' + Number(att.clock_in_lat).toFixed(6) + ', ' + Number(att.clock_in_lng).toFixed(6) + '</span>';
+        if (att.clock_out_lat) html += '<span>Out: ' + Number(att.clock_out_lat).toFixed(6) + ', ' + Number(att.clock_out_lng).toFixed(6) + '</span>';
+        html += '</div></div>';
+    }
+
+    if (att.remote_notes) {
+        html += '<div class="p-3 rounded-xl bg-amber-50 border border-amber-200">';
+        html += '<p class="text-[11px] font-semibold text-amber-700 mb-1">Catatan Remote</p>';
+        html += '<p class="text-[13px] text-gray-700">' + escapeHtml(att.remote_notes) + '</p></div>';
+    }
+
+    document.getElementById('detailContent').innerHTML = html;
+    const offcanvas = document.getElementById('detailOffcanvas');
+    const panel = document.getElementById('detailPanel');
+    offcanvas.classList.remove('hidden');
+    requestAnimationFrame(() => { panel.classList.remove('translate-x-full'); panel.classList.add('translate-x-0'); });
+
+    setTimeout(() => {
+        const mapEl = document.getElementById('detailMapContainer');
+        if (mapEl && att.clock_in_lat) {
+            if (detailMap) { detailMap.remove(); detailMap = null; }
+            detailMap = L.map('detailMapContainer').setView([att.clock_in_lat, att.clock_in_lng], 16);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: 'OSM' }).addTo(detailMap);
             L.marker([att.clock_in_lat, att.clock_in_lng]).addTo(detailMap).bindPopup('<b>Clock In</b><br>' + (att.clock_in || '-'));
             if (att.clock_out_lat && att.clock_out_lng) {
                 L.marker([att.clock_out_lat, att.clock_out_lng]).addTo(detailMap).bindPopup('<b>Clock Out</b><br>' + (att.clock_out || '-'));

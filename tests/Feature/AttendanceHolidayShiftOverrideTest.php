@@ -356,6 +356,63 @@ class AttendanceHolidayShiftOverrideTest extends TestCase
         $this->assertNull($day['leave']);
     }
 
+    public function test_api_schedule_counts_approved_early_departure_permission_as_present(): void
+    {
+        DB::table('schedule_assignments')->insert([
+            'employee_id' => 1,
+            'shift_id' => 7,
+            'date' => '2026-12-24',
+            'notes' => 'Regular workday',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-12-24',
+            'clock_in' => '08:00:00',
+            'clock_out' => '14:00:00',
+            'status' => 'present',
+            'review_status' => null,
+            'is_late' => false,
+            'is_remote' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_types')->insert([
+            'id' => 4,
+            'name' => 'Izin Pulang Cepat',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('leave_requests')->insert([
+            'employee_id' => 1,
+            'leave_type_id' => 4,
+            'start_date' => '2026-12-24',
+            'end_date' => '2026-12-24',
+            'status' => 'approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/api/attendance/schedule', 'GET', [
+            'period' => '2026-12',
+        ]);
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $scheduleResponse = (new AttendanceController())->schedule($request);
+        $schedule = $scheduleResponse->getData(true)['data'];
+        $day = collect($schedule['days'])->firstWhere('date', '2026-12-24');
+
+        $this->assertSame(1, $schedule['stats']['hadir']);
+        $this->assertSame(0, $schedule['stats']['cuti']);
+        $this->assertSame('Hadir - Izin Pulang Cepat', $day['attendance']['status_label']);
+        $this->assertSame('Izin Pulang Cepat', $day['early_leave']['type']);
+        $this->assertNull($day['leave']);
+    }
+
     private function seedHolidayOverrideSchedule(): void
     {
         DB::table('departments')->insert([
