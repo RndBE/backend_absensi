@@ -24,6 +24,13 @@
         .employee-native-field::-webkit-calendar-picker-indicator {
             opacity: .75;
         }
+        select.employee-native-field {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right .625rem center;
+            background-size: 1rem;
+            padding-right: 2.25rem;
+        }
         .employee-date-shell {
             position: relative;
             display: block;
@@ -38,7 +45,8 @@
             font-size: 13px;
             line-height: 1;
         }
-        .employee-date-shell:not(.employee-date-shell-has-value):not(:focus-within) input[type="date"]::-webkit-date-and-time-value {
+        .employee-date-shell:not(.employee-date-shell-has-value):not(:focus-within) input[type="date"]::-webkit-date-and-time-value,
+        .employee-date-shell:not(.employee-date-shell-has-value):not(:focus-within) input[type="date"]::-webkit-datetime-edit {
             color: transparent;
         }
         .employee-date-shell.employee-date-shell-has-value .employee-date-placeholder,
