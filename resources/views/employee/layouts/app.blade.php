@@ -17,9 +17,16 @@
             color: #111827;
             color-scheme: light;
         }
+        /* iOS WebKit: date input mengkerut tanpa tinggi eksplisit saat appearance:none. */
+        input[type="date"].employee-native-field,
+        input[type="time"].employee-native-field {
+            min-height: 2.5rem;
+        }
         .employee-native-field::-webkit-date-and-time-value {
             color: #111827;
             text-align: left;
+            min-height: 1.25rem;
+            line-height: 1.25rem;
         }
         .employee-native-field::-webkit-calendar-picker-indicator {
             opacity: .75;
