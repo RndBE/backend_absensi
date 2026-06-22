@@ -19,30 +19,30 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tipe</span>
-                    <select name="type" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <select name="type" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                         <option value="budget" @selected(old('type') === 'budget')>Budget</option>
                         <option value="reimbursement" @selected(old('type') === 'reimbursement')>Reimbursement</option>
                     </select>
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Judul</span>
-                    <input name="title" value="{{ old('title') }}" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Contoh: Perjalanan Batam">
+                    <input name="title" value="{{ old('title') }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Contoh: Perjalanan Batam">
                 </label>
             </div>
 
             <label class="block">
                 <span class="block text-[12px] font-bold text-gray-600 mb-1">Deskripsi</span>
-                <textarea name="description" rows="3" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Keterangan pengajuan">{{ old('description') }}</textarea>
+                <textarea name="description" rows="3" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Keterangan pengajuan">{{ old('description') }}</textarea>
             </label>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">No. Surat Tugas</span>
-                    <input name="surat_tugas_no" value="{{ old('surat_tugas_no') }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <input name="surat_tugas_no" value="{{ old('surat_tugas_no') }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Surat</span>
-                    <input type="date" name="surat_tugas_date" value="{{ old('surat_tugas_date') }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <input type="date" name="surat_tugas_date" value="{{ old('surat_tugas_date') }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 </label>
             </div>
 
@@ -57,7 +57,7 @@
                         name="destination_city"
                         value="{{ old('destination_city') }}"
                         autocomplete="off"
-                        class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                        class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
                         placeholder="Misal: Surabaya, Jakarta..."
                         data-destination-city
                     >

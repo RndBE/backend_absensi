@@ -40,7 +40,7 @@
         <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
             <label class="block">
                 <span class="block text-[12px] font-bold text-gray-600 mb-1">Budget Request Terkait</span>
-                <select name="budget_request_id" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                <select name="budget_request_id" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                     <option value="">- Tanpa Budget Request -</option>
                     @foreach($availableRequests as $budgetRequest)
                         <option value="{{ $budgetRequest->id }}" @selected((string) $selectedBudgetId === (string) $budgetRequest->id)>
@@ -53,36 +53,36 @@
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <label class="sm:col-span-3">
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Kota Tujuan</span>
-                    <input name="destination_city" value="{{ old('destination_city', $report?->destination_city) }}" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Contoh: Batam">
+                    <input name="destination_city" value="{{ old('destination_city', $report?->destination_city) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Contoh: Batam">
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Berangkat</span>
-                    <input type="date" name="departure_date" value="{{ old('departure_date', optional($report?->departure_date)->format('Y-m-d')) }}" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <input type="date" name="departure_date" value="{{ old('departure_date', optional($report?->departure_date)->format('Y-m-d')) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Pulang</span>
-                    <input type="date" name="return_date" value="{{ old('return_date', optional($report?->return_date)->format('Y-m-d')) }}" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <input type="date" name="return_date" value="{{ old('return_date', optional($report?->return_date)->format('Y-m-d')) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Jarak KM</span>
-                    <input type="number" min="0" name="distance_km" value="{{ old('distance_km', $report?->distance_km) }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <input type="number" min="0" name="distance_km" value="{{ old('distance_km', $report?->distance_km) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 </label>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">No. Surat Tugas</span>
-                    <input name="surat_tugas_no" value="{{ old('surat_tugas_no', $report?->surat_tugas_no) }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <input name="surat_tugas_no" value="{{ old('surat_tugas_no', $report?->surat_tugas_no) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 </label>
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Surat</span>
-                    <input type="date" name="surat_tugas_date" value="{{ old('surat_tugas_date', optional($report?->surat_tugas_date)->format('Y-m-d')) }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                    <input type="date" name="surat_tugas_date" value="{{ old('surat_tugas_date', optional($report?->surat_tugas_date)->format('Y-m-d')) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 </label>
             </div>
 
             <label class="block">
                 <span class="block text-[12px] font-bold text-gray-600 mb-1">Tujuan Perjalanan</span>
-                <textarea name="purpose" rows="3" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">{{ old('purpose', $report?->purpose) }}</textarea>
+                <textarea name="purpose" rows="3" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">{{ old('purpose', $report?->purpose) }}</textarea>
             </label>
         </section>
 
@@ -104,7 +104,7 @@
         <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
             <label class="block">
                 <span class="block text-[12px] font-bold text-gray-600 mb-1">Kesimpulan</span>
-                <textarea name="conclusion" rows="3" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">{{ old('conclusion', $report?->conclusion) }}</textarea>
+                <textarea name="conclusion" rows="3" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">{{ old('conclusion', $report?->conclusion) }}</textarea>
             </label>
             <div>
                 <div class="flex items-center justify-between gap-3 mb-2">
@@ -113,7 +113,7 @@
                 </div>
                 <div class="space-y-2" id="recommendations">
                     @foreach($recommendations as $recommendation)
-                        <input name="recommendations[]" value="{{ $recommendation }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Rekomendasi tindak lanjut">
+                        <input name="recommendations[]" value="{{ $recommendation }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Rekomendasi tindak lanjut">
                     @endforeach
                 </div>
             </div>
@@ -157,7 +157,7 @@
             const resultIndex = list.querySelectorAll('input').length;
             const input = document.createElement('input');
             input.name = `activities[${activityIndex}][results][${resultIndex}]`;
-            input.className = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
+            input.className = 'employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
             input.placeholder = 'Hasil kegiatan';
             list.append(input);
         }
@@ -167,7 +167,7 @@
         const list = document.getElementById('recommendations');
         const input = document.createElement('input');
         input.name = 'recommendations[]';
-        input.className = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
+        input.className = 'employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
         input.placeholder = 'Rekomendasi tindak lanjut';
         list.append(input);
     });

@@ -9,7 +9,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Jenis</span>
-            <select name="items[{{ $index }}][type]" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+            <select name="items[{{ $index }}][type]" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 @foreach($itemTypes as $value => $label)
                     <option value="{{ $value }}">{{ $label }}</option>
                 @endforeach
@@ -17,13 +17,13 @@
         </label>
         <label class="sm:col-span-2">
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Deskripsi</span>
-            <input name="items[{{ $index }}][description]" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Contoh: Taksi bandara">
+            <input name="items[{{ $index }}][description]" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Contoh: Taksi bandara">
         </label>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Nominal</span>
-            <input type="number" min="1" name="items[{{ $index }}][amount]" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="0">
+            <input type="number" min="1" name="items[{{ $index }}][amount]" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="0">
         </label>
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Lampiran Item</span>

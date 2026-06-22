@@ -15,11 +15,11 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Tanggal</span>
-            <input type="date" name="activities[{{ $index }}][date]" value="{{ $activity['date'] ?? '' }}" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+            <input type="date" name="activities[{{ $index }}][date]" value="{{ $activity['date'] ?? '' }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
         </label>
         <label class="sm:col-span-2">
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Deskripsi</span>
-            <input name="activities[{{ $index }}][description]" value="{{ $activity['description'] ?? '' }}" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Kegiatan yang dilakukan">
+            <input name="activities[{{ $index }}][description]" value="{{ $activity['description'] ?? '' }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Kegiatan yang dilakukan">
         </label>
     </div>
     <div>
@@ -29,18 +29,18 @@
         </div>
         <div class="space-y-2" data-results>
             @foreach($results as $resultIndex => $result)
-                <input name="activities[{{ $index }}][results][{{ $resultIndex }}]" value="{{ $result }}" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Hasil kegiatan">
+                <input name="activities[{{ $index }}][results][{{ $resultIndex }}]" value="{{ $result }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Hasil kegiatan">
             @endforeach
         </div>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Kendala</span>
-            <textarea name="activities[{{ $index }}][issues]" rows="2" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">{{ $activity['issues'] ?? '' }}</textarea>
+            <textarea name="activities[{{ $index }}][issues]" rows="2" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">{{ $activity['issues'] ?? '' }}</textarea>
         </label>
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Kesimpulan Aktivitas</span>
-            <textarea name="activities[{{ $index }}][conclusion]" rows="2" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">{{ $activity['conclusion'] ?? '' }}</textarea>
+            <textarea name="activities[{{ $index }}][conclusion]" rows="2" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">{{ $activity['conclusion'] ?? '' }}</textarea>
         </label>
     </div>
     <div>

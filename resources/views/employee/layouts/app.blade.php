@@ -10,6 +10,20 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <style>
         .material-symbols-outlined { font-size: 20px; }
+        .employee-native-field {
+            -webkit-appearance: none;
+            appearance: none;
+            background-color: #fff;
+            color: #111827;
+            color-scheme: light;
+        }
+        .employee-native-field::-webkit-date-and-time-value {
+            color: #111827;
+            text-align: left;
+        }
+        .employee-native-field::-webkit-calendar-picker-indicator {
+            opacity: .75;
+        }
     </style>
     @stack('head')
 </head>

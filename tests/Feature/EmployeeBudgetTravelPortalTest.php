@@ -361,6 +361,30 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             ->assertSee('Rp 225.000');
     }
 
+    public function test_employee_budget_and_lhp_forms_use_mobile_native_field_styles(): void
+    {
+        $views = [
+            resource_path('views/employee/layouts/app.blade.php'),
+            resource_path('views/employee/budget-requests/create.blade.php'),
+            resource_path('views/employee/budget-requests/partials/item-row.blade.php'),
+            resource_path('views/employee/travel-reports/partials/form.blade.php'),
+            resource_path('views/employee/travel-reports/partials/activity-row.blade.php'),
+        ];
+
+        foreach ($views as $viewPath) {
+            $view = file_get_contents($viewPath);
+
+            $this->assertStringContainsString('employee-native-field', $view);
+        }
+
+        $layout = file_get_contents(resource_path('views/employee/layouts/app.blade.php'));
+
+        $this->assertStringContainsString('-webkit-appearance: none', $layout);
+        $this->assertStringContainsString('background-color: #fff', $layout);
+        $this->assertStringContainsString('color: #111827', $layout);
+        $this->assertStringContainsString('::-webkit-date-and-time-value', $layout);
+    }
+
     public function test_employee_budget_city_estimate_route_returns_zone_data(): void
     {
         $this->seedEmployee();
