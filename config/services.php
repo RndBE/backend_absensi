@@ -46,6 +46,10 @@ return [
         'timeout' => env('FACE_SERVICE_TIMEOUT', 15),
     ],
 
+    'tomtom' => [
+        'key' => env('TOMTOM_API_KEY', ''),
+    ],
+
     'daily' => [
         'url' => env('DAILY_APP_URL', 'http://127.0.0.1:8001'),
         'internal_secret' => env('DAILY_INTERNAL_SECRET'),

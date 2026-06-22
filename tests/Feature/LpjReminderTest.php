@@ -18,9 +18,16 @@ class LpjReminderTest extends TestCase
         parent::setUp();
         Carbon::setTestNow('2026-06-22 08:00:00');
 
-        foreach (['notifications', 'lpjs', 'travel_reports', 'budget_requests', 'employees'] as $table) {
+        foreach (['notifications', 'lpjs', 'travel_reports', 'budget_requests', 'employees', 'settings'] as $table) {
             Schema::dropIfExists($table);
         }
+
+        Schema::create('settings', function (Blueprint $table) {
+            $table->id();
+            $table->string('key')->unique();
+            $table->text('value')->nullable();
+            $table->timestamps();
+        });
 
         Schema::create('employees', function (Blueprint $table) {
             $table->id();
@@ -138,5 +145,31 @@ class LpjReminderTest extends TestCase
 
         $this->assertSame(0, $second['sent']);
         $this->assertSame(1, Notification::where('type', 'lpj_reminder')->count());
+    }
+
+    public function test_does_not_send_when_disabled_in_settings(): void
+    {
+        DB::table('settings')->insert(['key' => 'lpj_reminder_enabled', 'value' => '0', 'created_at' => now(), 'updated_at' => now()]);
+        $this->seedTrip('2026-06-19');
+
+        $result = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(0, $result['sent']);
+        $this->assertSame(0, Notification::count());
+    }
+
+    public function test_uses_configurable_reminder_days(): void
+    {
+        DB::table('settings')->insert(['key' => 'lpj_reminder_days', 'value' => '5', 'created_at' => now(), 'updated_at' => now()]);
+        // Hari ini 2026-06-22 → 5 hari lalu = 2026-06-17
+        $trip = $this->seedTrip('2026-06-17');
+
+        $result = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(1, $result['sent']);
+        $this->assertDatabaseHas('notifications', [
+            'reference_id' => $trip['budget_id'],
+            'type'         => 'lpj_reminder',
+        ]);
     }
 }

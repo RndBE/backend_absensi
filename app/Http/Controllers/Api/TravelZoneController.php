@@ -102,7 +102,11 @@ class TravelZoneController extends Controller
      */
     private function roadDistanceKm(float $lat1, float $lng1, float $lat2, float $lng2): ?float
     {
-        $key = trim((string) Setting::getValue('tomtom_api_key', ''));
+        // Key dari konfigurasi sistem (.env); fallback ke Setting lama bila ada.
+        $key = trim((string) config('services.tomtom.key'));
+        if ($key === '') {
+            $key = trim((string) Setting::getValue('tomtom_api_key', ''));
+        }
         if ($key === '') return null;
 
         try {

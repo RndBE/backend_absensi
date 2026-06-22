@@ -4,24 +4,43 @@ namespace App\Services;
 
 use App\Models\BudgetRequest;
 use App\Models\Notification;
+use App\Models\Setting;
 use App\Models\TravelReport;
 use Illuminate\Support\Carbon;
 
 class LpjReminderService
 {
-    /** Jumlah hari setelah tanggal pulang untuk mengingatkan pembuatan LPJ. */
+    /** Default hari setelah tanggal pulang untuk mengingatkan pembuatan LPJ. */
     public const REMINDER_DAYS = 3;
+
+    /** Apakah reminder LPJ diaktifkan (dari Pengaturan Presensi). */
+    public static function isEnabled(): bool
+    {
+        return Setting::getValue('lpj_reminder_enabled', '1') === '1';
+    }
+
+    /** Jumlah hari setelah pulang, dari pengaturan (fallback ke default). */
+    public static function reminderDays(): int
+    {
+        return max(1, (int) Setting::getValue('lpj_reminder_days', self::REMINDER_DAYS));
+    }
 
     /**
      * Kirim pengingat LPJ untuk perjalanan yang tanggal pulangnya tepat
-     * REMINDER_DAYS hari sebelum $date, dan LPJ-nya belum dibuat.
+     * sejumlah hari yang dikonfigurasi sebelum $date, dan LPJ-nya belum dibuat.
      *
      * @return array{sent: int, skipped: int}
      */
     public static function remindForDate(Carbon $date): array
     {
+        if (! self::isEnabled()) {
+            return ['sent' => 0, 'skipped' => 0];
+        }
+
+        $reminderDays = self::reminderDays();
+
         // Tanggal pulang yang memicu reminder hari ini.
-        $targetReturnDate = $date->copy()->subDays(self::REMINDER_DAYS)->toDateString();
+        $targetReturnDate = $date->copy()->subDays($reminderDays)->toDateString();
 
         $reports = TravelReport::with(['budgetRequest', 'employee'])
             ->whereNotNull('return_date')
@@ -58,7 +77,7 @@ class LpjReminderService
             $notif = Notification::create([
                 'employee_id'    => $employee->id,
                 'title'          => 'Pengingat LPJ',
-                'message'        => "Jangan lupa membuat LPJ untuk \"{$budget->title}\". Sudah ".self::REMINDER_DAYS.' hari sejak tanggal pulang.',
+                'message'        => "Jangan lupa membuat LPJ untuk \"{$budget->title}\". Sudah {$reminderDays} hari sejak tanggal pulang.",
                 'type'           => 'lpj_reminder',
                 'reference_type' => BudgetRequest::class,
                 'reference_id'   => $budget->id,

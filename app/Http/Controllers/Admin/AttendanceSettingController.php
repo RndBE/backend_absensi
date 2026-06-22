@@ -23,7 +23,9 @@ class AttendanceSettingController extends Controller
         'auto_clockout_enabled' => '0',
         'auto_clockout_time' => '18:00',
         'face_verification_enabled' => '1',
-        'tomtom_api_key' => '',
+        'lpj_reminder_enabled' => '1',
+        'lpj_reminder_days' => '3',
+        'lpj_reminder_time' => '08:00',
     ];
 
     public function index()
@@ -45,19 +47,21 @@ class AttendanceSettingController extends Controller
             'office_address' => 'nullable|string|max:255',
             'clockin_reminder_time' => 'nullable|date_format:H:i',
             'auto_clockout_time' => 'nullable|date_format:H:i',
+            'lpj_reminder_days' => 'nullable|integer|min:1|max:30',
+            'lpj_reminder_time' => 'nullable|date_format:H:i',
         ]);
 
         $booleanKeys = [
             'require_photo', 'require_gps', 'allow_remote_clockin',
             'remote_requires_approval', 'remote_requires_notes',
             'clockin_reminder_enabled', 'auto_clockout_enabled',
-            'face_verification_enabled',
+            'face_verification_enabled', 'lpj_reminder_enabled',
         ];
 
         $textKeys = [
             'office_latitude', 'office_longitude', 'office_radius_meters',
             'office_address', 'clockin_reminder_time', 'auto_clockout_time',
-            'tomtom_api_key',
+            'lpj_reminder_days', 'lpj_reminder_time',
         ];
 
         foreach ($booleanKeys as $key) {

@@ -50,8 +50,11 @@
                 </select>
             </label>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <label class="sm:col-span-3">
+            {{-- Jarak KM tidak ditampilkan (mengikuti aplikasi mobile); nilai lama tetap dipertahankan. --}}
+            <input type="hidden" name="distance_km" value="{{ old('distance_km', $report?->distance_km) }}">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label class="sm:col-span-2">
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Kota Tujuan</span>
                     <input name="destination_city" value="{{ old('destination_city', $report?->destination_city) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Contoh: Batam">
                 </label>
@@ -68,10 +71,6 @@
                         <input type="date" name="return_date" value="{{ old('return_date', optional($report?->return_date)->format('Y-m-d')) }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                         <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
                     </span>
-                </label>
-                <label>
-                    <span class="block text-[12px] font-bold text-gray-600 mb-1">Jarak KM</span>
-                    <input type="number" min="0" name="distance_km" value="{{ old('distance_km', $report?->distance_km) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                 </label>
             </div>
 

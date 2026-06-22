@@ -50,17 +50,6 @@
                         <span class="text-[12px] text-gray-400">m</span>
                     </div>
                 </div>
-                <div class="border-t border-gray-100 pt-4">
-                    <label class="block text-[12px] font-semibold text-gray-600 mb-1.5">
-                        TomTom API Key
-                        <span class="text-gray-400 font-normal">— untuk hitung jarak jalan kota tujuan (opsional)</span>
-                    </label>
-                    <input type="text" name="tomtom_api_key" value="{{ $settings['tomtom_api_key'] }}" placeholder="Kosongkan untuk pakai jarak garis lurus" autocomplete="off" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 font-mono">
-                    <p class="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-                        <span class="material-symbols-outlined text-[14px]">info</span>
-                        Daftar gratis di developer.tomtom.com. Jika kosong/gagal, sistem otomatis memakai jarak garis lurus.
-                    </p>
-                </div>
                 {{-- Leaflet Map --}}
                 <div class="rounded-lg overflow-hidden border border-gray-200" style="position: relative; z-index: 0;">
                     <div id="officeMap" style="height: 280px; width: 100%;"></div>
@@ -204,6 +193,31 @@
                             <input type="time" name="auto_clockout_time" value="{{ $settings['auto_clockout_time'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
                         </div>
                     </div>
+
+                    {{-- Reminder LPJ --}}
+                    <div class="p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition-all">
+                        <label class="flex items-center justify-between cursor-pointer mb-3">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-[20px] text-gray-400">receipt_long</span>
+                                <div>
+                                    <div class="text-[13px] font-semibold text-gray-800">Reminder LPJ</div>
+                                    <div class="text-[11px] text-gray-400">Ingatkan karyawan membuat LPJ setelah pulang dinas</div>
+                                </div>
+                            </div>
+                            <input type="checkbox" name="lpj_reminder_enabled" value="1" {{ $settings['lpj_reminder_enabled'] == '1' ? 'checked' : '' }}
+                                class="w-5 h-5 accent-indigo-500 rounded cursor-pointer" id="lpjReminderCheck" onchange="toggleLpjReminder()">
+                        </label>
+                        <div id="lpjReminderWrap" class="grid grid-cols-2 gap-3 {{ $settings['lpj_reminder_enabled'] == '1' ? '' : 'opacity-40 pointer-events-none' }}">
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Hari Setelah Pulang</label>
+                                <input type="number" name="lpj_reminder_days" min="1" max="30" value="{{ $settings['lpj_reminder_days'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Jam Kirim</label>
+                                <input type="time" name="lpj_reminder_time" value="{{ $settings['lpj_reminder_time'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -225,6 +239,12 @@ function toggleReminderTime() {
 function toggleAutoClockoutTime() {
     const w = document.getElementById('autoClockoutTimeWrap');
     const c = document.getElementById('autoClockoutCheck').checked;
+    w.classList.toggle('opacity-40', !c);
+    w.classList.toggle('pointer-events-none', !c);
+}
+function toggleLpjReminder() {
+    const w = document.getElementById('lpjReminderWrap');
+    const c = document.getElementById('lpjReminderCheck').checked;
     w.classList.toggle('opacity-40', !c);
     w.classList.toggle('pointer-events-none', !c);
 }
