@@ -413,6 +413,7 @@ class DatabaseSeeder extends Seeder
         LeaveType::create(['name' => 'Cuti Sakit', 'max_days' => 14]);
         LeaveType::create(['name' => 'Izin Datang Terlambat', 'max_days' => 365]);
         LeaveType::create(['name' => 'Cuti Melahirkan', 'max_days' => 90]);
+        $wfh = LeaveType::create(['name' => 'Work From Home', 'max_days' => 24]);
 
         // Leave Policies
         LeavePolicy::create([
@@ -422,6 +423,16 @@ class DatabaseSeeder extends Seeder
             'min_tenure_months' => 12,
             'max_carry_over' => 0,
             'is_prorated' => true,
+            'is_active' => true,
+        ]);
+
+        LeavePolicy::create([
+            'company_id' => $c,
+            'leave_type_id' => $wfh->id,
+            'days_per_year' => 24,
+            'min_tenure_months' => 0,
+            'max_carry_over' => 0,
+            'is_prorated' => false,
             'is_active' => true,
         ]);
 
@@ -435,6 +446,16 @@ class DatabaseSeeder extends Seeder
                 'carry_over' => 0,
                 'used_days' => 0,
                 'remaining_days' => 12,
+            ]);
+
+            LeaveBalance::create([
+                'employee_id' => $emp->id,
+                'leave_type_id' => $wfh->id,
+                'year' => now()->year,
+                'total_days' => 24,
+                'carry_over' => 0,
+                'used_days' => 0,
+                'remaining_days' => 24,
             ]);
         }
 

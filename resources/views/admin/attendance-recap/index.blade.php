@@ -7,11 +7,12 @@
     $canManageAttendance = $adminPermission->can($currentAdmin, 'attendance.manage');
 @endphp
 {{-- Stat Cards --}}
-<div class="grid grid-cols-2 md:grid-cols-7 gap-3 mb-5">
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
     @php
         $statCards = [
             ['label' => 'Hadir', 'value' => $stats['hadir'], 'icon' => 'check_circle', 'accent' => 'border-l-emerald-500', 'iconBox' => 'bg-emerald-50 text-emerald-600 ring-emerald-100', 'valueClass' => 'text-emerald-700'],
             ['label' => 'Terlambat', 'value' => $stats['terlambat'], 'icon' => 'schedule', 'accent' => 'border-l-amber-500', 'iconBox' => 'bg-amber-50 text-amber-600 ring-amber-100', 'valueClass' => 'text-amber-700'],
+            ['label' => 'WFH', 'value' => $stats['wfh'], 'icon' => 'home_work', 'accent' => 'border-l-teal-500', 'iconBox' => 'bg-teal-50 text-teal-600 ring-teal-100', 'valueClass' => 'text-teal-700'],
             ['label' => 'Sakit', 'value' => $stats['sakit'], 'icon' => 'sick', 'accent' => 'border-l-violet-500', 'iconBox' => 'bg-violet-50 text-violet-600 ring-violet-100', 'valueClass' => 'text-violet-700'],
             ['label' => 'Cuti', 'value' => $stats['cuti'], 'icon' => 'beach_access', 'accent' => 'border-l-blue-500', 'iconBox' => 'bg-blue-50 text-blue-600 ring-blue-100', 'valueClass' => 'text-blue-700'],
             ['label' => 'Alpha', 'value' => $stats['alpha'], 'icon' => 'cancel', 'accent' => 'border-l-red-500', 'iconBox' => 'bg-red-50 text-red-600 ring-red-100', 'valueClass' => 'text-red-700'],
@@ -87,6 +88,7 @@
                 <option value="">Semua Status</option>
                 <option value="present" {{ $filterStatus === 'present' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">check_circle</span> Hadir</option>
                 <option value="late" {{ $filterStatus === 'late' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">schedule</span> Terlambat</option>
+                <option value="wfh" {{ $filterStatus === 'wfh' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">home_work</span> WFH</option>
                 <option value="sick" {{ $filterStatus === 'sick' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">sick</span> Sakit</option>
                 <option value="leave" {{ $filterStatus === 'leave' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">beach_access</span> Cuti</option>
                 <option value="absent" {{ $filterStatus === 'absent' ? 'selected' : '' }}><span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Alpha</option>
@@ -121,6 +123,7 @@
                     $statusBadge = match($row['status']) {
                         'present' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
                         'late' => 'bg-amber-50 text-amber-700 border-amber-200',
+                        'wfh' => 'bg-teal-50 text-teal-700 border-teal-200',
                         'sick' => 'bg-violet-50 text-violet-700 border-violet-200',
                         'leave' => 'bg-blue-50 text-blue-700 border-blue-200',
                         'absent' => 'bg-red-50 text-red-700 border-red-200',
@@ -293,6 +296,7 @@
                         'hadir' => ['status' => 'present', 'icon' => 'check_circle', 'label' => 'Hadir'],
                         'late_excuse' => ['status' => 'late_excuse', 'icon' => 'schedule', 'label' => 'Hadir - Izin Terlambat'],
                         'early_departure' => ['status' => 'early_departure', 'icon' => 'logout', 'label' => 'Hadir - Izin Pulang Cepat'],
+                        'wfh' => ['status' => 'wfh', 'icon' => 'home_work', 'label' => 'WFH (Work From Home)'],
                         'alpha' => ['status' => 'absent', 'icon' => 'cancel', 'label' => 'Alpha'],
                         'sakit' => ['status' => 'sick', 'icon' => 'sick', 'label' => 'Sakit'],
                         'cuti' => ['status' => 'leave', 'icon' => 'beach_access', 'label' => 'Cuti'],
@@ -546,6 +550,10 @@ function buildAttendanceStatusBadges(att) {
         badgeClass = 'bg-red-100 text-red-800';
         icon = 'cancel';
         label = att.status_label || 'Alpha';
+    } else if (status === 'wfh') {
+        badgeClass = 'bg-teal-100 text-teal-800';
+        icon = 'home_work';
+        label = att.status_label || 'WFH';
     } else if (status === 'leave') {
         badgeClass = 'bg-blue-100 text-blue-800';
         icon = 'beach_access';

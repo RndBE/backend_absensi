@@ -8,10 +8,10 @@ use App\Models\AttendanceRequest;
 use App\Models\BudgetRequest;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
-use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
+use App\Support\LeaveQuota;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -191,17 +191,8 @@ class ApprovalController extends Controller
             return;
         }
 
-        $balance = LeaveBalance::where('employee_id', $item->employee_id)
-            ->where('leave_type_id', $item->leave_type_id)
-            ->where('year', now()->year)
-            ->first();
-
-        if ($balance) {
-            $balance->update([
-                'used_days' => $balance->used_days + $item->total_days,
-                'remaining_days' => $balance->remaining_days - $item->total_days,
-            ]);
-        }
+        // Kurangi saldo untuk jenis berkuota (Cuti Tahunan & WFH). WFH tidak minus.
+        LeaveQuota::deduct($item);
     }
 
     private function resolveModel(string $type): string

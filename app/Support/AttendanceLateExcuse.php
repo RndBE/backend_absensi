@@ -49,6 +49,11 @@ class AttendanceLateExcuse
         return self::isLateArrivalLeave($leave) || self::isEarlyDepartureLeave($leave);
     }
 
+    public static function isWfhLeave(?LeaveRequest $leave): bool
+    {
+        return LeaveQuota::isWfh($leave?->leaveType);
+    }
+
     public static function firstForDate(Collection $leaves, CarbonInterface|string $date): ?LeaveRequest
     {
         $date = $date instanceof CarbonInterface ? Carbon::instance($date) : Carbon::parse($date);

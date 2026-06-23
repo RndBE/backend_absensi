@@ -40,7 +40,7 @@
 </div>
 
 {{-- Stat Cards --}}
-<div class="grid grid-cols-7 gap-3 mb-5">
+<div class="grid grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
     <div class="bg-white rounded-xl border border-gray-200 px-4 py-3">
         <div class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Hadir</div>
         <div class="text-[22px] font-black text-gray-800">{{ $stats['hadir'] }}</div>
@@ -48,6 +48,10 @@
     <div class="bg-white rounded-xl border border-gray-200 px-4 py-3">
         <div class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Terlambat</div>
         <div class="text-[22px] font-black text-gray-800">{{ $stats['terlambat'] }}</div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 px-4 py-3">
+        <div class="text-[10px] font-bold text-teal-600 uppercase tracking-wider">WFH</div>
+        <div class="text-[22px] font-black text-gray-800">{{ $stats['wfh'] }}</div>
     </div>
     <div class="bg-white rounded-xl border border-gray-200 px-4 py-3">
         <div class="text-[10px] font-bold text-violet-600 uppercase tracking-wider">Sakit</div>
@@ -102,6 +106,7 @@
                     $statusBadge = match($row['status']) {
                         'present' => 'bg-emerald-100 text-emerald-700',
                         'late' => 'bg-amber-100 text-amber-700',
+                        'wfh' => 'bg-teal-100 text-teal-700',
                         'sick' => 'bg-violet-100 text-violet-700',
                         'absent' => 'bg-red-100 text-red-700',
                         'leave' => 'bg-blue-100 text-blue-700',
@@ -111,6 +116,7 @@
                     };
                     $manualStatusValue = $row['attendance']?->status ?? match($row['status']) {
                         'absent' => 'absent',
+                        'wfh' => 'wfh',
                         'sick' => 'sick',
                         'leave' => 'leave',
                         'holiday' => 'holiday',
@@ -401,6 +407,10 @@ function buildAttendanceStatusBadges(att) {
         badgeClass = 'bg-red-100 text-red-800';
         icon = 'cancel';
         label = att.status_label || 'Alpha';
+    } else if (status === 'wfh') {
+        badgeClass = 'bg-teal-100 text-teal-800';
+        icon = 'home_work';
+        label = att.status_label || 'WFH';
     } else if (status === 'leave') {
         badgeClass = 'bg-blue-100 text-blue-800';
         icon = 'beach_access';

@@ -10,6 +10,7 @@ use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Models\Notification;
 use App\Services\FcmService;
+use App\Support\LeaveQuota;
 use Illuminate\Http\Request;
 
 class LeaveRequestController extends Controller
@@ -108,19 +109,18 @@ class LeaveRequestController extends Controller
             $current->addDay();
         }
 
-        // Hanya Cuti Tahunan yang berkuota; izin & tipe lain bebas saldo.
+        // Cuti Tahunan memblokir bila saldo kurang; WFH tetap boleh walau saldo 0.
         $leaveType = LeaveType::find($request->leave_type_id);
-        $requiresBalance = $leaveType && $leaveType->name === 'Cuti Tahunan';
 
-        $balance = $requiresBalance
-            ? LeaveBalance::where('employee_id', $employee->id)
+        if (LeaveQuota::blocksWhenInsufficient($leaveType)) {
+            $balance = LeaveBalance::where('employee_id', $employee->id)
                 ->where('leave_type_id', $request->leave_type_id)
                 ->where('year', now()->year)
-                ->first()
-            : null;
+                ->first();
 
-        if ($balance && $balance->remaining_days < $totalDays) {
-            return back()->withInput()->with('error', "Sisa cuti tidak cukup. Tersisa: {$balance->remaining_days} hari, diajukan: {$totalDays} hari.");
+            if ($balance && $balance->remaining_days < $totalDays) {
+                return back()->withInput()->with('error', "Sisa cuti tidak cukup. Tersisa: {$balance->remaining_days} hari, diajukan: {$totalDays} hari.");
+            }
         }
 
         // Super admin creating → auto-approve
@@ -137,12 +137,8 @@ class LeaveRequestController extends Controller
                 'current_step' => 0,
             ]);
 
-            if ($balance) {
-                $balance->update([
-                    'used_days' => $balance->used_days + $totalDays,
-                    'remaining_days' => $balance->remaining_days - $totalDays,
-                ]);
-            }
+            // Kurangi saldo untuk jenis berkuota (Cuti Tahunan & WFH). WFH tidak minus.
+            LeaveQuota::deduct($leave);
 
             return redirect()->route('admin.leaves.index')->with('success', "Cuti {$employee->full_name} langsung disetujui ({$totalDays} hari kerja).");
         }

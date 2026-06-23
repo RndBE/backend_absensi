@@ -11,11 +11,11 @@ use App\Models\TravelReport;
 use App\Models\DataChangeRequest;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
-use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\Notification;
 use App\Models\OvertimeRequest;
 use App\Services\FcmService;
+use App\Support\LeaveQuota;
 use Illuminate\Http\Request;
 
 class ApprovalController extends Controller
@@ -297,17 +297,9 @@ class ApprovalController extends Controller
 
     private function onFinalApproval(string $modelClass, $item): void
     {
-        // Hanya Cuti Tahunan yang berkuota; saldo izin tidak dikurangi agar tidak minus.
-        if ($modelClass === LeaveRequest::class && optional($item->leaveType)->name === 'Cuti Tahunan') {
-            $balance = LeaveBalance::where('employee_id', $item->employee_id)
-                ->where('leave_type_id', $item->leave_type_id)
-                ->where('year', now()->year)->first();
-            if ($balance) {
-                $balance->update([
-                    'used_days' => $balance->used_days + $item->total_days,
-                    'remaining_days' => $balance->remaining_days - $item->total_days,
-                ]);
-            }
+        // Kurangi saldo untuk jenis berkuota (Cuti Tahunan & WFH). WFH tidak minus.
+        if ($modelClass === LeaveRequest::class) {
+            LeaveQuota::deduct($item);
         }
 
         // Data change: apply the approved change to employee record

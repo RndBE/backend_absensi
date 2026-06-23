@@ -72,7 +72,7 @@ class AttendanceRecapController extends Controller
 
         // Build recap rows
         $rows = [];
-        $stats = ['hadir' => 0, 'terlambat' => 0, 'sakit' => 0, 'cuti' => 0, 'alpha' => 0, 'off' => 0, 'libur' => 0];
+        $stats = ['hadir' => 0, 'terlambat' => 0, 'wfh' => 0, 'sakit' => 0, 'cuti' => 0, 'alpha' => 0, 'off' => 0, 'libur' => 0];
 
         foreach ($employees as $emp) {
             $row = [
@@ -135,6 +135,10 @@ class AttendanceRecapController extends Controller
                             $row['status'] = 'sick';
                             $row['status_label'] = 'Sakit';
                             $stats['sakit']++;
+                        } elseif (AttendanceLateExcuse::isWfhLeave($leave)) {
+                            $row['status'] = 'wfh';
+                            $row['status_label'] = 'WFH';
+                            $stats['wfh']++;
                         } else {
                             $row['status'] = 'leave';
                             $row['status_label'] = 'Cuti: ' . ($leave->leaveType->name ?? 'Cuti');
@@ -151,6 +155,10 @@ class AttendanceRecapController extends Controller
                                 $row['status'] = 'sick';
                                 $row['status_label'] = 'Sakit';
                                 $stats['sakit']++;
+                            } elseif ($att->status === 'wfh') {
+                                $row['status'] = 'wfh';
+                                $row['status_label'] = 'WFH';
+                                $stats['wfh']++;
                             } elseif ($att->review_status === 'rejected' || $att->status === 'absent') {
                                 $row['status'] = 'absent';
                                 $row['status_label'] = 'Alpha';
@@ -314,7 +322,7 @@ class AttendanceRecapController extends Controller
             'date' => 'required|date',
             'clock_in' => 'nullable|date_format:H:i',
             'clock_out' => 'nullable|date_format:H:i',
-            'status' => 'required|in:present,absent,sick,leave,holiday,late_excuse,early_departure',
+            'status' => 'required|in:present,absent,sick,leave,holiday,late_excuse,early_departure,wfh',
         ]);
 
         $date = Carbon::parse($request->date);
@@ -803,7 +811,7 @@ class AttendanceRecapController extends Controller
         $dayNames = ['', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
 
         $rows = [];
-        $stats = ['hadir' => 0, 'terlambat' => 0, 'sakit' => 0, 'alpha' => 0, 'cuti' => 0, 'off' => 0, 'libur' => 0];
+        $stats = ['hadir' => 0, 'terlambat' => 0, 'wfh' => 0, 'sakit' => 0, 'alpha' => 0, 'cuti' => 0, 'off' => 0, 'libur' => 0];
 
         for ($d = 1; $d <= $daysInMonth; $d++) {
             $date = $startOfMonth->copy()->addDays($d - 1);
@@ -836,6 +844,10 @@ class AttendanceRecapController extends Controller
                     $status = 'sick';
                     $statusLabel = 'Sakit';
                     $stats['sakit']++;
+                } elseif (AttendanceLateExcuse::isWfhLeave($leave)) {
+                    $status = 'wfh';
+                    $statusLabel = 'WFH';
+                    $stats['wfh']++;
                 } else {
                     $status = 'leave';
                     $statusLabel = $leave->leaveType->name ?? 'Cuti';
@@ -849,6 +861,10 @@ class AttendanceRecapController extends Controller
                 $status = 'sick';
                 $statusLabel = 'Sakit';
                 $stats['sakit']++;
+            } elseif ($att && $att->status === 'wfh') {
+                $status = 'wfh';
+                $statusLabel = 'WFH';
+                $stats['wfh']++;
             } elseif ($att && AttendanceLateExcuse::manualPermissionStatusLabel($att->status)) {
                 $status = 'present';
                 $statusLabel = AttendanceLateExcuse::manualPermissionStatusLabel($att->status);
