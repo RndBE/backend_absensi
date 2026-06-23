@@ -43,7 +43,11 @@
                 <select name="budget_request_id" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                     <option value="">- Tanpa Budget Request -</option>
                     @foreach($availableRequests as $budgetRequest)
-                        <option value="{{ $budgetRequest->id }}" @selected((string) $selectedBudgetId === (string) $budgetRequest->id)>
+                        <option value="{{ $budgetRequest->id }}"
+                            data-surat-no="{{ $budgetRequest->surat_tugas_no }}"
+                            data-surat-date="{{ $budgetRequest->surat_tugas_date?->format('Y-m-d') }}"
+                            data-distance="{{ $budgetRequest->distance_km }}"
+                            @selected((string) $selectedBudgetId === (string) $budgetRequest->id)>
                             {{ $budgetRequest->title }} - Rp {{ number_format((float) $budgetRequest->total_amount, 0, ',', '.') }}
                         </option>
                     @endforeach
@@ -169,6 +173,25 @@
             input.placeholder = 'Hasil kegiatan';
             list.append(input);
         }
+    });
+
+    // Auto-isi data dari Budget Request yang dipilih.
+    const budgetSelect = document.querySelector('select[name="budget_request_id"]');
+    budgetSelect?.addEventListener('change', function () {
+        const opt = this.selectedOptions[0];
+        if (!opt || !this.value) return;
+        const form = this.closest('form');
+        const setVal = (name, val) => {
+            const el = form?.querySelector(`[name="${name}"]`);
+            if (el && val != null && val !== '') {
+                el.value = val;
+                // Picu change agar overlay date-shell ikut ter-update (mm/dd/yyyy hilang).
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        };
+        setVal('surat_tugas_no', opt.dataset.suratNo);
+        setVal('surat_tugas_date', opt.dataset.suratDate);
+        setVal('distance_km', opt.dataset.distance);
     });
 
     document.querySelector('[data-add-recommendation]')?.addEventListener('click', function () {

@@ -69,7 +69,7 @@
                             <th class="py-2.5 px-3 text-center w-8">#</th>
                             <th class="py-2.5 px-3 text-left min-w-[180px]">Uraian</th>
                             <th class="py-2.5 px-3 text-center min-w-[70px]">Satuan</th>
-                            <th class="py-2.5 px-3 text-center w-16">Vol</th>
+                            <th class="py-2.5 px-3 text-center" style="min-width:80px">Vol</th>
                             <th class="py-2.5 px-3 text-right min-w-[110px]">Anggaran</th>
                             <th class="py-2.5 px-3 text-right min-w-[110px]">Realisasi <span class="text-red-300">*</span></th>
                             <th class="py-2.5 px-3 text-right min-w-[100px]">Selisih</th>
@@ -126,12 +126,12 @@ function addRow(data = {}) {
                 class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none min-w-[160px] resize-y align-top" placeholder="Uraian kegiatan">${data.uraian || ''}</textarea>
         </td>
         <td class="py-2 px-3">
-            <textarea name="items[${i}][satuan]" rows="2"
-                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none resize-y align-top" placeholder="Sat">${data.satuan || data.type || ''}</textarea>
+            <input type="text" name="items[${i}][satuan]" value="${data.satuan || data.type || ''}"
+                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none min-w-[110px]" placeholder="Satuan">
         </td>
         <td class="py-2 px-3">
             <input type="number" name="items[${i}][volume]" value="${data.volume || 1}" min="0" step="any"
-                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none text-center" onchange="recalcRow(this)">
+                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none text-center" style="min-width:64px" onchange="recalcRow(this)">
         </td>
         <td class="py-2 px-3">
             <input type="number" name="items[${i}][anggaran]" value="${anggaran}" min="0" step="any"

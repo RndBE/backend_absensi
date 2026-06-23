@@ -11,13 +11,11 @@
     <a href="{{ route('admin.lpj.index') }}" class="inline-flex items-center gap-1 text-[13px] font-semibold text-gray-500 hover:text-gray-700 transition-colors">
         <span class="material-symbols-outlined text-[16px]">arrow_back</span> Kembali
     </a>
-    <div class="flex gap-2">
-        @if($lpj->status === 'approved')
+    <div class="admin-lpj-actions flex flex-wrap justify-end gap-2">
         <a href="{{ route('admin.lpj.export-excel', $lpj->id) }}"
-           class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+           class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-sky-600 to-blue-600 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
             <span class="material-symbols-outlined text-[14px]">download</span> Export Excel
         </a>
-        @endif
         @if($canManage && in_array($lpj->status, ['pending', 'in_review']))
         <form action="{{ route('admin.approvals.approve', ['type' => 'lpj', 'id' => $lpj->id]) }}" method="POST" class="inline">
             @csrf
@@ -33,7 +31,7 @@
         @if($canManage && $currentAdmin->role === 'superadmin')
         <form action="{{ route('admin.lpj.destroy', $lpj->id) }}" method="POST" onsubmit="return confirm('Yakin hapus LPJ ini?')">
             @csrf @method('DELETE')
-            <button class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-gray-600 to-gray-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all">
+            <button class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-slate-600 to-slate-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all">
                 <span class="material-symbols-outlined text-[14px]">delete</span> Hapus
             </button>
         </form>
@@ -152,7 +150,7 @@
                     <th class="py-3 px-3 text-right">Anggaran</th>
                     <th class="py-3 px-3 text-right">Realisasi</th>
                     <th class="py-3 px-3 text-right">Selisih</th>
-                    <th class="py-3 px-3 text-left">Keterangan</th>
+                    <th class="py-3 px-3 text-left min-w-[150px]">Keterangan</th>
                 </tr>
             </thead>
             <tbody>
@@ -169,13 +167,15 @@
                     <td class="py-2.5 px-3 text-right font-bold {{ $selisih < 0 ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50' }} rounded">
                         {{ $selisih < 0 ? '-' : '' }}{{ number_format(abs($selisih), 0, ',', '.') }}
                     </td>
-                    <td class="py-2.5 px-3 text-gray-500 text-[11px]">
+                    <td class="admin-lpj-note-cell py-2.5 px-3 text-gray-500 text-[11px] align-top min-w-[180px] max-w-[260px]">
+                        <div class="flex items-start justify-between gap-3">
+                        <span class="block min-w-0 flex-1 break-words leading-relaxed text-gray-600">{{ $item->keterangan ?: '-' }}</span>
                         @if($item->bukti_file)
-                        <a href="{{ asset('storage/' . $item->bukti_file) }}" target="_blank" class="inline-flex items-center gap-0.5 text-indigo-600 hover:underline text-[11px]">
+                        <a href="{{ asset('storage/' . $item->bukti_file) }}" target="_blank" class="order-last inline-flex shrink-0 items-center gap-0.5 text-indigo-600 hover:underline text-[11px] font-semibold">
                             <span class="material-symbols-outlined text-[13px]">attach_file</span> Bukti
                         </a>
                         @endif
-                        {{ $item->keterangan ?? '' }}
+                        </div>
                     </td>
                 </tr>
                 @endforeach

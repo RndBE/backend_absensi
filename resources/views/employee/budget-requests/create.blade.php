@@ -145,6 +145,28 @@
 <template id="budgetItemTemplate">
     @include('employee.budget-requests.partials.item-row', ['index' => '__INDEX__', 'itemTypes' => $itemTypes])
 </template>
+
+{{-- Modal: jumlah hari perjalanan untuk uang makan --}}
+<div id="mealDaysModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-meal-close></div>
+    <div class="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+        <div class="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+            <span class="material-symbols-outlined text-[20px] text-indigo-500">restaurant</span>
+            <h3 class="text-[15px] font-bold text-gray-900">Tambah Uang Makan</h3>
+        </div>
+        <div class="px-5 py-5">
+            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jumlah hari perjalanan</label>
+            <input type="number" id="mealDaysInput" min="1" step="1" value="1" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+            <p id="mealDaysPreview" class="text-[11px] text-gray-400 mt-1.5"></p>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
+            <button type="button" data-meal-close class="px-4 py-2.5 text-[13px] font-semibold text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50">Batal</button>
+            <button type="button" id="mealDaysConfirm" class="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-xl shadow-sm">
+                <span class="material-symbols-outlined text-[16px]">add</span> Tambahkan
+            </button>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
@@ -268,13 +290,23 @@
             debounceTimer = window.setTimeout(() => estimateZone(this.value.trim()), 800);
         });
 
-        applyMeal?.addEventListener('click', function () {
-            if (!currentZone) return;
+        const mealModal = document.getElementById('mealDaysModal');
+        const mealDaysInput = document.getElementById('mealDaysInput');
+        const mealDaysPreview = document.getElementById('mealDaysPreview');
 
-            const rawDays = window.prompt('Jumlah hari perjalanan?', '1');
-            const days = Number.parseInt(rawDays || '', 10);
-            if (!Number.isInteger(days) || days <= 0) return;
+        function closeMealModal() {
+            mealModal?.classList.add('hidden');
+            mealModal?.classList.remove('flex');
+        }
 
+        function updateMealPreview() {
+            if (!currentZone || !mealDaysPreview) return;
+            const days = Math.max(1, Number.parseInt(mealDaysInput?.value || '1', 10) || 1);
+            const mealPerDay = Number(currentZone.meal_allowance || 0);
+            mealDaysPreview.textContent = `${days} hari × ${formatRupiah(mealPerDay)} = ${formatRupiah(mealPerDay * days)}`;
+        }
+
+        function applyMealWithDays(days) {
             const mealPerDay = Number(currentZone.meal_allowance || 0);
             const amount = mealPerDay * days;
             const description = `Uang makan (${currentZone.name}) - ${days} hari x ${formatRupiah(mealPerDay)}`;
@@ -289,6 +321,35 @@
             if (typeInput) typeInput.value = 'meal';
             if (descriptionInput) descriptionInput.value = description;
             if (amountInput) amountInput.value = String(Math.round(amount));
+        }
+
+        function confirmMealDays() {
+            const days = Number.parseInt(mealDaysInput?.value || '', 10);
+            if (!Number.isInteger(days) || days <= 0) {
+                mealDaysInput?.focus();
+                return;
+            }
+            applyMealWithDays(days);
+            closeMealModal();
+        }
+
+        applyMeal?.addEventListener('click', function () {
+            if (!currentZone || !mealModal) return;
+            mealDaysInput.value = '1';
+            updateMealPreview();
+            mealModal.classList.remove('hidden');
+            mealModal.classList.add('flex');
+            setTimeout(() => mealDaysInput?.focus(), 50);
+        });
+
+        mealDaysInput?.addEventListener('input', updateMealPreview);
+        mealDaysInput?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); confirmMealDays(); }
+        });
+        document.getElementById('mealDaysConfirm')?.addEventListener('click', confirmMealDays);
+        mealModal?.querySelectorAll('[data-meal-close]').forEach((el) => el.addEventListener('click', closeMealModal));
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && mealModal && !mealModal.classList.contains('hidden')) closeMealModal();
         });
     })();
 </script>
