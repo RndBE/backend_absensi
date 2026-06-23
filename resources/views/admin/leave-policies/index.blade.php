@@ -123,9 +123,9 @@
                         </td>
                         <td class="py-3 px-4 text-center">
                             @if($policy->eligibility_type === 'selected')
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">{{ $policy->eligibleEmployees->count() }} karyawan</span>
+                                <span class="inline-flex items-center justify-center whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">{{ $policy->eligibleEmployees->count() }} karyawan</span>
                             @else
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">Semua</span>
+                                <span class="inline-flex items-center justify-center whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">Semua</span>
                             @endif
                         </td>
                         <td class="py-3 px-4 text-center">

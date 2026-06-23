@@ -70,6 +70,14 @@ class AdminFilterViewTest extends TestCase
         $this->assertStringContainsString('Sakit', $view);
     }
 
+    public function test_leave_policy_scope_count_badge_does_not_wrap_employee_label(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/leave-policies/index.blade.php'));
+
+        $this->assertStringContainsString('{{ $policy->eligibleEmployees->count() }} karyawan', $view);
+        $this->assertStringContainsString('whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50', $view);
+    }
+
     public function test_attendance_recap_manual_status_includes_partial_day_permission_options(): void
     {
         $view = file_get_contents(resource_path('views/admin/attendance-recap/index.blade.php'));
