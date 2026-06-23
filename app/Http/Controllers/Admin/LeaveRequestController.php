@@ -187,6 +187,7 @@ class LeaveRequestController extends Controller
             'employee.department:id,name',
             'leaveType',
             'delegate:id,full_name',
+            'attachments',
             'approvalLogs' => fn($q) => $q->orderBy('created_at'),
             'approvalLogs.approver:id,full_name,position',
         ])->findOrFail($id);

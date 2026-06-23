@@ -65,7 +65,11 @@ class LeaveController extends Controller
             'total_days' => 'required|numeric|min:0.5',
             'reason' => 'required|string|max:1000',
             'delegate_to' => 'nullable|exists:employees,id',
+            'attachment' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
+
+        $attachment = $request->file('attachment');
+        unset($validated['attachment']);
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
@@ -96,11 +100,19 @@ class LeaveController extends Controller
             }
         }
 
-        LeaveRequest::create($validated + [
+        $leave = LeaveRequest::create($validated + [
             'employee_id' => $employee->id,
             'status' => 'pending',
             'current_step' => 1,
         ]);
+
+        if ($attachment) {
+            $leave->attachments()->create([
+                'file_path' => $attachment->store('leave-attachments', 'public'),
+                'file_name' => $attachment->getClientOriginalName(),
+                'file_size' => $attachment->getSize(),
+            ]);
+        }
 
         return redirect()
             ->route('employee.leaves.index')

@@ -12,7 +12,7 @@
         <p class="text-[13px] text-gray-500 mt-1">Isi periode dan alasan pengajuan.</p>
     </div>
 
-    <form action="{{ route('employee.leaves.store') }}" method="POST" class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+    <form action="{{ route('employee.leaves.store') }}" method="POST" enctype="multipart/form-data" class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
         @csrf
         <div>
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jenis Cuti / Izin</label>
@@ -47,6 +47,13 @@
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Alasan</label>
             <textarea name="reason" rows="4" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 resize-none" placeholder="Tuliskan alasan pengajuan">{{ old('reason') }}</textarea>
             @error('reason')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
+        </div>
+
+        <div>
+            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Lampiran <span class="font-semibold text-gray-400">(opsional)</span></label>
+            <input type="file" name="attachment" accept="image/*,.pdf" class="w-full text-[12px] text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 file:text-[12px] file:font-semibold file:cursor-pointer">
+            <p class="text-[11px] text-gray-400 mt-1">Mis. surat dokter untuk izin sakit. Format JPG/PNG/PDF, maks 5MB.</p>
+            @error('attachment')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
         </div>
 
         <button type="submit" class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[13px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm">

@@ -122,12 +122,12 @@ function addRow(data = {}) {
         <td class="py-2 px-3 text-center text-gray-400 row-no"></td>
         <td class="py-2 px-3">
             <input type="hidden" name="items[${i}][budget_request_item_id]" value="${data.id || ''}">
-            <input type="text" name="items[${i}][uraian]" value="${data.uraian || ''}" required
-                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none min-w-[160px]" placeholder="Uraian kegiatan">
+            <textarea name="items[${i}][uraian]" rows="2" required
+                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none min-w-[160px] resize-y align-top" placeholder="Uraian kegiatan">${data.uraian || ''}</textarea>
         </td>
         <td class="py-2 px-3">
-            <input type="text" name="items[${i}][satuan]" value="${data.satuan || data.type || ''}"
-                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="Sat">
+            <textarea name="items[${i}][satuan]" rows="2"
+                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none resize-y align-top" placeholder="Sat">${data.satuan || data.type || ''}</textarea>
         </td>
         <td class="py-2 px-3">
             <input type="number" name="items[${i}][volume]" value="${data.volume || 1}" min="0" step="any"

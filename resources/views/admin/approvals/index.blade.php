@@ -98,7 +98,14 @@
                         <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $lr->start_date->format('d/m/Y') }}</td>
                         <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $lr->end_date->format('d/m/Y') }}</td>
                         <td class="px-4 py-3.5 text-[13.5px] font-semibold text-gray-800 border-b border-gray-100">{{ $lr->total_days_label }}</td>
-                        <td class="px-4 py-3.5 text-[13px] text-gray-600 border-b border-gray-100 max-w-[200px]">{{ Str::limit($lr->reason, 60) }}</td>
+                        <td class="px-4 py-3.5 text-[13px] text-gray-600 border-b border-gray-100 max-w-[200px]">
+                            {{ Str::limit($lr->reason, 60) }}
+                            @foreach($lr->attachments as $att)
+                                <a href="{{ Storage::url($att->file_path) }}" target="_blank" class="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:underline">
+                                    <span class="material-symbols-outlined text-[14px]">attach_file</span> Lampiran
+                                </a>
+                            @endforeach
+                        </td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex gap-2">
                                 <form action="{{ route('admin.approvals.approve', ['type' => 'leave', 'id' => $lr->id]) }}" method="POST">

@@ -45,6 +45,19 @@
                     <span class="text-gray-400 text-[11px] font-semibold uppercase">Alasan</span>
                     <p class="font-medium text-gray-700 mt-0.5">{{ $leave->reason }}</p>
                 </div>
+                @if($leave->attachments->isNotEmpty())
+                <div>
+                    <span class="text-gray-400 text-[11px] font-semibold uppercase">Lampiran</span>
+                    <div class="mt-1 flex flex-wrap gap-2">
+                        @foreach($leave->attachments as $att)
+                        <a href="{{ Storage::url($att->file_path) }}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">
+                            <span class="material-symbols-outlined text-[16px]">attach_file</span>
+                            {{ $att->file_name ?: 'Lihat lampiran' }}
+                        </a>
+                        @endforeach
+                    </div>
+                </div>
+                @endif
                 @if($leave->delegate)
                 <div>
                     <span class="text-gray-400 text-[11px] font-semibold uppercase">Delegasi</span>

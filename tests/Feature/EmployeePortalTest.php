@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -723,7 +724,8 @@ class EmployeePortalTest extends TestCase
             ->get('/employee/leaves/create')
             ->assertOk()
             ->assertSee('Cuti Tahunan - sisa 12 hari')
-            ->assertSee('Cuti Melahirkan - sisa 90 hari');
+            ->assertSee('Cuti Melahirkan')
+            ->assertDontSee('Cuti Melahirkan - sisa');
     }
 
     public function test_employee_leave_create_auto_calculates_total_days_from_selected_dates(): void
@@ -766,11 +768,11 @@ class EmployeePortalTest extends TestCase
         ]);
     }
 
-    public function test_employee_cannot_submit_leave_type_without_balance_from_web_portal(): void
+    public function test_employee_can_submit_non_annual_leave_without_balance_from_web_portal(): void
     {
         $this->seedEmployee();
         $this->seedLeaveTypeAndBalance();
-        $this->seedMaternityLeaveType();
+        $this->seedMaternityLeaveType(); // tanpa saldo
 
         $this->withSession(['employee_id' => 1])
             ->post('/employee/leaves', [
@@ -780,12 +782,42 @@ class EmployeePortalTest extends TestCase
                 'total_days' => '2',
                 'reason' => 'Cuti melahirkan',
             ])
+            ->assertRedirect(route('employee.leaves.index'));
+
+        // Izin/cuti non-tahunan tidak berkuota → tetap bisa diajukan walau tanpa saldo.
+        $this->assertDatabaseHas('leave_requests', [
+            'employee_id' => 1,
+            'leave_type_id' => 2,
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_employee_cannot_submit_annual_leave_without_balance_from_web_portal(): void
+    {
+        $this->seedEmployee();
+        // Cuti Tahunan TANPA saldo
+        DB::table('leave_types')->insert([
+            'id' => 1,
+            'name' => 'Cuti Tahunan',
+            'max_days' => 12,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/leaves', [
+                'leave_type_id' => 1,
+                'start_date' => '2026-06-20',
+                'end_date' => '2026-06-21',
+                'total_days' => '2',
+                'reason' => 'Keperluan keluarga',
+            ])
             ->assertRedirect()
             ->assertSessionHas('error', 'Saldo cuti belum tersedia.');
 
         $this->assertDatabaseMissing('leave_requests', [
             'employee_id' => 1,
-            'leave_type_id' => 2,
+            'leave_type_id' => 1,
         ]);
     }
 
@@ -811,6 +843,32 @@ class EmployeePortalTest extends TestCase
             'status' => 'pending',
             'current_step' => 1,
         ]);
+    }
+
+    public function test_employee_can_attach_file_to_leave_request(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/leaves', [
+                'leave_type_id' => 1,
+                'start_date' => '2026-06-20',
+                'end_date' => '2026-06-20',
+                'total_days' => '1',
+                'reason' => 'Sakit, terlampir surat dokter',
+                'attachment' => UploadedFile::fake()->create('surat-dokter.pdf', 100, 'application/pdf'),
+            ])
+            ->assertRedirect(route('employee.leaves.index'));
+
+        $this->assertDatabaseHas('request_attachments', [
+            'attachable_type' => \App\Models\LeaveRequest::class,
+            'file_name' => 'surat-dokter.pdf',
+        ]);
+
+        $path = DB::table('request_attachments')->value('file_path');
+        Storage::disk('public')->assertExists($path);
     }
 
     public function test_employee_can_submit_leave_request_from_web_portal(): void

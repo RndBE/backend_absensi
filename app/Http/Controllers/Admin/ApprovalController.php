@@ -27,7 +27,7 @@ class ApprovalController extends Controller
 
         // Show requests where the current approver in the chain is this admin
         $leave = $this->getMyPendingRequests(LeaveRequest::class, $admin)
-            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'leaveType'])
+            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'leaveType', 'attachments'])
             ->orderBy('created_at', 'desc')->get();
 
         $overtime = $this->getMyPendingRequests(OvertimeRequest::class, $admin)
