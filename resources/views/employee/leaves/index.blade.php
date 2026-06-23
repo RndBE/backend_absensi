@@ -40,6 +40,7 @@
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Tanggal</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Hari</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Status</th>
+                        <th class="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -49,9 +50,18 @@
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $leave->start_date?->format('d/m/Y') }} - {{ $leave->end_date?->format('d/m/Y') }}</td>
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $leave->total_days_label }}</td>
                             <td class="px-4 py-3.5 border-b border-gray-100">@include('employee.partials.status-badge', ['status' => $leave->status])</td>
+                            <td class="px-4 py-3.5 border-b border-gray-100 text-center">
+                                @if($leave->status === 'pending')
+                                    <a href="{{ route('employee.leaves.edit', $leave->id) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">
+                                        <span class="material-symbols-outlined text-[14px]">edit</span> Edit
+                                    </a>
+                                @else
+                                    <span class="text-[11px] text-gray-300">—</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="text-center py-10 text-[13px] text-gray-400">Belum ada pengajuan cuti.</td></tr>
+                        <tr><td colspan="5" class="text-center py-10 text-[13px] text-gray-400">Belum ada pengajuan cuti.</td></tr>
                     @endforelse
                 </tbody>
             </table>

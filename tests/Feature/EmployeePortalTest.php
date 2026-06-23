@@ -871,6 +871,63 @@ class EmployeePortalTest extends TestCase
         Storage::disk('public')->assertExists($path);
     }
 
+    public function test_employee_can_edit_pending_leave_request(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+        DB::table('leave_requests')->insert([
+            'id' => 1, 'employee_id' => 1, 'leave_type_id' => 1,
+            'start_date' => '2026-06-20', 'end_date' => '2026-06-20', 'total_days' => 1,
+            'reason' => 'Alasan awal', 'status' => 'pending', 'current_step' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->put('/employee/leaves/1', [
+                'leave_type_id' => 1,
+                'start_date' => '2026-06-20',
+                'end_date' => '2026-06-22',
+                'total_days' => '1',
+                'reason' => 'Alasan diperbarui',
+            ])
+            ->assertRedirect(route('employee.leaves.index'));
+
+        $this->assertDatabaseHas('leave_requests', [
+            'id' => 1,
+            'reason' => 'Alasan diperbarui',
+            'end_date' => '2026-06-22',
+            'total_days' => 3,
+        ]);
+    }
+
+    public function test_employee_cannot_edit_processed_leave_request(): void
+    {
+        $this->seedEmployee();
+        $this->seedLeaveTypeAndBalance();
+        DB::table('leave_requests')->insert([
+            'id' => 1, 'employee_id' => 1, 'leave_type_id' => 1,
+            'start_date' => '2026-06-20', 'end_date' => '2026-06-20', 'total_days' => 1,
+            'reason' => 'Alasan awal', 'status' => 'approved', 'current_step' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->put('/employee/leaves/1', [
+                'leave_type_id' => 1,
+                'start_date' => '2026-06-20',
+                'end_date' => '2026-06-25',
+                'total_days' => '1',
+                'reason' => 'Coba ubah',
+            ])
+            ->assertRedirect(route('employee.leaves.index'))
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseHas('leave_requests', [
+            'id' => 1,
+            'reason' => 'Alasan awal',
+        ]);
+    }
+
     public function test_employee_can_submit_leave_request_from_web_portal(): void
     {
         $this->seedEmployee();
