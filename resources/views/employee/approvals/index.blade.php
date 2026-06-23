@@ -67,7 +67,7 @@
                             </div>
                             <div>
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Durasi</div>
-                                <div class="font-semibold text-gray-900 mt-1">{{ number_format((float) $request->total_days, 1) }} hari</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->total_days_label }} hari</div>
                             </div>
                         @elseif($type === 'overtime')
                             <div>
@@ -140,6 +140,20 @@
                             @endif
                         </div>
                     </div>
+
+                    @if(in_array($type, ['leave', 'overtime', 'budget', 'travel_report'], true) && $request->attachments->isNotEmpty())
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                        <div class="text-[11px] font-bold uppercase text-gray-400">Lampiran</div>
+                        <div class="mt-1.5 flex flex-wrap gap-2">
+                            @foreach($request->attachments as $att)
+                            <a href="{{ Storage::url($att->file_path) }}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">
+                                <span class="material-symbols-outlined text-[16px]">attach_file</span>
+                                {{ $att->file_name ?: 'Lihat lampiran' }}
+                            </a>
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
 
                     <div class="space-y-3">
                         @php

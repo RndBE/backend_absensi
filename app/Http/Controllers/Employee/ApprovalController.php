@@ -212,9 +212,10 @@ class ApprovalController extends Controller
     private function relationsFor(string $type): array
     {
         return match ($type) {
-            'leave' => ['employee:id,full_name,position,photo', 'leaveType'],
-            'budget' => ['employee:id,full_name,position,photo', 'items'],
-            'travel_report' => ['employee:id,full_name,position,photo', 'budgetRequest'],
+            'leave' => ['employee:id,full_name,position,photo', 'leaveType', 'attachments'],
+            'overtime' => ['employee:id,full_name,position,photo', 'attachments'],
+            'budget' => ['employee:id,full_name,position,photo', 'items', 'attachments'],
+            'travel_report' => ['employee:id,full_name,position,photo', 'budgetRequest', 'attachments'],
             default => ['employee:id,full_name,position,photo'],
         };
     }

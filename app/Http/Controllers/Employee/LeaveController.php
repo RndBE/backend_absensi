@@ -67,7 +67,7 @@ class LeaveController extends Controller
             'reason' => 'required|string|max:1000',
             'delegate_to' => 'nullable|exists:employees,id',
             'attachment' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
-        ]);
+        ], $this->attachmentMessages());
 
         $attachment = $request->file('attachment');
         unset($validated['attachment']);
@@ -174,7 +174,7 @@ class LeaveController extends Controller
             'reason' => 'required|string|max:1000',
             'delegate_to' => 'nullable|exists:employees,id',
             'attachment' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
-        ]);
+        ], $this->attachmentMessages());
 
         $attachment = $request->file('attachment');
         unset($validated['attachment']);
@@ -219,5 +219,18 @@ class LeaveController extends Controller
         return redirect()
             ->route('employee.leaves.index')
             ->with('success', 'Pengajuan cuti berhasil diperbarui.');
+    }
+
+    /**
+     * Pesan validasi lampiran dalam Bahasa Indonesia.
+     */
+    private function attachmentMessages(): array
+    {
+        return [
+            'attachment.uploaded' => 'Gagal mengunggah lampiran. Pastikan file sudah selesai diunduh dan koneksi stabil, lalu coba lagi.',
+            'attachment.max'      => 'Ukuran lampiran maksimal 5MB.',
+            'attachment.mimes'    => 'Lampiran harus berformat JPG, PNG, atau PDF.',
+            'attachment.file'     => 'Lampiran harus berupa file yang valid.',
+        ];
     }
 }
