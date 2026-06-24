@@ -17,6 +17,18 @@
             <span class="material-symbols-outlined text-[14px]">download</span> Export Excel
         </a>
         @if($canManage && in_array($lpj->status, ['pending', 'in_review']))
+        <form action="{{ route('admin.lpj.import-excel', $lpj->id) }}" method="POST" enctype="multipart/form-data" class="inline" id="lpjImportForm">
+            @csrf
+            <input type="file" name="lpj_file" id="lpjImportFile" accept=".xlsx" class="hidden"
+                   onchange="if(this.files.length){ document.getElementById('lpjImportForm').submit(); }">
+            <button type="button" onclick="document.getElementById('lpjImportFile').click()"
+                    title="Upload file Excel hasil export yang sudah diedit untuk memperbarui nilai realisasi"
+                    class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-amber-600 to-orange-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+                <span class="material-symbols-outlined text-[14px]">upload</span> Import Excel
+            </button>
+        </form>
+        @endif
+        @if($canManage && in_array($lpj->status, ['pending', 'in_review']))
         <form action="{{ route('admin.approvals.approve', ['type' => 'lpj', 'id' => $lpj->id]) }}" method="POST" class="inline">
             @csrf
             <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all">
@@ -132,68 +144,8 @@
     @endif
 </div>
 
-{{-- Tabel Rincian Item (Excel-like) --}}
-<div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
-    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h4 class="text-[14px] font-bold text-gray-900">Rincian Realisasi</h4>
-        <div class="text-[12px] text-gray-500">{{ $lpj->items->count() }} item</div>
-    </div>
-    <div class="overflow-x-auto">
-        <table class="w-full text-[12px]">
-            <thead>
-                <tr class="bg-indigo-700 text-white text-[11px] font-bold uppercase tracking-wider">
-                    <th class="py-3 px-3 text-center w-8">No</th>
-                    <th class="py-3 px-3 text-left min-w-[200px]">Uraian</th>
-                    <th class="py-3 px-3 text-center">Sat</th>
-                    <th class="py-3 px-3 text-center">Vol</th>
-                    <th class="py-3 px-3 text-right">Harga Satuan</th>
-                    <th class="py-3 px-3 text-right">Anggaran</th>
-                    <th class="py-3 px-3 text-right">Realisasi</th>
-                    <th class="py-3 px-3 text-right">Selisih</th>
-                    <th class="py-3 px-3 text-left min-w-[150px]">Keterangan</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($lpj->items as $i => $item)
-                @php $selisih = (float)$item->anggaran - (float)$item->realisasi; @endphp
-                <tr class="border-b border-gray-100 hover:bg-gray-50/50 {{ $i % 2 === 0 ? '' : 'bg-gray-50/30' }}">
-                    <td class="py-2.5 px-3 text-center text-gray-500">{{ $i + 1 }}</td>
-                    <td class="py-2.5 px-3 font-medium text-gray-800">{{ $item->uraian }}</td>
-                    <td class="py-2.5 px-3 text-center text-gray-600">{{ $item->satuan ?? '-' }}</td>
-                    <td class="py-2.5 px-3 text-center text-gray-600">{{ number_format($item->volume, 0) }}</td>
-                    <td class="py-2.5 px-3 text-right text-gray-700">{{ number_format($item->harga_satuan, 0, ',', '.') }}</td>
-                    <td class="py-2.5 px-3 text-right text-gray-700 font-medium">{{ number_format($item->anggaran, 0, ',', '.') }}</td>
-                    <td class="py-2.5 px-3 text-right text-gray-700 font-medium">{{ number_format($item->realisasi, 0, ',', '.') }}</td>
-                    <td class="py-2.5 px-3 text-right font-bold {{ $selisih < 0 ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50' }} rounded">
-                        {{ $selisih < 0 ? '-' : '' }}{{ number_format(abs($selisih), 0, ',', '.') }}
-                    </td>
-                    <td class="admin-lpj-note-cell py-2.5 px-3 text-gray-500 text-[11px] align-top min-w-[180px] max-w-[260px]">
-                        <div class="flex items-start justify-between gap-3">
-                        <span class="block min-w-0 flex-1 break-words leading-relaxed text-gray-600">{{ $item->keterangan ?: '-' }}</span>
-                        @if($item->bukti_file)
-                        <a href="{{ asset('storage/' . $item->bukti_file) }}" target="_blank" class="order-last inline-flex shrink-0 items-center gap-0.5 text-indigo-600 hover:underline text-[11px] font-semibold">
-                            <span class="material-symbols-outlined text-[13px]">attach_file</span> Bukti
-                        </a>
-                        @endif
-                        </div>
-                    </td>
-                </tr>
-                @endforeach
-            </tbody>
-            <tfoot>
-                <tr class="bg-indigo-700 text-white font-bold">
-                    <td class="py-3 px-3 text-center" colspan="5">TOTAL</td>
-                    <td class="py-3 px-3 text-right">{{ number_format($lpj->total_anggaran, 0, ',', '.') }}</td>
-                    <td class="py-3 px-3 text-right">{{ number_format($lpj->total_realisasi, 0, ',', '.') }}</td>
-                    <td class="py-3 px-3 text-right {{ $sisa < 0 ? 'text-red-300' : 'text-emerald-300' }}">
-                        {{ $sisa < 0 ? '-' : '' }}{{ number_format(abs($sisa), 0, ',', '.') }}
-                    </td>
-                    <td class="py-3 px-3"></td>
-                </tr>
-            </tfoot>
-        </table>
-    </div>
-</div>
+{{-- Rincian PEMASUKAN vs PENGELUARAN + ringkasan per kategori --}}
+@include('partials.lpj-rincian', ['lpj' => $lpj])
 
 {{-- Approval Log --}}
 @if($lpj->approvalLogs->isNotEmpty())

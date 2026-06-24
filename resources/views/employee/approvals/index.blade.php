@@ -43,6 +43,7 @@
                                         'attendance' => 'edit_calendar',
                                         'budget' => 'request_quote',
                                         'travel_report' => 'flight_takeoff',
+                                        'lpj' => 'receipt_long',
                                         default => 'fact_check',
                                     } }}
                                 </span>
@@ -108,6 +109,19 @@
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Nominal</div>
                                 <div class="font-semibold text-gray-900 mt-1">Rp {{ number_format((float) $request->total_amount, 0, ',', '.') }}</div>
                             </div>
+                        @elseif($type === 'lpj')
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Nomor</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->nomor_lpj ?: '-' }}</div>
+                            </div>
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Budget</div>
+                                <div class="font-semibold text-gray-900 mt-1">{{ $request->budgetRequest?->title ?? '-' }}</div>
+                            </div>
+                            <div>
+                                <div class="font-bold text-gray-400 uppercase text-[10px]">Realisasi</div>
+                                <div class="font-semibold text-gray-900 mt-1">Rp {{ number_format((float) $request->total_realisasi, 0, ',', '.') }}</div>
+                            </div>
                         @else
                             <div>
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Tujuan</div>
@@ -128,13 +142,15 @@
                 <div class="p-5 space-y-4">
                     <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
                         <div class="text-[11px] font-bold uppercase text-gray-400">
-                            {{ in_array($type, ['budget', 'travel_report'], true) ? 'Keterangan' : 'Alasan' }}
+                            {{ in_array($type, ['budget', 'travel_report', 'lpj'], true) ? 'Keterangan' : 'Alasan' }}
                         </div>
                         <div class="text-[13px] text-gray-700 mt-1">
                             @if($type === 'budget')
                                 {{ $request->description ?: '-' }}
                             @elseif($type === 'travel_report')
                                 {{ $request->purpose ?: '-' }}
+                            @elseif($type === 'lpj')
+                                {{ $request->catatan ?: '-' }}
                             @else
                                 {{ $request->reason ?: '-' }}
                             @endif

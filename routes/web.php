@@ -264,6 +264,7 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::get('/lpj', [LpjController::class, 'index'])->name('lpj.index');
     Route::get('/lpj/{id}', [LpjController::class, 'show'])->name('lpj.show');
     Route::get('/lpj/{id}/export-excel', [LpjController::class, 'exportExcel'])->name('lpj.export-excel');
+    Route::post('/lpj/{id}/import-excel', [LpjController::class, 'importExcel'])->name('lpj.import-excel');
     Route::delete('/lpj/{id}', [LpjController::class, 'destroy'])->name('lpj.destroy');
 
     // Budget Payments

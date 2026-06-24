@@ -92,62 +92,8 @@
         </div>
     </div>
 
-    {{-- Tabel Item --}}
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-100 text-[14px] font-bold text-gray-900">Rincian Realisasi</div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-[12px]">
-                <thead>
-                    <tr class="bg-indigo-700 text-white text-[10px] font-bold uppercase">
-                        <th class="py-2.5 px-3 text-center w-8">No</th>
-                        <th class="py-2.5 px-3 text-left">Uraian</th>
-                        <th class="py-2.5 px-3 text-right">Anggaran</th>
-                        <th class="py-2.5 px-3 text-right">Realisasi</th>
-                        <th class="py-2.5 px-3 text-right">Selisih</th>
-                        <th class="py-2.5 px-3">Bukti</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($lpj->items as $i => $item)
-                    @php $selisih = (float)$item->anggaran - (float)$item->realisasi; @endphp
-                    <tr class="border-b border-gray-100 {{ $i % 2 === 0 ? '' : 'bg-gray-50/40' }}">
-                        <td class="py-2.5 px-3 text-center text-gray-400">{{ $i + 1 }}</td>
-                        <td class="py-2.5 px-3 font-medium text-gray-800">
-                            {{ $item->uraian }}
-                            @if($item->keterangan)<div class="text-[10px] text-gray-400">{{ $item->keterangan }}</div>@endif
-                        </td>
-                        <td class="py-2.5 px-3 text-right text-gray-600">{{ number_format($item->anggaran, 0, ',', '.') }}</td>
-                        <td class="py-2.5 px-3 text-right font-semibold text-gray-800">{{ number_format($item->realisasi, 0, ',', '.') }}</td>
-                        <td class="py-2.5 px-3 text-right font-bold {{ $selisih < 0 ? 'text-red-600' : 'text-emerald-600' }}">
-                            {{ $selisih < 0 ? '-' : '' }}{{ number_format(abs($selisih), 0, ',', '.') }}
-                        </td>
-                        <td class="py-2.5 px-3">
-                            @if($item->bukti_file)
-                            <a href="{{ asset('storage/' . $item->bukti_file) }}" target="_blank"
-                               class="inline-flex items-center gap-0.5 text-indigo-600 hover:underline text-[11px]">
-                                <span class="material-symbols-outlined text-[13px]">attach_file</span> Lihat
-                            </a>
-                            @else
-                            <span class="text-gray-300">-</span>
-                            @endif
-                        </td>
-                    </tr>
-                    @endforeach
-                </tbody>
-                <tfoot>
-                    <tr class="bg-indigo-700 text-white font-bold text-[12px]">
-                        <td colspan="2" class="py-3 px-3 text-right">TOTAL</td>
-                        <td class="py-3 px-3 text-right">{{ number_format($lpj->total_anggaran, 0, ',', '.') }}</td>
-                        <td class="py-3 px-3 text-right">{{ number_format($lpj->total_realisasi, 0, ',', '.') }}</td>
-                        <td class="py-3 px-3 text-right {{ $sisa < 0 ? 'text-red-300' : 'text-emerald-300' }}">
-                            {{ $sisa < 0 ? '-' : '' }}{{ number_format(abs($sisa), 0, ',', '.') }}
-                        </td>
-                        <td class="py-3 px-3"></td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
+    {{-- Rincian PEMASUKAN vs PENGELUARAN + ringkasan per kategori --}}
+    @include('partials.lpj-rincian', ['lpj' => $lpj])
 
     {{-- Approval Log --}}
     @if($lpj->approvalLogs->isNotEmpty())

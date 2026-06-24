@@ -7,8 +7,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class LpjItem extends Model
 {
+    /** Kategori pengeluaran — selaras dengan jenis item pada Pengajuan Anggaran. */
+    public const CATEGORIES = [
+        'transport'   => 'Transportasi',
+        'meal'        => 'Makan',
+        'lumpsum'     => 'Lumpsum',
+        'entertain'   => 'Entertain',
+        'operasional' => 'Operasional',
+        'lainnya'     => 'Lainnya',
+    ];
+
     protected $fillable = [
-        'lpj_id', 'budget_request_item_id', 'uraian', 'satuan',
+        'lpj_id', 'budget_request_item_id', 'uraian', 'kategori', 'satuan',
         'volume', 'harga_satuan', 'anggaran', 'realisasi',
         'bukti_file', 'keterangan', 'sort_order',
     ];
@@ -36,5 +46,10 @@ class LpjItem extends Model
     public function getSelisihAttribute(): float
     {
         return (float) $this->anggaran - (float) $this->realisasi;
+    }
+
+    public function getKategoriLabelAttribute(): string
+    {
+        return self::CATEGORIES[$this->kategori] ?? ($this->kategori ?: '-');
     }
 }

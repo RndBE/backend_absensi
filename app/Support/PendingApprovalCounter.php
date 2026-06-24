@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Employee;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PendingApprovalCounter
 {
@@ -13,6 +14,9 @@ class PendingApprovalCounter
         'leave' => 'leave_requests',
         'overtime' => 'overtime_requests',
         'attendance' => 'attendance_requests',
+        'budget' => 'budget_requests',
+        'travel_report' => 'travel_reports',
+        'lpj' => 'lpjs',
     ];
 
     public function countForApprover(?Employee $approver): int
@@ -31,6 +35,10 @@ class PendingApprovalCounter
         $total = 0;
 
         foreach (self::REQUEST_TABLES as $requestType => $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+
             $total += DB::table($tableName)
                 ->join('employee_approvers', function ($join) use ($tableName, $requestType, $approver) {
                     $join->on('employee_approvers.employee_id', '=', "{$tableName}.employee_id")
@@ -52,6 +60,10 @@ class PendingApprovalCounter
         $total = 0;
 
         foreach (self::REQUEST_TABLES as $tableName) {
+            if (! Schema::hasTable($tableName)) {
+                continue;
+            }
+
             $total += DB::table($tableName)
                 ->join('employees', 'employees.id', '=', "{$tableName}.employee_id")
                 ->where('employees.company_id', $admin->company_id)

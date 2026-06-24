@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Company;
 use App\Models\Lpj;
+use App\Support\LpjSummary;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -16,13 +17,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LpjExcelExporter
 {
-    /**
-     * Bangun + kirim file Excel LPJ sebagai unduhan.
-     */
     public static function download(Lpj $lpj): StreamedResponse
     {
         $spreadsheet = self::build($lpj);
-        // Nomor LPJ bisa memuat "/" (mis. LPJ/2026/06/23/001) yang dilarang di nama file.
         $safeNomor = str_replace(['/', '\\'], '-', (string) ($lpj->nomor_lpj ?? $lpj->id));
         $filename = 'LPJ_' . $safeNomor . '_' . now()->format('Ymd') . '.xlsx';
 
@@ -37,28 +34,29 @@ class LpjExcelExporter
     public static function build(Lpj $lpj): Spreadsheet
     {
         $lpj->loadMissing([
-            'employee', 'employee.department', 'budgetRequest', 'travelReport',
-            'items', 'approvalLogs.approver',
+            'employee', 'employee.department', 'budgetRequest', 'budgetRequest.items',
+            'travelReport', 'items', 'approvalLogs.approver',
         ]);
+
+        $sum = LpjSummary::for($lpj);
 
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('LPJ');
 
-        // ── Lebar kolom ───────────────────────────────────────────────────────
-        $sheet->getColumnDimension('A')->setWidth(5);
-        $sheet->getColumnDimension('B')->setWidth(18);
-        $sheet->getColumnDimension('C')->setWidth(30);
-        $sheet->getColumnDimension('D')->setWidth(16);
-        $sheet->getColumnDimension('E')->setWidth(16);
-        $sheet->getColumnDimension('F')->setWidth(14);
-        $sheet->getColumnDimension('G')->setWidth(24);
-        $sheet->getColumnDimension('H')->setWidth(18);
+        foreach (['A' => 5, 'B' => 14, 'C' => 26, 'D' => 16, 'E' => 16, 'F' => 14, 'G' => 22, 'H' => 18] as $col => $w) {
+            $sheet->getColumnDimension($col)->setWidth($w);
+        }
 
-        // ── Judul ─────────────────────────────────────────────────────────────
+        $thin = ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '000000']]];
+        $moneyFmt = '#,##0;(#,##0)';
+
         $company = Company::first();
         $br = $lpj->budgetRequest;
         $tr = $lpj->travelReport;
+        $itemDate = $tr?->departure_date?->format('d/m/Y') ?? ($br?->surat_tugas_date?->format('d/m/Y') ?? '');
+
+        // ── Judul ──
         $sheet->mergeCells('A1:H1');
         $sheet->setCellValue('A1', strtoupper($company?->name ?? 'LAPORAN PERTANGGUNGJAWABAN'));
         $sheet->mergeCells('A2:H2');
@@ -66,7 +64,7 @@ class LpjExcelExporter
         self::styleTitle($sheet, 'A1:H1', 14);
         self::styleTitle($sheet, 'A2:H2', 12);
 
-        // ── Info kegiatan ─────────────────────────────────────────────────────
+        // ── Info kegiatan ──
         $jumlahOrang = $br ? max(1, $br->participants()->count()) : 1;
         $row = 4;
         $infoFields = [
@@ -78,145 +76,109 @@ class LpjExcelExporter
             ['PIC',                 $lpj->employee->full_name ?? '-'],
             ['Jumlah Orang',        (string) $jumlahOrang],
         ];
-
         foreach ($infoFields as [$label, $value]) {
             $sheet->mergeCells("A{$row}:B{$row}");
             $sheet->setCellValue("A{$row}", $label);
             $sheet->mergeCells("C{$row}:H{$row}");
             $sheet->setCellValueExplicit("C{$row}", ': ' . $value, DataType::TYPE_STRING);
-            $sheet->getStyle("A{$row}:B{$row}")->applyFromArray([
-                'font'      => ['bold' => true, 'size' => 10],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER],
-            ]);
-            $sheet->getStyle("C{$row}:H{$row}")->applyFromArray([
-                'font'      => ['size' => 10],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER],
-            ]);
+            $sheet->getStyle("A{$row}:B{$row}")->getFont()->setBold(true)->setSize(10);
+            $sheet->getStyle("A{$row}:H{$row}")->getFont()->setSize(10);
+            $sheet->getStyle("A{$row}:H{$row}")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
             $row++;
         }
-
         $sheet->getStyle("A4:H" . ($row - 1))->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDEFD2');
+        $row += 1;
 
-        $row++;
-
-        // ════════════ TABEL PEMASUKAN vs REALISASI ════════════
-        $thin = ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '000000']]];
-        $moneyFmt = '#,##0;(#,##0)';
-        $itemDate = $tr?->departure_date?->format('d/m/Y') ?? ($br?->surat_tugas_date?->format('d/m/Y') ?? '');
-
+        // ════════════ PEMASUKAN | REALISASI PENGELUARAN (per kategori) ════════════
         $sheet->mergeCells("A{$row}:D{$row}");
         $sheet->setCellValue("A{$row}", 'PEMASUKAN');
         $sheet->mergeCells("E{$row}:H{$row}");
         $sheet->setCellValue("E{$row}", 'REALISASI PENGELUARAN');
-        $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 10],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '00FFFF']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
-            'borders'   => $thin,
-        ]);
+        self::sectionHeader($sheet, "A{$row}:H{$row}", '00FFFF', $thin);
         $row++;
 
         foreach (['NO', 'TANGGAL', 'PERIHAL', 'JUMLAH PENGAJUAN', 'JUMLAH REALISASI', 'SELISIH', 'KETERANGAN', 'FOTO NOTA'] as $i => $h) {
             $sheet->setCellValue(chr(65 + $i) . $row, $h);
         }
-        $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 9],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
-            'borders'   => $thin,
-        ]);
+        self::columnHeader($sheet, "A{$row}:H{$row}", $thin);
         $sheet->getRowDimension($row)->setRowHeight(26);
         $row++;
 
-        $overBudget = 0.0;
-        $no = 1;
-        foreach ($lpj->items as $item) {
-            $anggaran  = (float) $item->anggaran;
-            $realisasi = (float) $item->realisasi;
-            $selisih   = $anggaran - $realisasi;
-            if ($anggaran > 0 && $selisih < 0) {
-                $overBudget += abs($selisih);
+        $cats = $sum['per_kategori']->values();
+        $rowsToShow = max(5, $cats->count());
+        for ($k = 0; $k < $rowsToShow; $k++) {
+            $cat = $cats->get($k);
+            $sheet->setCellValue("A{$row}", $k + 1);
+            if ($cat) {
+                $sheet->setCellValue("B{$row}", $itemDate);
+                $sheet->setCellValue("C{$row}", $cat['perihal']);
+                if ($cat['anggaran'] > 0) {
+                    $sheet->setCellValue("D{$row}", $cat['anggaran']);
+                }
+                $sheet->setCellValue("E{$row}", $cat['realisasi']);
+                $sheet->setCellValue("F{$row}", $cat['selisih']);
+                $sheet->setCellValue("G{$row}", $cat['keterangan']);
+            } else {
+                $sheet->setCellValue("E{$row}", 0);
+                $sheet->setCellValue("F{$row}", 0);
             }
-
-            $sheet->setCellValue("A{$row}", $no++);
-            $sheet->setCellValue("B{$row}", $itemDate);
-            $sheet->setCellValue("C{$row}", $item->uraian);
-            if ($anggaran > 0) {
-                $sheet->setCellValue("D{$row}", $anggaran);
-            }
-            $sheet->setCellValue("E{$row}", $realisasi);
-            $sheet->setCellValue("F{$row}", $selisih);
-            $sheet->setCellValue("G{$row}", $item->keterangan);
-
-            foreach (['D', 'E', 'F'] as $col) {
-                $sheet->getStyle("{$col}{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
+            foreach (['D', 'E', 'F'] as $c) {
+                $sheet->getStyle("{$c}{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
             }
             $sheet->getStyle("F{$row}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('92D050');
             $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
-                'font'      => ['size' => 9],
+                'font' => ['size' => 9],
                 'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
-                'borders'   => $thin,
+                'borders' => $thin,
             ]);
             $sheet->getStyle("A{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle("B{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            self::placeBukti($sheet, $item->bukti_file, "H{$row}", $row);
             $row++;
         }
 
-        // Total pemasukan
-        $totalAnggaran  = (float) $lpj->total_anggaran;
-        $totalRealisasi = (float) $lpj->total_realisasi;
         $sheet->mergeCells("A{$row}:C{$row}");
         $sheet->setCellValue("A{$row}", 'TOTAL PEMASUKAN');
-        $sheet->setCellValue("D{$row}", $totalAnggaran);
-        $sheet->setCellValue("E{$row}", $totalRealisasi);
-        $sheet->setCellValue("F{$row}", $totalAnggaran - $totalRealisasi);
-        foreach (['D', 'E', 'F'] as $col) {
-            $sheet->getStyle("{$col}{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
+        $sheet->setCellValue("D{$row}", $sum['total_pemasukan']);
+        $sheet->setCellValue("E{$row}", $sum['total_pengeluaran']);
+        $sheet->setCellValue("F{$row}", $sum['total_pemasukan'] - $sum['total_pengeluaran']);
+        foreach (['D', 'E', 'F'] as $c) {
+            $sheet->getStyle("{$c}{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
         }
-        $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 10],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
-            'borders'   => $thin,
-        ]);
+        self::totalRow($sheet, "A{$row}:H{$row}", $thin);
         $row += 2;
 
         // ════════════ KOTAK RINGKASAN ════════════
-        $saldo = ($totalAnggaran - $totalRealisasi) + $overBudget;
+        $overLabel = 'OVER BUDGET';
+        if ($sum['over_categories']->isNotEmpty()) {
+            $overLabel .= ' (' . strtoupper($sum['over_categories']->implode(', ')) . ')';
+        }
         $summary = [
-            ['TOTAL PEMASUKAN',          $totalAnggaran,  'FFFFFF', '000000'],
-            ['TOTAL PENGELUARAN',        $totalRealisasi, 'FF0000', 'FFFFFF'],
-            ['OVER BUDGET (UANG MAKAN)', -$overBudget,    'F2DCDB', '000000'],
-            ['SALDO',                    $saldo,          'E4DFEC', '000000'],
+            ['TOTAL PEMASUKAN',   $sum['total_pemasukan'],    'FFFFFF', '000000'],
+            ['TOTAL PENGELUARAN', $sum['total_pengeluaran'],  'FF0000', 'FFFFFF'],
+            [$overLabel,          -$sum['total_over_budget'], 'F2DCDB', '000000'],
+            ['SALDO',             $sum['saldo'],              'E4DFEC', '000000'],
         ];
         foreach ($summary as [$label, $value, $bg, $fg]) {
-            $sheet->mergeCells("C{$row}:E{$row}");
+            $sheet->mergeCells("C{$row}:D{$row}");
             $sheet->setCellValue("C{$row}", $label);
-            $sheet->mergeCells("F{$row}:G{$row}");
-            $sheet->setCellValue("F{$row}", $value);
-            $sheet->getStyle("F{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
-            $sheet->getStyle("C{$row}:G{$row}")->applyFromArray([
-                'font'      => ['bold' => true, 'size' => 10, 'color' => ['rgb' => $fg]],
-                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bg]],
-                'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
-                'borders'   => $thin,
+            $sheet->mergeCells("E{$row}:F{$row}");
+            $sheet->setCellValue("E{$row}", $value);
+            $sheet->getStyle("E{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
+            $sheet->getStyle("C{$row}:F{$row}")->applyFromArray([
+                'font'    => ['bold' => true, 'size' => 10, 'color' => ['rgb' => $fg]],
+                'fill'    => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bg]],
+                'borders' => $thin,
             ]);
             $sheet->getStyle("C{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-            $sheet->getStyle("F{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle("E{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
             $row++;
         }
-        $row += 1;
+        $row += 2;
 
-        // ════════════ TABEL PENGELUARAN (rincian per kategori) ════════════
+        // ════════════ PENGELUARAN (rincian detail per item) ════════════
         $sheet->mergeCells("A{$row}:H{$row}");
         $sheet->setCellValue("A{$row}", 'PENGELUARAN');
-        $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 10],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '00FFFF']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
-            'borders'   => $thin,
-        ]);
+        self::sectionHeader($sheet, "A{$row}:H{$row}", '00FFFF', $thin);
         $row++;
 
         $sheet->setCellValue("A{$row}", 'NO');
@@ -225,49 +187,38 @@ class LpjExcelExporter
         $sheet->setCellValue("D{$row}", 'JUMLAH');
         $sheet->mergeCells("E{$row}:G{$row}");
         $sheet->setCellValue("E{$row}", 'KETERANGAN');
-        $sheet->setCellValue("H{$row}", 'Screenshoot');
-        $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 9],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
-            'borders'   => $thin,
-        ]);
+        $sheet->setCellValue("H{$row}", 'SCREENSHOOT');
+        self::columnHeader($sheet, "A{$row}:H{$row}", $thin);
+        $sheet->getRowDimension($row)->setRowHeight(26);
         $row++;
 
         $no = 1;
-        foreach ($lpj->items as $item) {
+        foreach ($sum['pengeluaran'] as $item) {
             $sheet->setCellValue("A{$row}", $no++);
             $sheet->setCellValue("B{$row}", $itemDate);
-            $sheet->setCellValue("C{$row}", $item->uraian);
+            $sheet->setCellValue("C{$row}", $item->kategori_label);
             $sheet->setCellValue("D{$row}", (float) $item->realisasi);
             $sheet->mergeCells("E{$row}:G{$row}");
-            $sheet->setCellValue("E{$row}", $item->keterangan);
+            $sheet->setCellValue("E{$row}", $item->uraian);
             $sheet->getStyle("D{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
             $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
-                'font'      => ['size' => 9],
+                'font' => ['size' => 9],
                 'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
-                'borders'   => $thin,
+                'borders' => $thin,
             ]);
             $sheet->getStyle("A{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle("B{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             self::placeBukti($sheet, $item->bukti_file, "H{$row}", $row);
             $row++;
         }
-
-        // Total pengeluaran
         $sheet->mergeCells("A{$row}:C{$row}");
         $sheet->setCellValue("A{$row}", 'Total Pengeluaran');
-        $sheet->setCellValue("D{$row}", $totalRealisasi);
+        $sheet->setCellValue("D{$row}", $sum['total_pengeluaran']);
         $sheet->getStyle("D{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
-        $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 10],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
-            'borders'   => $thin,
-        ]);
+        self::totalRow($sheet, "A{$row}:H{$row}", $thin);
         $row += 2;
 
-        // Tanda tangan
+        // ── Tanda tangan ──
         $sheet->mergeCells("A{$row}:C{$row}");
         $sheet->setCellValue("A{$row}", 'Yang Membuat,');
         $sheet->mergeCells("F{$row}:H{$row}");
@@ -287,9 +238,38 @@ class LpjExcelExporter
         return $spreadsheet;
     }
 
-    /**
-     * Tempel gambar bukti ke sel. Jika bukan gambar (mis. PDF), tulis teks.
-     */
+    private static function sectionHeader($sheet, string $range, string $rgb, array $thin): void
+    {
+        $sheet->getStyle($range)->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 10],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $rgb]],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            'borders'   => $thin,
+        ]);
+    }
+
+    private static function columnHeader($sheet, string $range, array $thin): void
+    {
+        $sheet->getStyle($range)->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 9],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
+            'borders'   => $thin,
+        ]);
+    }
+
+    private static function totalRow($sheet, string $range, array $thin): void
+    {
+        $sheet->getStyle($range)->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 10],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
+            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+            'borders'   => $thin,
+        ]);
+        $first = explode(':', $range)[0];
+        $sheet->getStyle($first)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+    }
+
     private static function placeBukti($sheet, ?string $buktiFile, string $cell, int $row): void
     {
         if (! $buktiFile) {
@@ -309,7 +289,6 @@ class LpjExcelExporter
             $drawing->setWorksheet($sheet);
             $sheet->getRowDimension($row)->setRowHeight(50);
         } else {
-            // PDF atau format lain yang tidak bisa ditempel sebagai gambar.
             $sheet->setCellValue($cell, strtoupper($ext ?: 'FILE') . ' (lihat sistem)');
         }
     }

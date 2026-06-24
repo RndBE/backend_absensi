@@ -12,7 +12,7 @@ class Lpj extends Model
     protected $fillable = [
         'budget_request_id', 'travel_report_id', 'employee_id',
         'nomor_lpj', 'total_anggaran', 'total_realisasi', 'sisa',
-        'status', 'current_step', 'rejection_reason', 'catatan',
+        'status', 'current_step', 'rejection_reason', 'catatan', 'kategori_notes',
     ];
 
     protected function casts(): array
@@ -21,6 +21,7 @@ class Lpj extends Model
             'total_anggaran'  => 'decimal:2',
             'total_realisasi' => 'decimal:2',
             'sisa'            => 'decimal:2',
+            'kategori_notes'  => 'array',
         ];
     }
 

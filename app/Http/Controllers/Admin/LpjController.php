@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\Lpj;
 use App\Services\LpjExcelExporter;
+use App\Services\LpjExcelImporter;
 use Illuminate\Http\Request;
 
 class LpjController extends Controller
@@ -83,5 +84,39 @@ class LpjController extends Controller
     public function exportExcel($id)
     {
         return LpjExcelExporter::download(Lpj::findOrFail($id));
+    }
+
+    /**
+     * Impor kembali nilai realisasi (reimbursement) dari file Excel hasil ekspor
+     * yang sudah diedit, lalu perbarui item LPJ tanpa input manual satu per satu.
+     */
+    public function importExcel(Request $request, $id)
+    {
+        $request->validate([
+            'lpj_file' => 'required|file|mimes:xlsx|max:10240',
+        ], [
+            'lpj_file.required' => 'Silakan pilih file Excel hasil export LPJ.',
+            'lpj_file.mimes' => 'File harus berformat .xlsx (hasil Export Excel).',
+            'lpj_file.max' => 'Ukuran file maksimal 10MB.',
+        ]);
+
+        $lpj = Lpj::with('items')->findOrFail($id);
+
+        if (! in_array($lpj->status, ['pending', 'in_review'], true)) {
+            return back()->with('error', 'Hanya LPJ berstatus menunggu/sedang direview yang bisa diimpor.');
+        }
+
+        try {
+            $result = LpjExcelImporter::import($lpj, $request->file('lpj_file')->getRealPath());
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Gagal impor: '.$e->getMessage());
+        }
+
+        $message = "Impor selesai: {$result['updated']} dari {$result['total']} item diperbarui.";
+        if (! empty($result['warnings'])) {
+            $message .= ' Catatan: '.implode(' ', array_slice($result['warnings'], 0, 5));
+        }
+
+        return back()->with($result['updated'] > 0 ? 'success' : 'error', $message);
     }
 }

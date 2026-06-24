@@ -24,6 +24,8 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         foreach ([
             'travel_report_documents',
             'travel_report_activities',
+            'lpj_items',
+            'lpjs',
             'travel_reports',
             'budget_request_participants',
             'budget_request_items',
@@ -252,6 +254,38 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->string('caption')->nullable();
             $table->date('activity_date')->nullable();
             $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('lpjs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('travel_report_id')->nullable();
+            $table->unsignedBigInteger('employee_id');
+            $table->string('nomor_lpj')->nullable();
+            $table->decimal('total_anggaran', 15, 2)->default(0);
+            $table->decimal('total_realisasi', 15, 2)->default(0);
+            $table->decimal('sisa', 15, 2)->default(0);
+            $table->string('status')->default('pending');
+            $table->unsignedSmallInteger('current_step')->default(1);
+            $table->text('catatan')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('lpj_items', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('lpj_id');
+            $table->unsignedBigInteger('budget_request_item_id')->nullable();
+            $table->string('uraian');
+            $table->string('kategori')->nullable();
+            $table->string('satuan')->nullable();
+            $table->decimal('volume', 10, 2)->default(1);
+            $table->decimal('harga_satuan', 15, 2)->default(0);
+            $table->decimal('anggaran', 15, 2)->default(0);
+            $table->decimal('realisasi', 15, 2)->default(0);
+            $table->string('bukti_file')->nullable();
+            $table->string('keterangan')->nullable();
+            $table->unsignedSmallInteger('sort_order')->default(0);
             $table->timestamps();
         });
 
@@ -553,6 +587,81 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         ]);
     }
 
+    public function test_employee_lpj_form_separates_income_and_realization_expense(): void
+    {
+        $this->seedEmployee();
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        DB::table('budget_request_items')->insert([
+            'id' => 100,
+            'budget_request_id' => $budgetId,
+            'type' => 'meal',
+            'description' => 'Uang makan',
+            'amount' => 50000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/lpj/create?budget_request_id={$budgetId}")
+            ->assertOk()
+            ->assertSee('Pemasukan (Anggaran Disetujui)')
+            ->assertSee('Pengeluaran (Rincian Realisasi)')
+            ->assertSee('TOTAL PEMASUKAN')
+            ->assertSee('name="items[${i}][kategori]"', false)
+            ->assertSee('name="items[${i}][realisasi]"', false)
+            ->assertDontSee('name="items[${i}][anggaran]"', false);
+    }
+
+    public function test_employee_lpj_store_keeps_income_from_budget_and_expense_from_realization(): void
+    {
+        $this->seedEmployee();
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        DB::table('budget_request_items')->insert([
+            'id' => 100,
+            'budget_request_id' => $budgetId,
+            'type' => 'meal',
+            'description' => 'Uang makan',
+            'amount' => 50000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/lpj', [
+                'budget_request_id' => $budgetId,
+                'nomor_lpj' => 'LPJ-001',
+                'items' => [
+                    [
+                        'budget_request_item_id' => 100,
+                        'kategori' => 'meal',
+                        'uraian' => 'Uang makan',
+                        'satuan' => 'Makan',
+                        'volume' => 1,
+                        'anggaran' => 999999,
+                        'realisasi' => 80000,
+                        'keterangan' => 'Reimbursement',
+                    ],
+                ],
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('lpjs', [
+            'employee_id' => 1,
+            'budget_request_id' => $budgetId,
+            'nomor_lpj' => 'LPJ-001',
+            'total_anggaran' => 225000,
+            'total_realisasi' => 80000,
+        ]);
+        $this->assertDatabaseHas('lpj_items', [
+            'uraian' => 'Uang makan',
+            'kategori' => 'meal',
+            'anggaran' => 0,
+            'realisasi' => 80000,
+        ]);
+    }
+
     public function test_employee_approver_can_approve_budget_and_lhp_from_web_portal(): void
     {
         $this->seedEmployee();
@@ -604,6 +713,87 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'id' => $reportId,
             'status' => 'approved',
         ]);
+    }
+
+    public function test_employee_approver_can_see_and_approve_lpj_requests(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'approver@example.test', 'full_name' => 'LPJ Approver']);
+        $this->seedApprover(1, 'lpj', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        $reportId = DB::table('travel_reports')->insertGetId([
+            'employee_id' => 1,
+            'budget_request_id' => $budgetId,
+            'destination_city' => 'Batam',
+            'departure_date' => '2026-06-20',
+            'return_date' => '2026-06-21',
+            'purpose' => 'Kunjungan klien',
+            'conclusion' => 'Selesai',
+            'status' => 'approved',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $lpjId = DB::table('lpjs')->insertGetId([
+            'employee_id' => 1,
+            'budget_request_id' => $budgetId,
+            'travel_report_id' => $reportId,
+            'nomor_lpj' => 'LPJ-001',
+            'total_anggaran' => 225000,
+            'total_realisasi' => 250000,
+            'sisa' => -25000,
+            'status' => 'pending',
+            'current_step' => 1,
+            'catatan' => 'Realisasi perjalanan Batam',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('Pengajuan LPJ')
+            ->assertSee('LPJ-001')
+            ->assertSee('Perjalanan Batam')
+            ->assertSee('Rp 250.000');
+
+        $this->withSession(['employee_id' => 2])
+            ->post("/employee/approvals/lpj/{$lpjId}/approve")
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertDatabaseHas('lpjs', [
+            'id' => $lpjId,
+            'status' => 'approved',
+        ]);
+    }
+
+    public function test_employee_dashboard_counts_pending_lpj_approvals(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'approver@example.test', 'full_name' => 'LPJ Approver']);
+        $this->seedApprover(1, 'lpj', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        DB::table('lpjs')->insert([
+            'employee_id' => 1,
+            'budget_request_id' => $budgetId,
+            'nomor_lpj' => 'LPJ-001',
+            'total_anggaran' => 225000,
+            'total_realisasi' => 250000,
+            'sisa' => -25000,
+            'status' => 'pending',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Ada 1 pengajuan menunggu approval Anda')
+            ->assertSee('/employee/approvals', false);
     }
 
     private function seedEmployee(array $attributes = []): void

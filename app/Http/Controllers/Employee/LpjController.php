@@ -60,8 +60,14 @@ class LpjController extends Controller
             'nomor_lpj'         => 'nullable|string|max:100',
             'catatan'           => 'nullable|string',
             'items'             => 'required|array|min:1',
+            'items.*.kategori'  => 'required|string|in:'.implode(',', array_keys(\App\Models\LpjItem::CATEGORIES)),
             'items.*.uraian'    => 'required|string|max:255',
             'items.*.realisasi' => 'required|numeric|min:0',
+        ], [
+            'items.*.kategori.required' => 'Kategori tiap baris pengeluaran wajib dipilih.',
+            'items.*.kategori.in'       => 'Kategori pengeluaran tidak valid.',
+            'items.*.uraian.required'   => 'Uraian tiap baris pengeluaran wajib diisi.',
+            'items.*.realisasi.required'=> 'Jumlah realisasi tiap baris wajib diisi.',
         ]);
 
         $budgetRequest = BudgetRequest::where('employee_id', $employee->id)
@@ -79,32 +85,30 @@ class LpjController extends Controller
                 'travel_report_id'  => $budgetRequest->travelReport?->id,
                 'employee_id'       => $employee->id,
                 'nomor_lpj'         => $request->nomor_lpj,
-                'total_anggaran'    => $budgetRequest->total_amount,
+                'total_anggaran'    => $budgetRequest->total_amount, // PEMASUKAN dari anggaran
                 'catatan'           => $request->catatan,
                 'status'            => 'pending',
                 'current_step'      => 1,
             ]);
 
+            // PENGELUARAN = baris realisasi bebas (berkategori), tidak diikat ke item anggaran.
             foreach ($request->items as $i => $itemData) {
-                $anggaran  = (float) ($itemData['anggaran'] ?? 0);
-                $realisasi = (float) ($itemData['realisasi'] ?? 0);
-
                 $buktFile = null;
                 if (isset($itemData['bukti_file']) && $itemData['bukti_file'] instanceof \Illuminate\Http\UploadedFile) {
                     $buktFile = $itemData['bukti_file']->store('lpj-bukti', 'public');
                 }
 
                 $lpj->items()->create([
-                    'budget_request_item_id' => $itemData['budget_request_item_id'] ?? null,
-                    'uraian'                 => $itemData['uraian'],
-                    'satuan'                 => $itemData['satuan'] ?? null,
-                    'volume'                 => $itemData['volume'] ?? 1,
-                    'harga_satuan'           => $itemData['harga_satuan'] ?? 0,
-                    'anggaran'               => $anggaran,
-                    'realisasi'              => $realisasi,
-                    'bukti_file'             => $buktFile,
-                    'keterangan'             => $itemData['keterangan'] ?? null,
-                    'sort_order'             => $i,
+                    'uraian'       => $itemData['uraian'],
+                    'kategori'     => $itemData['kategori'] ?? null,
+                    'satuan'       => $itemData['satuan'] ?? null,
+                    'volume'       => $itemData['volume'] ?? 1,
+                    'harga_satuan' => $itemData['harga_satuan'] ?? 0,
+                    'anggaran'     => 0, // anggaran kini di sisi pemasukan, bukan per baris realisasi
+                    'realisasi'    => (float) ($itemData['realisasi'] ?? 0),
+                    'bukti_file'   => $buktFile,
+                    'keterangan'   => $itemData['keterangan'] ?? null,
+                    'sort_order'   => $i,
                 ]);
             }
 

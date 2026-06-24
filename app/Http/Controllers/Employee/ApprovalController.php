@@ -9,12 +9,14 @@ use App\Models\BudgetRequest;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\LeaveRequest;
+use App\Models\Lpj;
 use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Support\LeaveQuota;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class ApprovalController extends Controller
 {
@@ -24,6 +26,7 @@ class ApprovalController extends Controller
         'attendance' => AttendanceRequest::class,
         'budget' => BudgetRequest::class,
         'travel_report' => TravelReport::class,
+        'lpj' => Lpj::class,
     ];
 
     private array $typeLabels = [
@@ -32,6 +35,7 @@ class ApprovalController extends Controller
         'attendance' => 'Absensi',
         'budget' => 'Anggaran',
         'travel_report' => 'LHP',
+        'lpj' => 'LPJ',
     ];
 
     public function index(Request $request)
@@ -136,6 +140,10 @@ class ApprovalController extends Controller
     {
         return collect($this->typeMap)
             ->flatMap(function (string $modelClass, string $type) use ($approver) {
+                if (! Schema::hasTable((new $modelClass())->getTable())) {
+                    return collect();
+                }
+
                 $employeeSteps = EmployeeApprover::where('approver_id', $approver->id)
                     ->where('request_type', $type)
                     ->get()
@@ -207,6 +215,7 @@ class ApprovalController extends Controller
             'overtime' => ['employee:id,full_name,position,photo', 'attachments'],
             'budget' => ['employee:id,full_name,position,photo', 'items', 'attachments'],
             'travel_report' => ['employee:id,full_name,position,photo', 'budgetRequest', 'attachments'],
+            'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city'],
             default => ['employee:id,full_name,position,photo'],
         };
     }
