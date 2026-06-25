@@ -83,7 +83,7 @@
     {{-- PAGE 1 --}}
     <div class="page">
         <div class="kop-surat">
-            <div class="kop-logo"><img src="{{ asset('image/logo_beacon.png') }}" alt="Logo"></div>
+            <div class="kop-logo"><img src="{{ asset('images/logo_be2.png') }}" alt="Logo"></div>
             <div class="kop-info">
                 <div class="company-name">PT. ARTA TEKNOLOGI COMUNINDO</div>
                 <div class="company-address">Kadirojo I, Purwomartani, Kec. Kalasan, Kab. Sleman, Daerah Istimewa Yogyakarta<br>Ph./Fax. (0274) 498 6899, e-mail : <a href="mailto:info@bejogja.com">info@bejogja.com</a></div>
@@ -157,7 +157,7 @@
     {{-- PAGE 2 --}}
     <div class="page page-break">
         <div class="kop-surat">
-            <div class="kop-logo"><img src="{{ asset('image/logo_beacon.png') }}" alt="Logo"></div>
+            <div class="kop-logo"><img src="{{ asset('images/logo_be2.png') }}" alt="Logo"></div>
             <div class="kop-info">
                 <div class="company-name">PT. ARTA TEKNOLOGI COMUNINDO</div>
                 <div class="company-address">Kadirojo I, Purwomartani, Kec. Kalasan, Kab. Sleman, Daerah Istimewa Yogyakarta<br>Ph./Fax. (0274) 498 6899, e-mail : <a href="mailto:info@bejogja.com">info@bejogja.com</a></div>

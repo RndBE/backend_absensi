@@ -57,8 +57,8 @@ use App\Http\Middleware\AdminPermissionMiddleware;
 use App\Http\Middleware\EmployeeAuth;
 use Illuminate\Support\Facades\Route;
 
-// Redirect root to admin
-Route::get('/', fn () => redirect()->route('admin.login'));
+// Redirect root to employee portal
+Route::get('/', fn () => redirect()->route('employee.login'));
 
 // Employee Portal Auth
 Route::get('/employee/login', [EmployeeAuthController::class, 'showLogin'])->name('employee.login');
