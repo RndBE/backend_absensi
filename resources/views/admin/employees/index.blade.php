@@ -4,6 +4,7 @@
 @section('content')
 @php
     $adminPermission = app(\App\Support\AdminPermission::class);
+    $canExportEmployee = $adminPermission->can($currentAdmin, 'employees.view');
     $canCreateEmployee = $adminPermission->can($currentAdmin, 'employees.create');
     $canUpdateEmployee = $adminPermission->can($currentAdmin, 'employees.update');
     $canDeleteEmployee = $adminPermission->can($currentAdmin, 'employees.delete');
@@ -25,6 +26,11 @@
                         <span class="material-symbols-outlined text-[16px]">chat</span> Kirim WhatsApp ke Semua
                     </button>
                 </form>
+            @endif
+            @if($canExportEmployee)
+            <a href="{{ route('admin.employees.export', request()->query()) }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <span class="material-symbols-outlined text-[16px]">download</span> Export Excel
+            </a>
             @endif
             @if($canCreateEmployee)
             <a href="{{ route('admin.employees.create') }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-[0_2px_8px_rgba(79,70,229,0.3)] hover:shadow-[0_4px_12px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 transition-all duration-200">+ Tambah Karyawan</a>

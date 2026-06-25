@@ -17,6 +17,16 @@ class EmployeeIndexViewTest extends TestCase
         $this->assertStringNotContainsString('data-confirm="Nonaktifkan karyawan ini?"', $view);
     }
 
+    public function test_employee_index_exposes_export_excel_action(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/employees/index.blade.php'));
+
+        $this->assertStringContainsString("route('admin.employees.export', request()->query())", $view);
+        $this->assertStringContainsString('Export Excel', $view);
+        $this->assertStringContainsString('download', $view);
+        $this->assertStringContainsString("route('admin.employees.create')", $view);
+    }
+
     public function test_employee_payroll_index_uses_local_fuzzy_search_like_employee_index(): void
     {
         $view = file_get_contents(resource_path('views/admin/employee-payrolls/index.blade.php'));
@@ -80,7 +90,7 @@ class EmployeeIndexViewTest extends TestCase
         $controller = file_get_contents(app_path('Http/Controllers/Admin/EmployeeController.php'));
 
         $this->assertStringContainsString("'travel_report' => 'LHP'", $view);
-        $this->assertStringContainsString("private const APPROVAL_REQUEST_TYPES = ['leave', 'overtime', 'attendance', 'budget', 'travel_report'];", $controller);
+        $this->assertStringContainsString("private const APPROVAL_REQUEST_TYPES = ['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'];", $controller);
         $this->assertStringContainsString('foreach (self::APPROVAL_REQUEST_TYPES as $type)', $controller);
         $this->assertStringNotContainsString("foreach (['leave', 'overtime', 'attendance'] as \$type)", $controller);
     }

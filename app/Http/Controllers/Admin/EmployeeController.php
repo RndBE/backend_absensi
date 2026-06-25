@@ -16,6 +16,7 @@ use App\Services\EmployeePortalMagicLinkService;
 use App\Services\Pph21Calculator;
 use App\Services\WhatsAppGatewayService;
 use App\Support\AdminPermission;
+use App\Support\SimpleXlsxExporter;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,25 +31,110 @@ class EmployeeController extends Controller
     public function index(Request $request)
     {
         $admin = Employee::find(session('admin_id'));
-        $query = Employee::where('company_id', $admin->company_id)
-            ->with(['department:id,name', 'workSchedule:id,name']);
-
-        if ($request->department_id) {
-            // Include child departments when filtering by parent
-            $deptIds = Department::where('id', $request->department_id)
-                ->orWhere('parent_id', $request->department_id)
-                ->pluck('id');
-            $query->whereIn('department_id', $deptIds);
-        }
-
-        if ($request->status) {
-            $query->where('employment_status', $request->status);
-        }
-
-        $employees = $query->orderBy('full_name')->get();
+        $employees = $this->employeeListQuery($request, $admin)
+            ->with(['department:id,name', 'workSchedule:id,name'])
+            ->orderBy('full_name')
+            ->get();
         $departments = Department::where('company_id', $admin->company_id)->get();
 
         return view('admin.employees.index', compact('employees', 'departments'));
+    }
+
+    public function export(Request $request)
+    {
+        $admin = Employee::find(session('admin_id'));
+        $employees = $this->employeeListQuery($request, $admin)
+            ->with(['department:id,name', 'workSchedule:id,name', 'manager:id,full_name'])
+            ->orderBy('full_name')
+            ->get();
+
+        $headers = [
+            'Kode',
+            'Nama',
+            'Email',
+            'No. HP',
+            'Departemen',
+            'Posisi / Jabatan',
+            'Level',
+            'Status Kepegawaian',
+            'Role',
+            'Status Aktif',
+            'Jadwal Kerja',
+            'Atasan / Manager',
+            'Tanggal Bergabung',
+            'Kontrak Mulai',
+            'Kontrak Berakhir',
+            'Lama Bekerja',
+            'Sisa Kontrak',
+            'NIK KTP',
+            'Jenis Kelamin',
+            'Tempat Lahir',
+            'Tanggal Lahir',
+            'Agama',
+            'Status Perkawinan',
+            'Gol. Darah',
+            'Alamat KTP',
+            'Alamat Domisili',
+            'Kode Pos',
+            'PTKP',
+            'NPWP 15 Digit',
+            'NITKU / NPWP 16 Digit',
+            'BPJS Ketenagakerjaan',
+            'BPJS Kesehatan',
+            'Nama Bank',
+            'No. Rekening',
+            'Institusi / Universitas',
+            'Pembimbing Institusi',
+            'Pembimbing Lapangan / Kantor',
+            'Catatan Magang',
+        ];
+
+        $rows = $employees->map(fn (Employee $employee) => [
+            $employee->employee_code ?? '-',
+            $employee->full_name ?? '-',
+            $employee->email ?? '-',
+            $employee->phone ?? '-',
+            $employee->department?->name ?? '-',
+            $employee->position ?? '-',
+            $employee->job_level ?? '-',
+            $this->employmentStatusLabel($employee->employment_status),
+            $employee->role ?? '-',
+            $employee->is_active ? 'Aktif' : 'Nonaktif',
+            $employee->workSchedule?->name ?? '-',
+            $employee->manager?->full_name ?? '-',
+            $this->dateLabel($employee->join_date),
+            $this->dateLabel($employee->contract_start_date),
+            $this->dateLabel($employee->contract_end_date),
+            $this->workDurationLabel($employee),
+            $this->contractRemainingLabel($employee),
+            $employee->nik ?? '-',
+            $this->genderLabel($employee->gender),
+            $employee->birth_place ?? '-',
+            $this->dateLabel($employee->birth_date),
+            $employee->religion ?? '-',
+            $this->maritalStatusLabel($employee->marital_status),
+            $employee->blood_type ?? '-',
+            $employee->ktp_address ?? '-',
+            $employee->residential_address ?? '-',
+            $employee->postal_code ?? '-',
+            $employee->ptkp ?? '-',
+            $employee->npwp_15 ?? '-',
+            $employee->npwp_16 ?? '-',
+            $employee->bpjs_tk ?? '-',
+            $employee->bpjs_kesehatan ?? '-',
+            $employee->bank_name ?? '-',
+            $employee->bank_account ?? '-',
+            $employee->internship_institution ?? '-',
+            $employee->internship_supervisor ?? '-',
+            $employee->internship_field_supervisor ?? '-',
+            $employee->internship_notes ?? '-',
+        ]);
+
+        return response()->streamDownload(function () use ($headers, $rows) {
+            echo SimpleXlsxExporter::make($headers, $rows, 'Data Karyawan');
+        }, 'karyawan_'.now()->format('Y-m-d').'.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     public function create()
@@ -465,5 +551,108 @@ class EmployeeController extends Controller
 
         return redirect()->route('admin.employees.show', $id)
             ->with('success', 'Proses resign berhasil dicatat. Karyawan telah dinonaktifkan.');
+    }
+
+    private function employeeListQuery(Request $request, Employee $admin)
+    {
+        $query = Employee::where('company_id', $admin->company_id);
+
+        if ($request->department_id) {
+            $deptIds = Department::where('id', $request->department_id)
+                ->orWhere('parent_id', $request->department_id)
+                ->pluck('id');
+            $query->whereIn('department_id', $deptIds);
+        }
+
+        if ($request->status) {
+            $query->where('employment_status', $request->status);
+        }
+
+        return $query;
+    }
+
+    private function employmentStatusLabel(?string $status): string
+    {
+        return match ($status) {
+            'permanent' => 'Tetap',
+            'contract' => 'Kontrak',
+            'intern' => 'Magang',
+            'outsourcing' => 'Outsourcing',
+            'probation' => 'Probation',
+            default => '-',
+        };
+    }
+
+    private function genderLabel(?string $gender): string
+    {
+        return match ($gender) {
+            'male' => 'Laki-laki',
+            'female' => 'Perempuan',
+            default => '-',
+        };
+    }
+
+    private function maritalStatusLabel(?string $status): string
+    {
+        return match ($status) {
+            'single' => 'Belum Menikah',
+            'married' => 'Menikah',
+            'divorced' => 'Cerai',
+            'widowed' => 'Cerai Mati',
+            default => '-',
+        };
+    }
+
+    private function dateLabel($date): string
+    {
+        return $date ? Carbon::parse($date)->format('d M Y') : '-';
+    }
+
+    private function workDurationLabel(Employee $employee): string
+    {
+        if (! $employee->join_date) {
+            return '-';
+        }
+
+        $diff = Carbon::parse($employee->join_date)->diff(now());
+        $parts = [];
+        if ($diff->y > 0) {
+            $parts[] = $diff->y.' tahun';
+        }
+        if ($diff->m > 0) {
+            $parts[] = $diff->m.' bulan';
+        }
+        if ($diff->y === 0 && $diff->m === 0) {
+            $parts[] = $diff->d.' hari';
+        }
+
+        return implode(' ', $parts);
+    }
+
+    private function contractRemainingLabel(Employee $employee): string
+    {
+        if (! in_array($employee->employment_status, ['contract', 'intern', 'probation', 'outsourcing'], true)
+            || ! $employee->contract_end_date) {
+            return '-';
+        }
+
+        $endDate = Carbon::parse($employee->contract_end_date);
+        if (now()->gt($endDate)) {
+            return 'Sudah habis';
+        }
+
+        $remaining = now()->diff($endDate);
+        $parts = [];
+        if ($remaining->y > 0) {
+            $parts[] = $remaining->y.' thn';
+        }
+        if ($remaining->m > 0) {
+            $parts[] = $remaining->m.' bln';
+        }
+        if ($remaining->d > 0) {
+            $parts[] = $remaining->d.' hr';
+        }
+
+        return implode(' ', $parts) ?: '0 hr';
     }
 }

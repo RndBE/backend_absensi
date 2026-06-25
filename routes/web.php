@@ -133,6 +133,7 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
     Route::get('/employees/create', [EmployeeController::class, 'create'])->name('employees.create');
     Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
+    Route::get('/employees/export', [EmployeeController::class, 'export'])->name('employees.export');
     Route::post('/employees/portal-link/send-all', [EmployeeController::class, 'sendPortalLinkToAll'])->name('employees.portal-link.send-all');
     Route::post('/employees/portal-link/whatsapp/send-all', [EmployeeController::class, 'sendPortalLinkWhatsAppToAll'])->name('employees.portal-link.whatsapp.send-all');
     Route::post('/employees/{id}/portal-link', [EmployeeController::class, 'sendPortalLink'])->name('employees.portal-link.send');
