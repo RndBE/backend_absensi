@@ -37,45 +37,80 @@ class AttendanceLeaveSync
     /**
      * Saat izin parsial di-ACC: tandai absensi yang SUDAH ada (sudah clock-in)
      * pada rentang tanggal izin dengan status izin terkait.
+     *
+     * @return int Jumlah baris absensi yang diperbarui.
      */
-    public static function apply(LeaveRequest $leave): void
+    public static function apply(LeaveRequest $leave): int
     {
         $leave->loadMissing('leaveType');
         $target = self::targetStatusFor($leave);
 
         if (! $target) {
-            return;
+            return 0;
         }
 
-        self::eachDate($leave, function (string $date) use ($leave, $target) {
-            Attendance::where('employee_id', $leave->employee_id)
+        $updated = 0;
+        self::eachDate($leave, function (string $date) use ($leave, $target, &$updated) {
+            $updated += Attendance::where('employee_id', $leave->employee_id)
                 ->whereDate('date', $date)
                 ->whereNotNull('clock_in')
                 ->where('status', 'present')
                 ->update(['status' => $target]);
         });
+
+        return $updated;
     }
 
     /**
      * Saat izin parsial dibatalkan/ditolak: kembalikan status absensi ke 'present'
      * hanya untuk record yang sebelumnya kita ubah (statusnya == target izin).
+     *
+     * @return int Jumlah baris absensi yang diperbarui.
      */
-    public static function revert(LeaveRequest $leave): void
+    public static function revert(LeaveRequest $leave): int
     {
         $leave->loadMissing('leaveType');
         $target = self::targetStatusFor($leave);
 
         if (! $target) {
-            return;
+            return 0;
         }
 
-        self::eachDate($leave, function (string $date) use ($leave, $target) {
-            Attendance::where('employee_id', $leave->employee_id)
+        $updated = 0;
+        self::eachDate($leave, function (string $date) use ($leave, $target, &$updated) {
+            $updated += Attendance::where('employee_id', $leave->employee_id)
                 ->whereDate('date', $date)
                 ->whereNotNull('clock_in')
                 ->where('status', $target)
                 ->update(['status' => 'present']);
         });
+
+        return $updated;
+    }
+
+    /**
+     * Hitung berapa banyak record absensi yang AKAN diubah oleh apply()
+     * tanpa benar-benar mengubahnya (untuk mode dry-run).
+     */
+    public static function previewApplyCount(LeaveRequest $leave): int
+    {
+        $leave->loadMissing('leaveType');
+        $target = self::targetStatusFor($leave);
+
+        if (! $target) {
+            return 0;
+        }
+
+        $count = 0;
+        self::eachDate($leave, function (string $date) use ($leave, &$count) {
+            $count += Attendance::where('employee_id', $leave->employee_id)
+                ->whereDate('date', $date)
+                ->whereNotNull('clock_in')
+                ->where('status', 'present')
+                ->count();
+        });
+
+        return $count;
     }
 
     /**
