@@ -27,6 +27,7 @@ class EmployeePortalTest extends TestCase
         Schema::dropIfExists('request_attachments');
         Schema::dropIfExists('approval_logs');
         Schema::dropIfExists('employee_approvers');
+        Schema::dropIfExists('data_change_requests');
         Schema::dropIfExists('notifications');
         Schema::dropIfExists('leave_requests');
         Schema::dropIfExists('leave_balances');
@@ -246,6 +247,16 @@ class EmployeePortalTest extends TestCase
             $table->string('reference_type')->nullable();
             $table->unsignedBigInteger('reference_id')->nullable();
             $table->boolean('is_read')->default(false);
+            $table->timestamps();
+        });
+
+        Schema::create('data_change_requests', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->string('field_name');
+            $table->text('old_value')->nullable();
+            $table->text('new_value');
+            $table->string('status')->default('pending');
             $table->timestamps();
         });
 
@@ -491,9 +502,152 @@ class EmployeePortalTest extends TestCase
             ->assertOk()
             ->assertSee('Profil Saya')
             ->assertSee('EMP001')
-            ->assertSee('employee@example.test')
+            ->assertSee('Info Personal')
+            ->assertSee('Info Pekerjaan')
+            ->assertSee('Slip Gaji')
             ->assertSee('Verifikasi Wajah')
-            ->assertSee('/employee/face-photo', false);
+            ->assertSee('Ubah Kata Sandi')
+            ->assertSee('/employee/profile/personal', false)
+            ->assertSee('/employee/payslips', false);
+    }
+
+    public function test_employee_can_open_personal_info_page(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/profile/personal')
+            ->assertOk()
+            ->assertSee('Info Personal')
+            ->assertSee('employee@example.test')
+            ->assertSee('Ajukan Perubahan');
+    }
+
+    public function test_employee_can_open_employment_info_page(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/profile/employment')
+            ->assertOk()
+            ->assertSee('Info Pekerjaan')
+            ->assertSee('EMP001');
+    }
+
+    public function test_employee_can_open_change_password_page(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/profile/password')
+            ->assertOk()
+            ->assertSee('Ubah Kata Sandi');
+    }
+
+    public function test_payslip_requires_password_verification_first(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/payslips')
+            ->assertOk()
+            ->assertSee('Verifikasi Kata Sandi');
+    }
+
+    public function test_payslip_unlock_with_correct_password_grants_access(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/payslips/unlock', ['password' => 'password'])
+            ->assertRedirect(route('employee.payslips.index'))
+            ->assertSessionHas('payslip_unlock');
+    }
+
+    public function test_payslip_unlock_rejects_wrong_password(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/payslips/unlock', ['password' => 'salah'])
+            ->assertSessionHasErrors('password')
+            ->assertSessionMissing('payslip_unlock');
+    }
+
+    public function test_payslip_unlock_is_revoked_after_leaving_payslip_area(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession([
+            'employee_id' => 1,
+            'payslip_unlock' => ['id' => 1, 'until' => now()->addMinutes(10)->timestamp],
+        ])
+            ->get('/employee/profile')
+            ->assertOk()
+            ->assertSessionMissing('payslip_unlock');
+    }
+
+    public function test_employee_can_change_password(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->put('/employee/profile/password', [
+                'current_password' => 'password',
+                'new_password' => 'newsecret123',
+                'new_password_confirmation' => 'newsecret123',
+            ])
+            ->assertRedirect();
+
+        $hash = DB::table('employees')->where('id', 1)->value('password');
+        $this->assertTrue(Hash::check('newsecret123', $hash));
+    }
+
+    public function test_employee_change_password_rejects_wrong_current_password(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->put('/employee/profile/password', [
+                'current_password' => 'salah',
+                'new_password' => 'newsecret123',
+                'new_password_confirmation' => 'newsecret123',
+            ])
+            ->assertSessionHasErrors('current_password');
+
+        $hash = DB::table('employees')->where('id', 1)->value('password');
+        $this->assertTrue(Hash::check('password', $hash));
+    }
+
+    public function test_employee_can_submit_data_change_request(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/profile/data-change', [
+                'field_name' => 'phone',
+                'new_value' => '08123456789',
+            ])
+            ->assertRedirect(route('employee.profile.data-change'));
+
+        $this->assertDatabaseHas('data_change_requests', [
+            'employee_id' => 1,
+            'field_name' => 'phone',
+            'new_value' => '08123456789',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_employee_data_change_rejects_disallowed_field(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/profile/data-change', [
+                'field_name' => 'job_level',
+                'new_value' => 'Manager',
+            ])
+            ->assertSessionHasErrors('field_name');
     }
 
     public function test_inactive_employee_cannot_login_to_employee_portal(): void

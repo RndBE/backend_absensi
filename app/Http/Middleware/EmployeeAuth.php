@@ -39,6 +39,13 @@ class EmployeeAuth
         view()->share('currentEmployee', $employee);
         $request->attributes->set('employee', $employee);
 
+        // Akses slip gaji dicabut begitu keluar dari area slip gaji,
+        // sehingga harus verifikasi kata sandi lagi saat kembali.
+        $routeName = $request->route()?->getName() ?? '';
+        if (! str_starts_with($routeName, 'employee.payslips.')) {
+            $request->session()->forget('payslip_unlock');
+        }
+
         return $next($request);
     }
 }

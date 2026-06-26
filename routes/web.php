@@ -47,6 +47,7 @@ use App\Http\Controllers\Employee\DashboardController as EmployeeDashboardContro
 use App\Http\Controllers\Employee\FacePhotoController as EmployeeFacePhotoController;
 use App\Http\Controllers\Employee\LeaveController as EmployeeLeaveController;
 use App\Http\Controllers\Employee\OvertimeController as EmployeeOvertimeController;
+use App\Http\Controllers\Employee\PayslipController as EmployeePayslipController;
 use App\Http\Controllers\Employee\ProfileController as EmployeeProfileController;
 use App\Http\Controllers\Employee\TravelReportController as EmployeeTravelReportController;
 use App\Http\Controllers\Employee\LpjController as EmployeeLpjController;
@@ -70,6 +71,15 @@ Route::post('/employee/logout', [EmployeeAuthController::class, 'logout'])->name
 Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->group(function () {
     Route::get('/dashboard', [EmployeeDashboardController::class, 'index'])->name('dashboard');
     Route::get('/profile', [EmployeeProfileController::class, 'show'])->name('profile.show');
+    Route::get('/profile/personal', [EmployeeProfileController::class, 'personal'])->name('profile.personal');
+    Route::get('/profile/employment', [EmployeeProfileController::class, 'employment'])->name('profile.employment');
+    Route::get('/profile/password', [EmployeeProfileController::class, 'editPassword'])->name('profile.password');
+    Route::put('/profile/password', [EmployeeProfileController::class, 'updatePassword'])->name('profile.password.update');
+    Route::get('/profile/data-change', [EmployeeProfileController::class, 'dataChange'])->name('profile.data-change');
+    Route::post('/profile/data-change', [EmployeeProfileController::class, 'storeDataChange'])->name('profile.data-change.store');
+    Route::get('/payslips', [EmployeePayslipController::class, 'index'])->name('payslips.index');
+    Route::post('/payslips/unlock', [EmployeePayslipController::class, 'unlock'])->name('payslips.unlock');
+    Route::get('/payslips/{id}/download', [EmployeePayslipController::class, 'downloadPdf'])->name('payslips.download');
     Route::get('/leaves', [EmployeeLeaveController::class, 'index'])->name('leaves.index');
     Route::get('/leaves/create', [EmployeeLeaveController::class, 'create'])->name('leaves.create');
     Route::post('/leaves', [EmployeeLeaveController::class, 'store'])->name('leaves.store');
