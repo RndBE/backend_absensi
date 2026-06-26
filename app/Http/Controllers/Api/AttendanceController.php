@@ -16,6 +16,7 @@ use App\Services\FcmService;
 use App\Support\AdminPermission;
 use App\Support\AttendanceOpenShift;
 use App\Support\AttendanceLateExcuse;
+use App\Support\AttendanceLeaveSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -68,7 +69,8 @@ class AttendanceController extends Controller
             $endOfMonth
         );
 
-        $hadir = (clone $query)->where('status', 'present')->count();
+        // 'late_excuse' & 'early_departure' = izin parsial, tetap dihitung hadir.
+        $hadir = (clone $query)->whereIn('status', ['present', 'late_excuse', 'early_departure'])->count();
         $absen = (clone $query)->where('status', 'absent')->count();
         $terlambat = (clone $query)
             ->where('is_late', true)
@@ -384,6 +386,12 @@ class AttendanceController extends Controller
             $isLate = $clockInMinute->gt($scheduleStartMinute);
         }
 
+        // Jika ada izin datang terlambat yang sudah di-ACC untuk hari ini,
+        // simpan langsung sebagai status izin (tetap dihitung hadir).
+        $clockInStatus = AttendanceLeaveSync::approvedTargetForDate($employee, $today) === AttendanceLateExcuse::LATE_EXCUSE_STATUS
+            ? AttendanceLateExcuse::LATE_EXCUSE_STATUS
+            : 'present';
+
         $attendance = Attendance::updateOrCreate(
             ['employee_id' => $employee->id, 'date' => $today->toDateString()],
             [
@@ -393,7 +401,7 @@ class AttendanceController extends Controller
                 ...$this->locationAuditAttributes($request, 'clock_in'),
                 ...$this->locationReviewAttributes($request, 'clock_in', $requireGps),
                 'clock_in_photo' => $photoPath,
-                'status' => 'present',
+                'status' => $clockInStatus,
                 'is_late' => $isLate,
                 'is_remote' => $isRemote,
                 'remote_notes' => $isRemote ? $request->notes : null,
@@ -703,6 +711,13 @@ class AttendanceController extends Controller
 
         $clockOutTime = now();
 
+        // Jika ada izin pulang cepat yang sudah di-ACC untuk tanggal absensi ini,
+        // simpan sebagai status izin (hanya bila belum punya status izin lain).
+        $clockOutStatus = ($attendance->status === 'present'
+            && AttendanceLeaveSync::approvedTargetForDate($employee, $attendance->date) === AttendanceLateExcuse::EARLY_DEPARTURE_STATUS)
+            ? ['status' => AttendanceLateExcuse::EARLY_DEPARTURE_STATUS]
+            : [];
+
         $attendance->update([
             'clock_out' => $clockOutTime->format('H:i:s'),
             'clock_out_lat' => $request->latitude,
@@ -710,6 +725,7 @@ class AttendanceController extends Controller
             ...$this->locationAuditAttributes($request, 'clock_out'),
             ...$this->locationReviewAttributes($request, 'clock_out', $requireGps, $attendance),
             'clock_out_photo' => $photoPath,
+            ...$clockOutStatus,
         ]);
         $attendance->refresh();
         $needsReview = $attendance->review_status === 'pending';

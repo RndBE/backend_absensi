@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\LeaveRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -52,6 +53,22 @@ class AttendanceController extends Controller
         }
 
         $attendances = $query->orderBy('date', 'desc')->orderBy('clock_in', 'desc')->paginate(20)->withQueryString();
+
+        // Load izin yang sudah di-approve (mis. izin datang terlambat / pulang cepat) untuk
+        // baris-baris yang tampil, agar label statusnya sama persis dengan halaman Rekap.
+        $leavesByEmployee = collect();
+        $employeeIdsOnPage = $attendances->pluck('employee_id')->unique()->values();
+        if ($employeeIdsOnPage->isNotEmpty()) {
+            $dateStrings = $attendances->getCollection()->map(fn ($att) => $att->date->toDateString());
+            $leavesByEmployee = LeaveRequest::with('leaveType')
+                ->whereIn('employee_id', $employeeIdsOnPage)
+                ->where('status', 'approved')
+                ->where('start_date', '<=', $dateStrings->max())
+                ->where('end_date', '>=', $dateStrings->min())
+                ->get()
+                ->groupBy('employee_id');
+        }
+
         $employees = Employee::where('company_id', $admin->company_id)->where('is_active', true)->select('id', 'full_name', 'employment_status')->get();
         $reviewSummary = [
             'pending' => Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
@@ -62,7 +79,7 @@ class AttendanceController extends Controller
                 ->count(),
         ];
 
-        return view('admin.attendance.history', compact('attendances', 'employees', 'reviewSummary'));
+        return view('admin.attendance.history', compact('attendances', 'employees', 'reviewSummary', 'leavesByEmployee'));
     }
 
     public function approveSecurityReview(Request $request, int $id)

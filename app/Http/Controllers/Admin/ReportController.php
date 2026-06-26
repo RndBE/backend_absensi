@@ -53,7 +53,8 @@ class ReportController extends Controller
                 ];
             }
             $summary[$empId]['total']++;
-            if ($att->status === 'present') $summary[$empId]['present']++;
+            // 'late_excuse' & 'early_departure' = izin parsial, tetap dihitung hadir.
+            if (in_array($att->status, ['present', 'late_excuse', 'early_departure'], true)) $summary[$empId]['present']++;
             if ($att->is_late) $summary[$empId]['late']++;
             if ($att->status === 'absent') $summary[$empId]['absent']++;
             if ($att->status === 'leave') $summary[$empId]['leave']++;

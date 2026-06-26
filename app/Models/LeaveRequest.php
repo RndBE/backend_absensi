@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\AttendanceLeaveSync;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -12,6 +13,24 @@ class LeaveRequest extends Model
         'employee_id', 'leave_type_id', 'start_date', 'end_date',
         'total_days', 'reason', 'delegate_to', 'status', 'current_step',
     ];
+
+    protected static function booted(): void
+    {
+        // Sinkronkan status absensi untuk izin parsial (datang terlambat / pulang cepat)
+        // setiap kali status izin berubah, dari jalur approve manapun.
+        static::saved(function (LeaveRequest $leave) {
+            if (! $leave->wasChanged('status')) {
+                return;
+            }
+
+            if ($leave->status === 'approved') {
+                AttendanceLeaveSync::apply($leave);
+            } elseif ($leave->getOriginal('status') === 'approved') {
+                // Sebelumnya approved, kini bukan (ditolak/dibatalkan) -> kembalikan.
+                AttendanceLeaveSync::revert($leave);
+            }
+        });
+    }
 
     protected function casts(): array
     {

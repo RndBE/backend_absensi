@@ -122,12 +122,26 @@
                             @endif
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
-                            @if($att->status === 'present' && $att->is_late)
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Terlambat</span>
-                            @elseif($att->status === 'present')
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Hadir</span>
+                            @php
+                                $rowLeave = \App\Support\AttendanceLateExcuse::firstForDate($leavesByEmployee[$att->employee_id] ?? collect(), $att->date);
+                                $rowLateExcuse = \App\Support\AttendanceLateExcuse::isLateArrivalLeave($rowLeave) ? $rowLeave : null;
+                                $rowEarlyDeparture = \App\Support\AttendanceLateExcuse::isEarlyDepartureLeave($rowLeave) ? $rowLeave : null;
+                                $rowManualPermission = \App\Support\AttendanceLateExcuse::manualPermissionStatusLabel($att->status);
+                            @endphp
+                            @if($att->review_status === 'rejected' || $att->status === 'absent')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-red-100 text-red-800">Absen</span>
                             @elseif($att->status === 'leave')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">Cuti</span>
+                            @elseif($rowManualPermission)
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">{{ $rowManualPermission }}</span>
+                            @elseif($att->status === 'present' && $att->is_late && $rowLateExcuse)
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">{{ \App\Support\AttendanceLateExcuse::STATUS_LABEL }}</span>
+                            @elseif($att->status === 'present' && $att->is_late)
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Terlambat</span>
+                            @elseif($att->status === 'present' && $rowEarlyDeparture)
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">{{ \App\Support\AttendanceLateExcuse::EARLY_DEPARTURE_STATUS_LABEL }}</span>
+                            @elseif($att->status === 'present')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Hadir</span>
                             @else
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-red-100 text-red-800">Absen</span>
                             @endif

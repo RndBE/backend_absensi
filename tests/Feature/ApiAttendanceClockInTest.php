@@ -19,6 +19,8 @@ class ApiAttendanceClockInTest extends TestCase
 
         Carbon::setTestNow('2026-05-26 14:34:00');
 
+        Schema::dropIfExists('leave_requests');
+        Schema::dropIfExists('leave_types');
         Schema::dropIfExists('schedule_assignments');
         Schema::dropIfExists('schedule_template_days');
         Schema::dropIfExists('schedule_templates');
@@ -152,6 +154,26 @@ class ApiAttendanceClockInTest extends TestCase
             $table->string('reference_type')->nullable();
             $table->unsignedBigInteger('reference_id')->nullable();
             $table->boolean('is_read')->default(false);
+            $table->timestamps();
+        });
+
+        Schema::create('leave_types', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+
+        Schema::create('leave_requests', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->unsignedBigInteger('leave_type_id')->nullable();
+            $table->date('start_date');
+            $table->date('end_date');
+            $table->decimal('total_days', 4, 1)->default(1);
+            $table->text('reason')->nullable();
+            $table->unsignedBigInteger('delegate_to')->nullable();
+            $table->string('status')->default('pending');
+            $table->unsignedInteger('current_step')->default(1);
             $table->timestamps();
         });
     }
