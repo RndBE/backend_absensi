@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
@@ -38,6 +39,40 @@ class ProfileController extends Controller
         return view('employee.profile.show', [
             'employee' => $employee,
         ]);
+    }
+
+    public function updatePhoto(Request $request)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+
+        $request->validate([
+            'photo' => ['required', 'image', 'max:2048'],
+        ], [], [
+            'photo' => 'foto profil',
+        ]);
+
+        if ($employee->photo) {
+            Storage::disk('public')->delete($employee->photo);
+        }
+
+        $path = $request->file('photo')->store('employees/photos', 'public');
+        $employee->update(['photo' => $path]);
+
+        return back()->with('success', 'Foto profil berhasil diperbarui.');
+    }
+
+    public function destroyPhoto(Request $request)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+
+        if ($employee->photo) {
+            Storage::disk('public')->delete($employee->photo);
+            $employee->update(['photo' => null]);
+        }
+
+        return back()->with('success', 'Foto profil berhasil dihapus.');
     }
 
     public function personal(Request $request)

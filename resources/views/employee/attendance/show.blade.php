@@ -69,8 +69,13 @@
             <div class="relative bg-slate-950 overflow-hidden">
                 <video id="cameraPreview" autoplay playsinline muted class="w-full h-[420px] object-cover bg-slate-950" style="transform: scaleX(-1);"></video>
                 <canvas id="photoCanvas" class="hidden"></canvas>
+                <canvas id="qualityCanvas" class="hidden"></canvas>
                 <div id="cameraOverlay" class="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div class="w-[58%] max-w-[280px] aspect-[3/4] border-2 border-white rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"></div>
+                    <div id="faceFrame" class="w-[58%] max-w-[280px] aspect-[3/4] border-2 border-white rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] transition-colors"></div>
+                </div>
+                <div id="qualityBadge" class="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-black/55 text-white backdrop-blur-sm">
+                    <span class="material-symbols-outlined text-[14px]">hourglass_empty</span>
+                    <span id="qualityBadgeText">Memeriksa kualitas...</span>
                 </div>
                 <div id="submitOverlay" class="hidden absolute inset-0 bg-black/65 text-white flex flex-col items-center justify-center gap-3">
                     <div class="w-9 h-9 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
@@ -129,6 +134,19 @@ const remoteNotesWrap = document.getElementById('remoteNotesWrap');
 const notesInput = document.getElementById('notesInput');
 const submitOverlay = document.getElementById('submitOverlay');
 const retryLocationBtn = document.getElementById('retryLocationBtn');
+const qualityCanvas = document.getElementById('qualityCanvas');
+const qualityBadge = document.getElementById('qualityBadge');
+const qualityBadgeText = document.getElementById('qualityBadgeText');
+const faceFrame = document.getElementById('faceFrame');
+
+// Ambang batas filter kualitas foto presensi.
+const QUALITY = {
+    darkMax: 55,    // rata-rata kecerahan di bawah ini = terlalu gelap
+    brightMin: 215, // rata-rata kecerahan di atas ini = terlalu terang
+    blurMin: 8,     // variance Laplacian di bawah ini = kurang fokus (peringatan)
+};
+let qualityTimer = null;
+let qualityOk = false;
 
 initMap();
 initLocation();
@@ -312,7 +330,8 @@ async function startCamera() {
             audio: false,
         });
         document.getElementById('cameraPreview').srcObject = cameraStream;
-        captureBtn.disabled = false;
+        captureBtn.disabled = true;
+        startQualityMonitor();
     } catch (error) {
         cameraAlert.className = 'rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800';
         cameraAlert.textContent = 'Gagal membuka kamera. Izinkan akses kamera lalu coba lagi.';
@@ -321,15 +340,120 @@ async function startCamera() {
 }
 
 function stopCamera() {
+    stopQualityMonitor();
     if (!cameraStream) return;
     cameraStream.getTracks().forEach(track => track.stop());
     cameraStream = null;
 }
 
+function startQualityMonitor() {
+    stopQualityMonitor();
+    qualityTimer = window.setInterval(checkQuality, 450);
+}
+
+function stopQualityMonitor() {
+    if (qualityTimer) {
+        window.clearInterval(qualityTimer);
+        qualityTimer = null;
+    }
+}
+
+function checkQuality() {
+    const video = document.getElementById('cameraPreview');
+    if (!video.videoWidth) return;
+
+    const w = 160;
+    const h = 120;
+    qualityCanvas.width = w;
+    qualityCanvas.height = h;
+    const ctx = qualityCanvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+
+    // Konversi ke grayscale + hitung kecerahan rata-rata.
+    const gray = new Float32Array(w * h);
+    let sum = 0;
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        const g = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        gray[p] = g;
+        sum += g;
+    }
+    const brightness = sum / (w * h);
+
+    // Ketajaman = variance dari Laplacian (semakin kecil = semakin buram).
+    let lapSum = 0;
+    let lapSqSum = 0;
+    let count = 0;
+    for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+            const idx = y * w + x;
+            const lap = 4 * gray[idx] - gray[idx - 1] - gray[idx + 1] - gray[idx - w] - gray[idx + w];
+            lapSum += lap;
+            lapSqSum += lap * lap;
+            count++;
+        }
+    }
+    const mean = lapSum / count;
+    const sharpness = lapSqSum / count - mean * mean;
+
+    applyQuality(brightness, sharpness);
+}
+
+function applyQuality(brightness, sharpness) {
+    let blocking = false;
+    let icon = 'check_circle';
+    let badgeText = 'Kualitas baik';
+    let badgeColor = 'bg-emerald-500/90 text-white';
+    let alertClass = 'rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800';
+    let alertText = 'Pencahayaan cukup. Wajah siap difoto.';
+    let frameColor = 'border-emerald-400';
+
+    if (brightness < QUALITY.darkMax) {
+        blocking = true;
+        icon = 'dark_mode';
+        badgeText = 'Terlalu gelap';
+        alertText = 'Pencahayaan terlalu gelap. Cari tempat yang lebih terang.';
+    } else if (brightness > QUALITY.brightMin) {
+        blocking = true;
+        icon = 'light_mode';
+        badgeText = 'Terlalu terang';
+        alertText = 'Cahaya terlalu silau. Hindari cahaya langsung di belakang Anda.';
+    } else if (sharpness < QUALITY.blurMin) {
+        // Hanya peringatan, foto tetap boleh diambil.
+        icon = 'blur_on';
+        badgeText = 'Kurang fokus';
+        alertText = 'Gambar kurang fokus. Tahan perangkat agar stabil.';
+    }
+
+    if (blocking) {
+        badgeColor = 'bg-rose-500/90 text-white';
+        alertClass = 'rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-800';
+        frameColor = 'border-rose-400';
+    } else if (icon === 'blur_on') {
+        badgeColor = 'bg-amber-500/90 text-white';
+        alertClass = 'rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800';
+        frameColor = 'border-amber-400';
+    }
+
+    qualityBadge.className = 'absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold backdrop-blur-sm ' + badgeColor;
+    qualityBadge.querySelector('.material-symbols-outlined').textContent = icon;
+    qualityBadgeText.textContent = badgeText;
+
+    faceFrame.className = 'w-[58%] max-w-[280px] aspect-[3/4] border-2 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] transition-colors ' + frameColor;
+
+    cameraAlert.className = alertClass;
+    cameraAlert.textContent = alertText;
+
+    qualityOk = !blocking;
+    captureBtn.disabled = !qualityOk;
+}
+
 async function submitAttendance() {
     if (!currentPosition && settings.require_gps) return;
+    if (!qualityOk) return;
 
     captureBtn.disabled = true;
+    stopQualityMonitor();
     submitOverlay.classList.remove('hidden');
 
     try {
@@ -371,8 +495,8 @@ async function submitAttendance() {
     } catch (error) {
         cameraAlert.className = 'rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800';
         cameraAlert.textContent = error.message;
-        captureBtn.disabled = false;
         submitOverlay.classList.add('hidden');
+        startQualityMonitor();
     }
 }
 

@@ -71,6 +71,8 @@ Route::post('/employee/logout', [EmployeeAuthController::class, 'logout'])->name
 Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->group(function () {
     Route::get('/dashboard', [EmployeeDashboardController::class, 'index'])->name('dashboard');
     Route::get('/profile', [EmployeeProfileController::class, 'show'])->name('profile.show');
+    Route::post('/profile/photo', [EmployeeProfileController::class, 'updatePhoto'])->name('profile.photo.update');
+    Route::delete('/profile/photo', [EmployeeProfileController::class, 'destroyPhoto'])->name('profile.photo.destroy');
     Route::get('/profile/personal', [EmployeeProfileController::class, 'personal'])->name('profile.personal');
     Route::get('/profile/employment', [EmployeeProfileController::class, 'employment'])->name('profile.employment');
     Route::get('/profile/password', [EmployeeProfileController::class, 'editPassword'])->name('profile.password');
