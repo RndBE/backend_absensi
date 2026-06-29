@@ -9,6 +9,7 @@ use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
 use App\Models\PayrollRunDetail;
 use App\Models\Department;
+use App\Support\AttendanceLateExcuse;
 use App\Support\SimpleXlsxExporter;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -42,6 +43,15 @@ class ReportController extends Controller
 
         $attendances = $query->orderBy('date')->orderBy('employee_id')->get();
 
+        // Izin datang terlambat yang sudah di-ACC → tidak dihitung terlambat (tetap hadir).
+        $leaves = LeaveRequest::with('leaveType')
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->where('status', 'approved')
+            ->where('start_date', '<=', $end->format('Y-m-d'))
+            ->where('end_date', '>=', $start->format('Y-m-d'))
+            ->get()
+            ->groupBy('employee_id');
+
         // Summary per employee
         $summary = [];
         foreach ($attendances as $att) {
@@ -55,7 +65,13 @@ class ReportController extends Controller
             $summary[$empId]['total']++;
             // 'late_excuse' & 'early_departure' = izin parsial, tetap dihitung hadir.
             if (in_array($att->status, ['present', 'late_excuse', 'early_departure'], true)) $summary[$empId]['present']++;
-            if ($att->is_late) $summary[$empId]['late']++;
+            // Terlambat TIDAK dihitung bila ada izin datang terlambat (status manual late_excuse
+            // atau cuti bertipe "datang terlambat" yang menutupi tanggal tsb).
+            $excused = $this->isLateExcused($att, $leaves->get($empId));
+            $att->late_excused = $att->is_late && $excused; // dipakai tabel detail
+            if ($att->is_late && ! $excused) {
+                $summary[$empId]['late']++;
+            }
             if ($att->status === 'absent') $summary[$empId]['absent']++;
             if ($att->status === 'leave') $summary[$empId]['leave']++;
         }
@@ -82,6 +98,14 @@ class ReportController extends Controller
 
         $data = $query->orderBy('date')->orderBy('employee_id')->get();
 
+        $leaves = LeaveRequest::with('leaveType')
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->where('status', 'approved')
+            ->where('start_date', '<=', $end->format('Y-m-d'))
+            ->where('end_date', '>=', $start->format('Y-m-d'))
+            ->get()
+            ->groupBy('employee_id');
+
         return $this->streamXlsx("attendance_{$month}.xlsx", [
             'Tanggal', 'Kode Karyawan', 'Nama', 'Departemen', 'Clock In', 'Clock Out', 'Status', 'Terlambat',
         ], $data->map(fn($a) => [
@@ -92,8 +116,25 @@ class ReportController extends Controller
             $a->clock_in ?? '-',
             $a->clock_out ?? '-',
             $a->status,
-            $a->is_late ? 'Ya' : 'Tidak',
+            // Terlambat hanya 'Ya' bila tidak ada izin datang terlambat; 'Izin' bila diizinkan.
+            $a->is_late ? ($this->isLateExcused($a, $leaves->get($a->employee_id)) ? 'Izin' : 'Ya') : 'Tidak',
         ]), 'Laporan Absensi');
+    }
+
+    /**
+     * Apakah keterlambatan pada record presensi ini "dimaafkan" — yaitu ada izin datang
+     * terlambat (status manual late_excuse) atau cuti bertipe "datang terlambat" yang
+     * menutupi tanggal tersebut. Konsisten dengan rekap absensi.
+     */
+    private function isLateExcused(Attendance $att, $empLeaves): bool
+    {
+        if (AttendanceLateExcuse::manualPermissionStatusLabel($att->status) !== null) {
+            return true;
+        }
+
+        $leaveForDate = AttendanceLateExcuse::firstForDate($empLeaves ?? collect(), $att->date);
+
+        return AttendanceLateExcuse::isLateArrivalLeave($leaveForDate);
     }
 
     // ========================

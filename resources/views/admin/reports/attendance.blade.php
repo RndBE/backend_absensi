@@ -126,7 +126,13 @@
                         <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-{{ $sc[$a->status] ?? 'gray' }}-50 text-{{ $sc[$a->status] ?? 'gray' }}-700">{{ ucfirst($a->status) }}</span>
                     </td>
                     <td class="px-4 py-2 border-b border-gray-100 text-center">
-                        @if($a->is_late)<span class="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Ya</span>@endif
+                        @if($a->is_late)
+                            @if($a->late_excused)
+                                <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Izin</span>
+                            @else
+                                <span class="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Ya</span>
+                            @endif
+                        @endif
                     </td>
                 </tr>
                 @empty
