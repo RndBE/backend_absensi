@@ -86,6 +86,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/leaves/create', [EmployeeLeaveController::class, 'create'])->name('leaves.create');
     Route::post('/leaves', [EmployeeLeaveController::class, 'store'])->name('leaves.store');
     Route::get('/leaves/{id}/edit', [EmployeeLeaveController::class, 'edit'])->name('leaves.edit');
+    Route::get('/leaves/{id}', [EmployeeLeaveController::class, 'show'])->name('leaves.show');
     Route::put('/leaves/{id}', [EmployeeLeaveController::class, 'update'])->name('leaves.update');
     Route::get('/overtimes', [EmployeeOvertimeController::class, 'index'])->name('overtimes.index');
     Route::get('/overtimes/create', [EmployeeOvertimeController::class, 'create'])->name('overtimes.create');

@@ -196,6 +196,7 @@
                             <div class="pl-3 border-l-2 {{ $log->action === 'approved' ? 'border-emerald-400' : 'border-red-400' }}">
                                 <div class="flex flex-wrap items-center gap-1.5">
                                     <span class="text-[13px] font-semibold text-gray-800">{{ $log->approver->full_name ?? 'Unknown' }}</span>
+                                    @if($log->via_label)<span class="text-[11px] text-gray-500">(via {{ $log->via_label }})</span>@endif
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold {{ $log->action === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700' }}">
                                         {{ $log->action === 'approved' ? 'Disetujui' : 'Ditolak' }}
                                     </span>

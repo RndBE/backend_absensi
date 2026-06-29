@@ -250,11 +250,21 @@ class ApprovalController extends Controller
             }
         }
 
+        // Tentukan atribusi: bila superadmin approve menggantikan approver yang ditugaskan,
+        // catat atas nama approver asli dan simpan jejak siapa yang sebenarnya menekan.
+        [$attributedApprover, $actedById, $approverName] = $this->resolveAttribution(
+            $request->user(),
+            $modelClass === DataChangeRequest::class
+                ? null
+                : EmployeeApprover::getApproverAt($item->employee_id, $requestType, $currentStep)
+        );
+
         // Log this approval step
         ApprovalLog::create([
             'approvable_type' => $modelClass,
             'approvable_id' => $item->id,
-            'approver_id' => $request->user()->id,
+            'approver_id' => $attributedApprover->id,
+            'acted_by_id' => $actedById,
             'action' => 'approved',
             'notes' => $request->notes,
             'step_order' => $currentStep,
@@ -301,7 +311,7 @@ class ApprovalController extends Controller
             $progressNotif = Notification::create([
                 'employee_id' => $item->employee_id,
                 'title' => "Pengajuan $typeLabel - Disetujui Step $currentStep",
-                'message' => "Pengajuan {$typeLabel} Anda disetujui oleh {$request->user()->full_name}, menunggu persetujuan selanjutnya",
+                'message' => "Pengajuan {$typeLabel} Anda disetujui oleh {$approverName}, menunggu persetujuan selanjutnya",
                 'type' => 'info',
                 'reference_type' => $modelClass,
                 'reference_id' => $item->id,
@@ -321,7 +331,7 @@ class ApprovalController extends Controller
             $notification = Notification::create([
                 'employee_id' => $item->employee_id,
                 'title' => "Pengajuan $typeLabel Disetujui",
-                'message' => "Pengajuan {$typeLabel} Anda telah disetujui oleh {$request->user()->full_name}",
+                'message' => "Pengajuan {$typeLabel} Anda telah disetujui oleh {$approverName}",
                 'type' => 'info',
                 'reference_type' => $modelClass,
                 'reference_id' => $item->id,
@@ -359,12 +369,22 @@ class ApprovalController extends Controller
             }
         }
 
+        // Atribusi: bila superadmin menolak menggantikan approver asli, catat atas nama
+        // approver asli dengan jejak siapa yang sebenarnya menekan.
+        [$attributedApprover, $actedById, $approverName] = $this->resolveAttribution(
+            $request->user(),
+            $modelClass === DataChangeRequest::class
+                ? null
+                : EmployeeApprover::getApproverAt($item->employee_id, $requestType, $currentStep)
+        );
+
         $item->update(['status' => 'rejected']);
 
         ApprovalLog::create([
             'approvable_type' => $modelClass,
             'approvable_id' => $item->id,
-            'approver_id' => $request->user()->id,
+            'approver_id' => $attributedApprover->id,
+            'acted_by_id' => $actedById,
             'action' => 'rejected',
             'notes' => $request->notes,
             'step_order' => $currentStep,
@@ -373,7 +393,7 @@ class ApprovalController extends Controller
         $notification = Notification::create([
             'employee_id' => $item->employee_id,
             'title' => "Pengajuan $typeLabel Ditolak",
-            'message' => "Pengajuan {$typeLabel} Anda ditolak oleh {$request->user()->full_name}",
+            'message' => "Pengajuan {$typeLabel} Anda ditolak oleh {$approverName}",
             'type' => 'info',
             'reference_type' => $modelClass,
             'reference_id' => $item->id,
@@ -395,5 +415,22 @@ class ApprovalController extends Controller
             DataChangeRequest::class => 'data-change',
             default => 'leave',
         };
+    }
+
+    /**
+     * Tentukan atribusi pencatatan approval.
+     *
+     * Bila $expectedApprover ada dan berbeda dari user yang menekan (kasus superadmin
+     * approve menggantikan approver asli), approval dicatat atas nama approver asli
+     * dan acted_by_id merekam pelaku sebenarnya. Selain itu, pelaku = approver.
+     *
+     * @return array{0: Employee, 1: int|null, 2: string} [approver, acted_by_id, nama approver]
+     */
+    private function resolveAttribution($actingUser, ?Employee $expectedApprover): array
+    {
+        $attributedApprover = $expectedApprover ?? $actingUser;
+        $actedById = $attributedApprover->id !== $actingUser->id ? $actingUser->id : null;
+
+        return [$attributedApprover, $actedById, $attributedApprover->full_name];
     }
 }

@@ -51,13 +51,16 @@
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $leave->total_days_label }}</td>
                             <td class="px-4 py-3.5 border-b border-gray-100">@include('employee.partials.status-badge', ['status' => $leave->status])</td>
                             <td class="px-4 py-3.5 border-b border-gray-100 text-center">
-                                @if($leave->status === 'pending')
-                                    <a href="{{ route('employee.leaves.edit', $leave->id) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">
-                                        <span class="material-symbols-outlined text-[14px]">edit</span> Edit
+                                <div class="inline-flex items-center gap-1.5">
+                                    <a href="{{ route('employee.leaves.show', $leave->id) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all">
+                                        <span class="material-symbols-outlined text-[14px]">visibility</span> Detail
                                     </a>
-                                @else
-                                    <span class="text-[11px] text-gray-300">—</span>
-                                @endif
+                                    @if($leave->status === 'pending')
+                                        <a href="{{ route('employee.leaves.edit', $leave->id) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">
+                                            <span class="material-symbols-outlined text-[14px]">edit</span> Edit
+                                        </a>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @empty

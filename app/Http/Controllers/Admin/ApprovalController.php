@@ -89,11 +89,21 @@ class ApprovalController extends Controller
             }
         }
 
+        // Atribusi: bila superadmin approve menggantikan approver asli, catat atas nama
+        // approver asli dan simpan jejak siapa yang sebenarnya menekan.
+        [$attributedApprover, $actedById, $approverName] = $this->resolveAttribution(
+            $admin,
+            $type === 'data-change'
+                ? null
+                : $this->getApproverAtStep($item->employee, $item->current_step, $this->modelToRequestType($modelClass))
+        );
+
         // Log the approval
         ApprovalLog::create([
             'approvable_type' => $modelClass,
             'approvable_id' => $item->id,
-            'approver_id' => $admin->id,
+            'approver_id' => $attributedApprover->id,
+            'acted_by_id' => $actedById,
             'action' => 'approved',
             'step_order' => $item->current_step,
             'notes' => $request->notes,
@@ -155,14 +165,14 @@ class ApprovalController extends Controller
             Notification::create([
                 'employee_id' => $item->employee_id,
                 'title' => "Pengajuan $typeLabel - Disetujui Step " . ($item->current_step - 1),
-                'message' => "Disetujui oleh {$admin->full_name}. Menunggu approval {$nextApprover->full_name}.",
+                'message' => "Disetujui oleh {$approverName}. Menunggu approval {$nextApprover->full_name}.",
                 'type' => 'info',
                 'reference_type' => $modelClass,
                 'reference_id' => $item->id,
             ]);
 
             FcmService::sendToEmployee($item->employee, "Pengajuan $typeLabel Diproses",
-                "Disetujui oleh {$admin->full_name}. Menunggu approval selanjutnya."
+                "Disetujui oleh {$approverName}. Menunggu approval selanjutnya."
             );
 
             return back()->with('success', "Step disetujui. Menunggu: {$nextApprover->full_name}");
@@ -174,14 +184,14 @@ class ApprovalController extends Controller
             Notification::create([
                 'employee_id' => $item->employee_id,
                 'title' => "Pengajuan $typeLabel Disetujui",
-                'message' => "Pengajuan anda telah disetujui (final) oleh {$admin->full_name}",
+                'message' => "Pengajuan anda telah disetujui (final) oleh {$approverName}",
                 'type' => 'info',
                 'reference_type' => $modelClass,
                 'reference_id' => $item->id,
             ]);
 
             FcmService::sendToEmployee($item->employee, "Pengajuan $typeLabel Disetujui",
-                "Pengajuan {$typeLabel} anda telah disetujui oleh {$admin->full_name}"
+                "Pengajuan {$typeLabel} anda telah disetujui oleh {$approverName}"
             );
 
             return back()->with('success', 'Pengajuan disetujui (final approval).');
@@ -210,12 +220,22 @@ class ApprovalController extends Controller
             }
         }
 
+        // Atribusi: bila superadmin menolak menggantikan approver asli, catat atas nama
+        // approver asli dengan jejak siapa yang sebenarnya menekan.
+        [$attributedApprover, $actedById, $approverName] = $this->resolveAttribution(
+            $admin,
+            $type === 'data-change'
+                ? null
+                : $this->getApproverAtStep($item->employee, $item->current_step, $this->modelToRequestType($modelClass))
+        );
+
         $item->update(['status' => 'rejected']);
 
         ApprovalLog::create([
             'approvable_type' => $modelClass,
             'approvable_id' => $item->id,
-            'approver_id' => $admin->id,
+            'approver_id' => $attributedApprover->id,
+            'acted_by_id' => $actedById,
             'action' => 'rejected',
             'step_order' => $item->current_step,
             'notes' => $request->notes,
@@ -224,14 +244,14 @@ class ApprovalController extends Controller
         Notification::create([
             'employee_id' => $item->employee_id,
             'title' => "Pengajuan $typeLabel Ditolak",
-            'message' => "Pengajuan anda ditolak oleh {$admin->full_name}" . ($request->notes ? ": {$request->notes}" : ''),
+            'message' => "Pengajuan anda ditolak oleh {$approverName}" . ($request->notes ? ": {$request->notes}" : ''),
             'type' => 'info',
             'reference_type' => $modelClass,
             'reference_id' => $item->id,
         ]);
 
         FcmService::sendToEmployee($item->employee, "Pengajuan $typeLabel Ditolak",
-            "Pengajuan {$typeLabel} anda ditolak oleh {$admin->full_name}"
+            "Pengajuan {$typeLabel} anda ditolak oleh {$approverName}"
         );
 
         return back()->with('success', 'Pengajuan berhasil ditolak.');
@@ -243,6 +263,23 @@ class ApprovalController extends Controller
     private function getApproverAtStep(Employee $employee, int $step, string $requestType = 'leave'): ?Employee
     {
         return EmployeeApprover::getApproverAt($employee->id, $requestType, $step);
+    }
+
+    /**
+     * Tentukan atribusi pencatatan approval.
+     *
+     * Bila $expectedApprover ada dan berbeda dari user yang menekan (kasus superadmin
+     * approve menggantikan approver asli), approval dicatat atas nama approver asli
+     * dan acted_by_id merekam pelaku sebenarnya. Selain itu, pelaku = approver.
+     *
+     * @return array{0: Employee, 1: int|null, 2: string} [approver, acted_by_id, nama approver]
+     */
+    private function resolveAttribution(Employee $actingUser, ?Employee $expectedApprover): array
+    {
+        $attributedApprover = $expectedApprover ?? $actingUser;
+        $actedById = $attributedApprover->id !== $actingUser->id ? $actingUser->id : null;
+
+        return [$attributedApprover, $actedById, $attributedApprover->full_name];
     }
 
     /**

@@ -173,7 +173,7 @@
                 {{ $log->action === 'approved' ? '✓' : '✗' }}
             </div>
             <div class="flex-1 min-w-0">
-                <span class="text-[13px] font-medium text-gray-800">{{ $log->action === 'approved' ? 'Disetujui' : 'Ditolak' }} oleh {{ $log->approver->full_name ?? '-' }}</span>
+                <span class="text-[13px] font-medium text-gray-800">{{ $log->action === 'approved' ? 'Disetujui' : 'Ditolak' }} oleh {{ $log->approver->full_name ?? '-' }}@if($log->via_label) <span class="text-[11px] text-gray-500">(via {{ $log->via_label }})</span>@endif</span>
                 <div class="text-[11px] text-gray-400">{{ $log->created_at->format('d M Y, H:i') }}</div>
                 @if($log->notes)
                     <div class="text-[11px] text-gray-500 italic mt-0.5">"{{ $log->notes }}"</div>

@@ -176,6 +176,9 @@
                             {{ $log->approver->full_name ?? 'Unknown' }}
                             <span class="font-normal">{{ $log->action === 'approved' ? 'menyetujui' : 'menolak' }}</span>
                             di Step {{ $log->step_order }}
+                            @if($log->via_label)
+                            <span class="font-normal text-[11px] text-gray-500">(via {{ $log->via_label }})</span>
+                            @endif
                         </div>
                         @if($log->notes)
                         <p class="text-[12px] text-gray-600 mt-0.5">"{{ $log->notes }}"</p>

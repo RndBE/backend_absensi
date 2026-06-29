@@ -61,6 +61,7 @@
                 @foreach($budgetRequest->approvalLogs as $log)
                     <div class="rounded-lg bg-gray-50 px-3 py-2 text-[13px] text-gray-700">
                         <span class="font-bold">{{ $log->approver?->full_name ?? 'Approver' }}</span> {{ $log->action }} step {{ $log->step_order }}
+                        @if($log->via_label)<span class="text-gray-500"> (via {{ $log->via_label }})</span>@endif
                         @if($log->notes)<span class="text-gray-500"> · {{ $log->notes }}</span>@endif
                     </div>
                 @endforeach

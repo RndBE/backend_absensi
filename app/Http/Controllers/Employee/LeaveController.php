@@ -221,6 +221,28 @@ class LeaveController extends Controller
             ->with('success', 'Pengajuan cuti berhasil diperbarui.');
     }
 
+    public function show(Request $request, $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+
+        $leave = LeaveRequest::with([
+            'leaveType',
+            'delegate',
+            'attachments',
+            'approvalLogs' => fn ($query) => $query->orderBy('step_order')->orderBy('created_at'),
+            'approvalLogs.approver',
+            'approvalLogs.actedBy',
+        ])
+            ->where('employee_id', $employee->id)
+            ->findOrFail($id);
+
+        return view('employee.leaves.show', [
+            'employee' => $employee,
+            'leave' => $leave,
+        ]);
+    }
+
     /**
      * Pesan validasi lampiran dalam Bahasa Indonesia.
      */

@@ -160,6 +160,7 @@
             <div class="flex-1">
                 <div class="flex items-center gap-2">
                     <span class="text-[13px] font-semibold text-gray-800">{{ $log->approver->full_name ?? '-' }}</span>
+                    @if($log->via_label)<span class="text-[11px] text-gray-500">(via {{ $log->via_label }})</span>@endif
                     <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold {{ $log->action === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700' }}">
                         {{ $log->action === 'approved' ? 'Disetujui' : 'Ditolak' }}
                     </span>
