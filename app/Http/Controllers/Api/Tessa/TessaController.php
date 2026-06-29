@@ -12,6 +12,8 @@ use App\Models\LeaveRequest;
 use App\Models\Lpj;
 use App\Models\Notification;
 use App\Models\OvertimeRequest;
+use App\Models\ScheduleAssignment;
+use App\Models\Shift;
 use App\Models\TravelReport;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
@@ -44,9 +46,9 @@ class TessaController extends Controller
                     'employees', 'attendance', 'attendance-recap',
                     'leaves', 'overtimes', 'attendance-requests',
                     'budget-requests', 'travel-reports', 'lpj',
-                    'approvals-summary', 'company', 'announcements',
+                    'approvals-summary', 'company', 'announcements', 'shifts',
                 ],
-                'actions' => ['send-notification'],
+                'actions' => ['send-notification', 'assign-schedule'],
                 'forbidden' => ['payroll', 'payslip', 'salary'],
             ],
         ]);
@@ -413,6 +415,176 @@ class TessaController extends Controller
             'message' => "Notifikasi terkirim ke {$sent} karyawan.",
             'sent' => $sent,
         ]);
+    }
+
+    // =====================================================================
+    // Penjadwalan (shift) — Tessa mengisi jadwal kerja per tanggal
+    // =====================================================================
+
+    /** Daftar shift yang tersedia (agar Tessa tahu nama shift yang valid). */
+    public function shifts(Request $request)
+    {
+        $companyId = $this->companyId($request);
+
+        $shifts = Shift::query()
+            ->with('company:id,name')
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            ->orderBy('company_id')->orderBy('sort_order')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $shifts->map(fn (Shift $s) => [
+                'id' => $s->id,
+                'name' => $s->name,
+                'company' => $s->company?->name,
+                'start_time' => $s->start_time,
+                'end_time' => $s->end_time,
+                'is_off' => (bool) $s->is_off,
+                'is_overnight' => (bool) $s->is_overnight,
+            ])->values(),
+        ]);
+    }
+
+    /**
+     * Aksi: isi jadwal kerja (shift) karyawan per tanggal — mode bulk per baris.
+     *
+     * Body: { "assignments": [ {employee|employee_code|employee_id, date, shift|shift_id, notes?}, ... ], "dry_run": false }
+     *
+     * Setiap baris diproses independen; hasil per baris dikembalikan agar Tessa
+     * bisa melapor mana yang berhasil/gagal. Memakai updateOrCreate (unique employee+date),
+     * jadi mengisi ulang tanggal yang sama akan menimpa shift sebelumnya.
+     *
+     * Mode preview: kirim "dry_run": true untuk MEMVALIDASI tanpa menyimpan apa pun —
+     * API mengembalikan apa yang AKAN terjadi (would_create/would_update + shift saat ini),
+     * supaya bisa ditinjau dulu sebelum benar-benar disimpan.
+     */
+    public function assignSchedules(Request $request)
+    {
+        $validated = $request->validate([
+            'assignments' => 'required|array|min:1|max:500',
+            'assignments.*.date' => 'required|date',
+            'assignments.*.employee_id' => 'nullable|integer',
+            'assignments.*.employee_code' => 'nullable|string',
+            'assignments.*.employee' => 'nullable|string',
+            'assignments.*.shift_id' => 'nullable|integer',
+            'assignments.*.shift' => 'nullable|string',
+            'assignments.*.notes' => 'nullable|string|max:500',
+            'dry_run' => 'nullable|boolean',
+        ]);
+
+        $companyId = $this->companyId($request);
+        $dryRun = $request->boolean('dry_run');
+        $results = [];
+        $ok = 0;
+
+        foreach ($validated['assignments'] as $i => $row) {
+            $result = $this->applyScheduleRow($row, $companyId, $dryRun);
+            if ($result['success']) {
+                $ok++;
+            }
+            $results[] = ['index' => $i] + $result;
+        }
+
+        $total = count($results);
+
+        return response()->json([
+            'success' => $ok > 0,
+            'dry_run' => $dryRun,
+            'message' => $dryRun
+                ? "PREVIEW: {$ok} dari {$total} baris valid (belum disimpan). Kirim ulang tanpa dry_run untuk menyimpan."
+                : "{$ok} dari {$total} jadwal tersimpan.",
+            'valid' => $ok,
+            'failed' => $total - $ok,
+            'results' => $results,
+        ]);
+    }
+
+    /** Proses satu baris jadwal: resolve karyawan + shift, lalu simpan (atau preview bila $dryRun). */
+    private function applyScheduleRow(array $row, ?int $companyId, bool $dryRun = false): array
+    {
+        // 1. Resolve karyawan (scoped ke perusahaan Tessa bila diset).
+        $base = Employee::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId));
+
+        if (! empty($row['employee_id'])) {
+            $employee = (clone $base)->find($row['employee_id']);
+        } elseif (! empty($row['employee_code'])) {
+            $employee = (clone $base)->where('employee_code', $row['employee_code'])->first();
+        } elseif (! empty($row['employee'])) {
+            $matches = (clone $base)->where('full_name', 'like', '%'.$row['employee'].'%')->limit(2)->get();
+            if ($matches->count() > 1) {
+                return ['success' => false, 'error' => "Nama '{$row['employee']}' cocok ke lebih dari satu karyawan; gunakan employee_code atau employee_id."];
+            }
+            $employee = $matches->first();
+        } else {
+            return ['success' => false, 'error' => 'Wajib isi salah satu: employee_id, employee_code, atau employee (nama).'];
+        }
+
+        if (! $employee) {
+            return ['success' => false, 'error' => 'Karyawan tidak ditemukan.'];
+        }
+
+        // 2. Resolve shift DALAM perusahaan karyawan (shift bersifat per-perusahaan).
+        $shiftBase = Shift::query()->where('company_id', $employee->company_id);
+
+        if (! empty($row['shift_id'])) {
+            $shift = (clone $shiftBase)->find($row['shift_id']);
+        } elseif (! empty($row['shift'])) {
+            // Cocokkan nama persis dulu; bila ada >1 shift dengan nama sama, minta shift_id.
+            $exact = (clone $shiftBase)->whereRaw('LOWER(name) = ?', [mb_strtolower($row['shift'])])->get();
+            if ($exact->count() > 1) {
+                return ['success' => false, 'error' => "Shift '{$row['shift']}' ada lebih dari satu (id: ".$exact->pluck('id')->implode(', ')."); gunakan shift_id."];
+            }
+            $shift = $exact->first();
+            if (! $shift) {
+                $cands = (clone $shiftBase)->where('name', 'like', '%'.$row['shift'].'%')->limit(2)->get();
+                if ($cands->count() > 1) {
+                    return ['success' => false, 'error' => "Shift '{$row['shift']}' ambigu untuk perusahaan karyawan; gunakan shift_id."];
+                }
+                $shift = $cands->first();
+            }
+        } else {
+            return ['success' => false, 'error' => 'Wajib isi shift (nama) atau shift_id.'];
+        }
+
+        if (! $shift) {
+            return ['success' => false, 'error' => "Shift tidak ditemukan untuk perusahaan {$employee->full_name}."];
+        }
+
+        // 3. Simpan (timpa bila tanggal yang sama sudah ada).
+        $date = Carbon::parse($row['date'])->toDateString();
+
+        $existing = ScheduleAssignment::with('shift:id,name')
+            ->where('employee_id', $employee->id)
+            ->whereDate('date', $date)
+            ->first();
+
+        // Mode preview: tampilkan apa yang AKAN terjadi tanpa menyimpan.
+        if ($dryRun) {
+            return [
+                'success' => true,
+                'preview' => true,
+                'employee' => $employee->full_name,
+                'date' => $date,
+                'shift' => $shift->name,
+                'action' => $existing ? 'would_update' : 'would_create',
+                'current_shift' => $existing?->shift?->name,
+            ];
+        }
+
+        $assignment = ScheduleAssignment::updateOrCreate(
+            ['employee_id' => $employee->id, 'date' => $date],
+            ['shift_id' => $shift->id, 'notes' => $row['notes'] ?? null],
+        );
+
+        return [
+            'success' => true,
+            'employee' => $employee->full_name,
+            'date' => $date,
+            'shift' => $shift->name,
+            'action' => $assignment->wasRecentlyCreated ? 'created' : 'updated',
+            'current_shift' => $existing?->shift?->name,
+        ];
     }
 
     // =====================================================================

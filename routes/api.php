@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\TravelReportController;
 use App\Http\Controllers\Api\TravelZoneController;
 use App\Http\Controllers\Api\Tessa\TessaController;
+use App\Http\Controllers\Api\Tessa\TessaActionController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -151,6 +152,26 @@ Route::middleware('tessa.api')->prefix('tessa')->group(function () {
     Route::get('/company', [TessaController::class, 'company']);
     Route::get('/announcements', [TessaController::class, 'announcements']);
 
-    // Aksi
+    // Penjadwalan (shift)
+    Route::get('/shifts', [TessaController::class, 'shifts']);
+
+    // Aksi: notifikasi & jadwal harian
     Route::post('/notifications', [TessaController::class, 'sendNotification']);
+    Route::post('/schedules', [TessaController::class, 'assignSchedules']);
+
+    // Aksi: approve / reject pengajuan (mendukung dry_run)
+    Route::post('/approvals/{type}/{id}/approve', [TessaActionController::class, 'approve']);
+    Route::post('/approvals/{type}/{id}/reject', [TessaActionController::class, 'reject']);
+
+    // Aksi: ubah data karyawan (lewat pengajuan yang disetujui superadmin)
+    Route::post('/data-change-requests', [TessaActionController::class, 'requestDataChange']);
+
+    // Aksi: master jadwal (shift & template)
+    Route::post('/shifts', [TessaActionController::class, 'createShift']);
+    Route::put('/shifts/{id}', [TessaActionController::class, 'updateShift']);
+    Route::post('/schedule-templates', [TessaActionController::class, 'createTemplate']);
+    Route::post('/schedule-templates/assign', [TessaActionController::class, 'assignTemplate']);
+
+    // Aksi: buat pengajuan atas nama karyawan
+    Route::post('/requests/{type}', [TessaActionController::class, 'createRequest']);
 });

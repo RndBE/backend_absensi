@@ -67,6 +67,10 @@ return [
         'api_key' => env('TESSA_API_KEY'),
         // Batasi Tessa ke satu perusahaan tertentu (opsional). Kosong = semua perusahaan.
         'company_id' => env('TESSA_COMPANY_ID'),
+        // Aktor default (harus role superadmin) yang menjadi "tangan" Tessa saat
+        // approve/reject & saat mengusulkan perubahan data. Bisa di-override per request
+        // via field as_employee_id. Kosong = pakai superadmin pertama pada scope perusahaan.
+        'acts_as_employee_id' => env('TESSA_ACTS_AS_EMPLOYEE_ID'),
     ],
 
 ];

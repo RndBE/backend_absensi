@@ -51,6 +51,9 @@ class TessaApiKey
         $companyId = config('services.tessa.company_id');
         $request->attributes->set('tessa_company_id', $companyId ? (int) $companyId : null);
 
+        // Tessa selalu klien API: pastikan error (mis. validasi) dibalas JSON, bukan redirect HTML.
+        $request->headers->set('Accept', 'application/json');
+
         return $next($request);
     }
 }
