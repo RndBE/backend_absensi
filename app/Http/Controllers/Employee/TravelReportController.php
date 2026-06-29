@@ -263,7 +263,9 @@ class TravelReportController extends Controller
             return true;
         }
 
-        return (int) $report->current_step === (int) $hseStep;
+        // Boleh edit selama LHP belum melewati step HSE (saat pending di awal
+        // hingga tepat ditinjau HSE). Setelah lewat HSE, terkunci.
+        return (int) $report->current_step <= (int) $hseStep;
     }
 
     private function notifyFirstApprover(Employee $employee, TravelReport $report): void
