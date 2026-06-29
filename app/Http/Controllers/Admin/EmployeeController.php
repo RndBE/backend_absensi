@@ -207,7 +207,9 @@ class EmployeeController extends Controller
 
     public function show($id)
     {
-        $employee = Employee::with(['department', 'workSchedule', 'manager'])->findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)
+            ->with(['department', 'workSchedule', 'manager'])->findOrFail($id);
 
         // Load approval chains
         $approvalChains = [];
@@ -221,7 +223,8 @@ class EmployeeController extends Controller
     public function edit($id)
     {
         $admin = Employee::find(session('admin_id'));
-        $employee = Employee::with('roles:id,slug,name')->findOrFail($id);
+        $employee = Employee::where('company_id', $admin->company_id)
+            ->with('roles:id,slug,name')->findOrFail($id);
         $departments = Department::where('company_id', $admin->company_id)->get();
         $workSchedules = WorkSchedule::where('company_id', $admin->company_id)->get();
         $managers = Employee::where('company_id', $admin->company_id)
@@ -364,7 +367,8 @@ class EmployeeController extends Controller
 
     public function update(Request $request, $id)
     {
-        $employee = Employee::findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)->findOrFail($id);
 
         $request->validate([
             'employee_code' => 'required|unique:employees,employee_code,'.$id,
@@ -454,7 +458,8 @@ class EmployeeController extends Controller
 
     public function destroy($id)
     {
-        $employee = Employee::findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)->findOrFail($id);
 
         if (! $employee->is_active) {
             return redirect()->route('admin.employees.index')
@@ -482,7 +487,9 @@ class EmployeeController extends Controller
 
     public function resign($id)
     {
-        $employee = Employee::with(['department', 'activePayroll'])->findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)
+            ->with(['department', 'activePayroll'])->findOrFail($id);
 
         if (! $employee->is_active) {
             return redirect()->route('admin.employees.index')
@@ -518,7 +525,9 @@ class EmployeeController extends Controller
 
     public function processResign(Request $request, $id)
     {
-        $employee = Employee::with(['activePayroll', 'payrollComponents'])->findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)
+            ->with(['activePayroll', 'payrollComponents'])->findOrFail($id);
 
         $request->validate([
             'resign_date' => 'required|date',

@@ -6,19 +6,25 @@ use Tests\TestCase;
 
 class AdminFilterViewTest extends TestCase
 {
-    public function test_leave_balance_uses_fuse_search_and_preserves_backend_filters_on_year_navigation(): void
+    public function test_leave_balance_uses_server_side_search_and_pagination_preserving_filters(): void
     {
         $view = file_get_contents(resource_path('views/admin/leave-balances/index.blade.php'));
+        $controller = file_get_contents(app_path('Http/Controllers/Admin/LeaveBalanceController.php'));
 
-        $this->assertStringContainsString('fuse.js', $view);
-        $this->assertStringContainsString('id="leaveBalanceSearch"', $view);
-        $this->assertStringContainsString('data-fuse-row="leave-balance"', $view);
-        $this->assertStringContainsString('data-search=', $view);
-        $this->assertStringContainsString('threshold: 0.45', $view);
-        $this->assertStringNotContainsString('name="search"', $view);
+        // Server-side search & pagination menggantikan Fuse client-side.
+        $this->assertStringNotContainsString('fuse.js', $view);
+        $this->assertStringNotContainsString('data-fuse-row="leave-balance"', $view);
+        $this->assertStringContainsString('name="search"', $view);
+        $this->assertStringContainsString('$employees->links()', $view);
+
+        // Filter (departemen + pencarian) tetap terbawa saat navigasi tahun.
         $this->assertStringContainsString("'department_id' => \$departmentId", $view);
-        $this->assertStringNotContainsString("'search' => \$search", $view);
-        $this->assertStringContainsString("request()->filled('department_id')", $view);
+        $this->assertStringContainsString("'search' => \$search", $view);
+        $this->assertStringContainsString('$departmentId || $search', $view);
+
+        // Controller memaginasi karyawan & memfilter pencarian di database.
+        $this->assertStringContainsString('->paginate(', $controller);
+        $this->assertStringContainsString("when(\$search", $controller);
     }
 
     public function test_attendance_recap_uses_fuse_search_and_preserves_backend_filters_on_date_navigation(): void

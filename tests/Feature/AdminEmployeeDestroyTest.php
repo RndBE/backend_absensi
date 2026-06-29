@@ -79,6 +79,21 @@ class AdminEmployeeDestroyTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        DB::table('employees')->insert([
+            'id' => 2,
+            'employee_code' => 'ADM001',
+            'company_id' => 1,
+            'full_name' => 'Admin Tester',
+            'email' => 'admin@example.test',
+            'password' => 'password',
+            'employment_status' => 'permanent',
+            'is_active' => true,
+            'role' => 'superadmin',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        session(['admin_id' => 2]);
+
         $response = (new EmployeeController())->destroy(1);
 
         $this->assertSame(route('admin.employees.index'), $response->getTargetUrl());

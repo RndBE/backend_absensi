@@ -23,7 +23,7 @@ class LpjController extends Controller
         $lpjs = Lpj::with(['budgetRequest:id,title,total_amount', 'travelReport:id,destination_city'])
             ->where('employee_id', $employee->id)
             ->latest()
-            ->get();
+            ->paginate(15);
 
         return view('employee.lpj.index', compact('employee', 'lpjs'));
     }

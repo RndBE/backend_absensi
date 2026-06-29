@@ -79,6 +79,9 @@
             </a>
         </div>
         @endforelse
+        @if($lpjs->hasPages())
+            <div class="px-5 py-3 border-t border-gray-100">{{ $lpjs->links() }}</div>
+        @endif
     </section>
 </div>
 @endsection

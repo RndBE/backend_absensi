@@ -130,7 +130,7 @@ class ProfileController extends Controller
         $requests = DataChangeRequest::where('employee_id', $employee->id)
             ->with('attachments')
             ->orderByDesc('created_at')
-            ->get();
+            ->paginate(15);
 
         return view('employee.profile.data-change', [
             'employee' => $employee,

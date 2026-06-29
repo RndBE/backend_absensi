@@ -179,12 +179,14 @@ class PayslipController extends Controller
 
     public function show($id)
     {
+        $admin = Employee::find(session('admin_id'));
         $detail = PayrollRunDetail::with([
             'employee',
             'employee.department:id,name',
             'employee.activePayroll',
             'payrollRun:id,period,status',
-        ])->findOrFail($id);
+        ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+          ->findOrFail($id);
 
         $company  = Company::find($detail->employee->company_id);
         $bpjsData = $this->buildBpjsData($detail);
@@ -195,12 +197,14 @@ class PayslipController extends Controller
 
     public function downloadPdf($id)
     {
+        $admin = Employee::find(session('admin_id'));
         $detail = PayrollRunDetail::with([
             'employee',
             'employee.department:id,name',
             'employee.activePayroll',
             'payrollRun:id,period,status',
-        ])->findOrFail($id);
+        ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+          ->findOrFail($id);
 
         $company  = Company::find($detail->employee->company_id);
         $bpjsData = $this->buildBpjsData($detail);

@@ -24,7 +24,8 @@ class BudgetPaymentController extends Controller
         ]);
 
         $admin = Employee::find(session('admin_id'));
-        $budgetRequest = BudgetRequest::findOrFail($budgetRequestId);
+        $budgetRequest = BudgetRequest::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($budgetRequestId);
 
         $proofPath = null;
         if ($request->hasFile('payment_proof')) {
@@ -60,6 +61,8 @@ class BudgetPaymentController extends Controller
             return back()->with('error', 'Hanya superadmin yang dapat menghapus pembayaran.');
         }
 
+        BudgetRequest::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($budgetRequestId);
         $payment = BudgetPayment::where('budget_request_id', $budgetRequestId)->findOrFail($paymentId);
 
         // Revert status if this was the only payment

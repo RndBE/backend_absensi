@@ -56,6 +56,7 @@ class ApprovalController extends Controller
         // Data change requests: only visible to superadmin
         if ($admin->role === 'superadmin') {
             $dataChange = DataChangeRequest::whereIn('status', ['pending', 'in_review'])
+                ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
                 ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'attachments'])
                 ->orderBy('created_at', 'desc')->get();
         } else {
@@ -70,7 +71,9 @@ class ApprovalController extends Controller
         $admin = Employee::find(session('admin_id'));
         $modelClass = $this->resolveModel($type);
         $typeLabel = $this->typeLabel($type);
-        $item = $modelClass::with('employee')->findOrFail($id);
+        $item = $modelClass::with('employee')
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
 
         // Data change requests: only superadmin can approve
         if ($type === 'data-change') {
@@ -190,7 +193,9 @@ class ApprovalController extends Controller
         $admin = Employee::find(session('admin_id'));
         $modelClass = $this->resolveModel($type);
         $typeLabel = $this->typeLabel($type);
-        $item = $modelClass::with('employee')->findOrFail($id);
+        $item = $modelClass::with('employee')
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
 
         // Data change requests: only superadmin can reject
         if ($type === 'data-change') {

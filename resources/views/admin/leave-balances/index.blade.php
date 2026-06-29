@@ -20,6 +20,7 @@
     @php
         $leaveFilterParams = array_filter([
             'department_id' => $departmentId,
+            'search' => $search,
         ], fn($value) => filled($value));
     @endphp
     <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
@@ -38,8 +39,8 @@
                     <option value="{{ $dept->id }}" {{ $departmentId == $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
                 @endforeach
             </select>
-            <input type="search" id="leaveBalanceSearch" value="{{ $search }}" placeholder="Cari nama..." autocomplete="off" class="px-3 py-1.5 text-[12px] border border-gray-300 rounded-lg outline-none w-[160px] focus:border-indigo-500">
-            @if(request()->filled('department_id'))
+            <input type="search" name="search" value="{{ $search }}" placeholder="Cari nama..." autocomplete="off" class="px-3 py-1.5 text-[12px] border border-gray-300 rounded-lg outline-none w-[160px] focus:border-indigo-500">
+            @if($departmentId || $search)
                 <a href="{{ route('admin.leave-balances.index', ['year' => $year]) }}" class="px-3 py-1.5 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">Reset</a>
             @endif
         </form>
@@ -62,9 +63,8 @@
                 </tr>
             </thead>
             <tbody>
-                @forelse($balances as $empId => $empBalances)
-                @php $emp = $empBalances->first()->employee; @endphp
-                <tr class="border-b border-gray-50 hover:bg-gray-50/30 transition-all" data-fuse-row="leave-balance" data-search="{{ e($emp->full_name . ' ' . $emp->employee_code . ' ' . ($emp->department->name ?? '')) }}">
+                @forelse($employees as $emp)
+                <tr class="border-b border-gray-50 hover:bg-gray-50/30 transition-all">
                     <td class="py-2.5 px-4">
                         <div class="flex items-center gap-2.5">
                             <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($emp->full_name, 0, 1) }}</div>
@@ -76,7 +76,7 @@
                     </td>
                     <td class="py-2.5 px-4 text-[12px] text-gray-500">{{ $emp->department->name ?? '-' }}</td>
                     @foreach($leaveTypes as $lt)
-                    @php $bal = $empBalances->where('leave_type_id', $lt->id)->first(); @endphp
+                    @php $bal = $emp->leaveBalances->where('leave_type_id', $lt->id)->first(); @endphp
                     <td class="py-2.5 px-2 text-center">
                         @if($bal)
                             <div class="flex items-center justify-center gap-1">
@@ -95,7 +95,7 @@
                     </td>
                     @endforeach
                     <td class="py-2.5 px-4 text-center">
-                        <button onclick="openEditBalance({{ $empId }}, '{{ $emp->full_name }}', {{ json_encode($empBalances->map(fn($b) => ['id' => $b->id, 'leave_type_id' => $b->leave_type_id, 'total_days' => $b->total_days, 'carry_over' => $b->carry_over, 'used_days' => $b->used_days])->values()) }})"
+                        <button onclick="openEditBalance({{ $emp->id }}, '{{ $emp->full_name }}', {{ json_encode($emp->leaveBalances->map(fn($b) => ['id' => $b->id, 'leave_type_id' => $b->leave_type_id, 'total_days' => $b->total_days, 'carry_over' => $b->carry_over, 'used_days' => $b->used_days])->values()) }})"
                             class="px-2.5 py-1.5 text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer">
                             <span class="material-symbols-outlined text-[14px] align-text-bottom">edit</span> Adjust
                         </button>
@@ -104,17 +104,24 @@
                 @empty
                 <tr>
                     <td colspan="{{ 3 + count($leaveTypes) }}" class="py-10 text-center text-gray-400 text-sm">
-                        Belum ada saldo cuti untuk tahun {{ $year }}.
-                        <br><span class="text-[11px]">Klik tombol <strong>"Generate Saldo"</strong> di atas untuk membuat.</span>
+                        @if($search || $departmentId)
+                            Tidak ada karyawan yang cocok dengan filter.
+                        @else
+                            Belum ada saldo cuti untuk tahun {{ $year }}.
+                            <br><span class="text-[11px]">Klik tombol <strong>"Generate Saldo"</strong> di atas untuk membuat.</span>
+                        @endif
                     </td>
                 </tr>
                 @endforelse
-                <tr id="leaveBalanceFuseEmpty" class="hidden">
-                    <td colspan="{{ 3 + count($leaveTypes) }}" class="py-10 text-center text-gray-400 text-sm">Tidak ada data yang cocok dengan pencarian.</td>
-                </tr>
             </tbody>
         </table>
     </div>
+
+    @if($employees->hasPages())
+    <div class="px-5 py-4 border-t border-gray-100">
+        {{ $employees->links() }}
+    </div>
+    @endif
 </div>
 
 {{-- Edit Balance Offcanvas --}}
@@ -132,82 +139,68 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 <script>
 const leaveTypes = @json($leaveTypes->pluck('name', 'id'));
-const leaveBalanceSearch = document.getElementById('leaveBalanceSearch');
-const leaveBalanceEmpty = document.getElementById('leaveBalanceFuseEmpty');
-const leaveBalanceItems = Array.from(document.querySelectorAll('[data-fuse-row="leave-balance"]')).map((row, index) => ({
-    index,
-    row,
-    text: row.dataset.search || '',
-}));
-const leaveBalanceFuse = window.Fuse ? new Fuse(leaveBalanceItems, {
-    keys: ['text'],
-    threshold: 0.45,
-    ignoreLocation: true,
-}) : null;
 
-function applyLeaveBalanceSearch() {
-    if (!leaveBalanceSearch) return;
+// Pencarian otomatis: submit setelah berhenti mengetik (tanpa perlu tekan Enter),
+// tetap menjaga pagination server-side.
+(function () {
+    const input = document.querySelector('form input[name="search"]');
+    if (!input) return;
 
-    const query = leaveBalanceSearch.value.trim();
-    let visibleIndexes = null;
-
-    if (query) {
-        const matches = leaveBalanceFuse
-            ? leaveBalanceFuse.search(query).map(result => result.item.index)
-            : leaveBalanceItems.filter(item => item.text.toLowerCase().includes(query.toLowerCase())).map(item => item.index);
-        visibleIndexes = new Set(matches);
-    }
-
-    let visibleCount = 0;
-    leaveBalanceItems.forEach(item => {
-        const visible = !visibleIndexes || visibleIndexes.has(item.index);
-        item.row.classList.toggle('hidden', !visible);
-        if (visible) visibleCount++;
+    let timer;
+    input.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(() => input.form.submit(), 450);
     });
 
-    if (leaveBalanceEmpty) {
-        leaveBalanceEmpty.classList.toggle('hidden', !query || visibleCount > 0);
+    // Setelah halaman reload, kembalikan fokus & posisi kursor ke akhir teks.
+    if (input.value) {
+        input.focus();
+        const val = input.value;
+        input.value = '';
+        input.value = val;
     }
-}
-
-if (leaveBalanceSearch) {
-    leaveBalanceSearch.addEventListener('input', applyLeaveBalanceSearch);
-    applyLeaveBalanceSearch();
-}
+})();
 
 function openEditBalance(empId, name, balances) {
     document.getElementById('balEmpName').textContent = name;
     const container = document.getElementById('balanceForms');
     container.innerHTML = '';
 
+    let cards = '';
     balances.forEach(bal => {
         const typeName = leaveTypes[bal.leave_type_id] || 'Unknown';
-        container.innerHTML += `
-            <form action="/admin/leave-balances/${bal.id}" method="POST" class="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <input type="hidden" name="_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="_method" value="PUT">
+        cards += `
+            <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <h4 class="text-[13px] font-bold text-gray-800 mb-3">${typeName}</h4>
-                <div class="grid grid-cols-3 gap-3 mb-3">
+                <div class="grid grid-cols-3 gap-3">
                     <div>
                         <label class="block text-[10px] font-semibold text-gray-500 mb-1">Jatah</label>
-                        <input type="number" name="total_days" value="${bal.total_days}" min="0" class="w-full px-2 py-2 text-[13px] text-center border border-gray-300 rounded-md outline-none focus:border-indigo-500">
+                        <input type="number" name="balances[${bal.id}][total_days]" value="${bal.total_days}" min="0" class="w-full px-2 py-2 text-[13px] text-center border border-gray-300 rounded-md outline-none focus:border-indigo-500">
                     </div>
                     <div>
                         <label class="block text-[10px] font-semibold text-gray-500 mb-1">Carry Over</label>
-                        <input type="number" name="carry_over" value="${bal.carry_over}" min="0" class="w-full px-2 py-2 text-[13px] text-center border border-gray-300 rounded-md outline-none focus:border-indigo-500">
+                        <input type="number" name="balances[${bal.id}][carry_over]" value="${bal.carry_over}" min="0" class="w-full px-2 py-2 text-[13px] text-center border border-gray-300 rounded-md outline-none focus:border-indigo-500">
                     </div>
                     <div>
                         <label class="block text-[10px] font-semibold text-gray-500 mb-1">Terpakai</label>
-                        <input type="number" name="used_days" value="${bal.used_days}" min="0" class="w-full px-2 py-2 text-[13px] text-center border border-gray-300 rounded-md outline-none focus:border-indigo-500">
+                        <input type="number" name="balances[${bal.id}][used_days]" value="${bal.used_days}" min="0" class="w-full px-2 py-2 text-[13px] text-center border border-gray-300 rounded-md outline-none focus:border-indigo-500">
                     </div>
                 </div>
-                <button type="submit" class="w-full px-3 py-2 text-[11px] font-semibold text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-all cursor-pointer"><span class="material-symbols-outlined text-[14px] align-text-bottom">save</span> Simpan</button>
-            </form>
+            </div>
         `;
     });
+
+    container.innerHTML = `
+        <form action="{{ route('admin.leave-balances.update-bulk') }}" method="POST" class="space-y-4">
+            <input type="hidden" name="_token" value="{{ csrf_token() }}">
+            ${cards}
+            <button type="submit" class="w-full px-3 py-2.5 text-[12px] font-semibold text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-all cursor-pointer">
+                <span class="material-symbols-outlined text-[14px] align-text-bottom">save</span> Simpan Semua
+            </button>
+        </form>
+    `;
 
     const offcanvas = document.getElementById('editBalanceOff');
     const panel = document.getElementById('editBalancePanel');

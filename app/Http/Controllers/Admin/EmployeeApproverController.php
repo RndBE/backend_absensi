@@ -39,7 +39,8 @@ class EmployeeApproverController extends Controller
             'chains.lpj.*' => 'integer|exists:employees,id',
         ]);
 
-        $employee = Employee::findOrFail($employeeId);
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)->findOrFail($employeeId);
         $chains = $request->chains;
 
         foreach (['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'] as $type) {

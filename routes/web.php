@@ -203,6 +203,7 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Leave Balances
     Route::get('/leave-balances', [LeaveBalanceController::class, 'index'])->name('leave-balances.index');
     Route::post('/leave-balances/generate', [LeaveBalanceController::class, 'generate'])->name('leave-balances.generate');
+    Route::post('/leave-balances/bulk', [LeaveBalanceController::class, 'updateBulk'])->name('leave-balances.update-bulk');
     Route::put('/leave-balances/{leaveBalance}', [LeaveBalanceController::class, 'update'])->name('leave-balances.update');
 
     // Schedules

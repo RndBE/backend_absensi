@@ -32,12 +32,14 @@ class EmployeePayrollController extends Controller
 
     public function edit($id)
     {
-        $employee = Employee::with([
-            'department:id,name',
-            'activePayroll',
-            'payroll' => fn($q) => $q->orderBy('effective_date', 'desc'),
-            'payrollComponents' => fn($q) => $q->where('is_active', true)->with('component'),
-        ])->findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)
+            ->with([
+                'department:id,name',
+                'activePayroll',
+                'payroll' => fn($q) => $q->orderBy('effective_date', 'desc'),
+                'payrollComponents' => fn($q) => $q->where('is_active', true)->with('component'),
+            ])->findOrFail($id);
 
         $components = PayrollComponent::where('is_active', true)->orderBy('type')->orderBy('name')->get();
 
@@ -46,7 +48,8 @@ class EmployeePayrollController extends Controller
 
     public function updatePayroll(Request $request, $id)
     {
-        $employee = Employee::findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $employee = Employee::where('company_id', $admin->company_id)->findOrFail($id);
 
         $request->validate([
             'basic_salary' => 'required|numeric|min:0',
@@ -84,6 +87,9 @@ class EmployeePayrollController extends Controller
 
     public function assignComponent(Request $request, $id)
     {
+        $admin = Employee::find(session('admin_id'));
+        Employee::where('company_id', $admin->company_id)->findOrFail($id);
+
         $request->validate([
             'payroll_component_id' => 'required|exists:payroll_components,id',
             'amount' => 'required|numeric|min:0',
@@ -104,6 +110,8 @@ class EmployeePayrollController extends Controller
 
     public function updateComponent(Request $request, $employeeId, $componentId)
     {
+        $admin = Employee::find(session('admin_id'));
+        Employee::where('company_id', $admin->company_id)->findOrFail($employeeId);
         $epc = EmployeePayrollComponent::where('employee_id', $employeeId)->findOrFail($componentId);
 
         $request->validate([
@@ -118,6 +126,8 @@ class EmployeePayrollController extends Controller
 
     public function toggleComponent($employeeId, $componentId)
     {
+        $admin = Employee::find(session('admin_id'));
+        Employee::where('company_id', $admin->company_id)->findOrFail($employeeId);
         $epc = EmployeePayrollComponent::where('employee_id', $employeeId)->findOrFail($componentId);
         $epc->update(['is_active' => !$epc->is_active]);
         return redirect()->route('admin.employee-payrolls.edit', $employeeId)->with('success', 'Status komponen berhasil diubah.');
@@ -134,8 +144,13 @@ class EmployeePayrollController extends Controller
             'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
+        $admin = Employee::find(session('admin_id'));
+        $allowedIds = Employee::where('company_id', $admin->company_id)
+            ->whereIn('id', $request->employee_ids)
+            ->pluck('id');
+
         $count = 0;
-        foreach ($request->employee_ids as $empId) {
+        foreach ($allowedIds as $empId) {
             EmployeePayrollComponent::create([
                 'employee_id' => $empId,
                 'payroll_component_id' => $request->payroll_component_id,

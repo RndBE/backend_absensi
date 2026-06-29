@@ -156,7 +156,7 @@
         </div>
         <div class="px-5 py-5">
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jumlah hari perjalanan</label>
-            <input type="number" id="mealDaysInput" min="1" step="1" value="1" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+            <input type="number" id="mealDaysInput" min="1" step="1" value="1" class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
             <p id="mealDaysPreview" class="text-[11px] text-gray-400 mt-1.5"></p>
         </div>
         <div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">

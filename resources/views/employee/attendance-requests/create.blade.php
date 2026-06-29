@@ -16,26 +16,26 @@
         @csrf
         <div>
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Tanggal</label>
-            <input type="date" name="date" value="{{ old('date', now()->toDateString()) }}" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+            <input type="date" name="date" value="{{ old('date', now()->toDateString()) }}" required class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
             @error('date')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Clock In</label>
-                <input type="time" name="clock_in" value="{{ old('clock_in') }}" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="time" name="clock_in" value="{{ old('clock_in') }}" class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
                 @error('clock_in')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
             </div>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Clock Out</label>
-                <input type="time" name="clock_out" value="{{ old('clock_out') }}" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="time" name="clock_out" value="{{ old('clock_out') }}" class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
                 @error('clock_out')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
             </div>
         </div>
 
         <div>
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Alasan</label>
-            <textarea name="reason" rows="4" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 resize-none" placeholder="Tuliskan alasan pengajuan absensi">{{ old('reason') }}</textarea>
+            <textarea name="reason" rows="4" required class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light] resize-none" placeholder="Tuliskan alasan pengajuan absensi">{{ old('reason') }}</textarea>
             @error('reason')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
         </div>
 

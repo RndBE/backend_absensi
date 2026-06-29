@@ -294,21 +294,21 @@
             </p>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Mulai</label>
-                <input type="time" name="planned_start" value="{{ old('planned_start') }}" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="time" name="planned_start" value="{{ old('planned_start') }}" class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
             </div>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Selesai</label>
-                <input type="time" name="planned_end" value="{{ old('planned_end') }}" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="time" name="planned_end" value="{{ old('planned_end') }}" class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
             </div>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Istirahat (menit)</label>
-                <input type="number" name="break_duration" value="{{ old('break_duration', 0) }}" min="0" class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="number" name="break_duration" value="{{ old('break_duration', 0) }}" min="0" class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
             </div>
         </div>
 
         <div>
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Alasan</label>
-            <textarea name="reason" rows="4" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 resize-none" placeholder="Tuliskan alasan lembur">{{ old('reason') }}</textarea>
+            <textarea name="reason" rows="4" required class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light] resize-none" placeholder="Tuliskan alasan lembur">{{ old('reason') }}</textarea>
         </div>
 
         <button type="submit" class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[13px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm">

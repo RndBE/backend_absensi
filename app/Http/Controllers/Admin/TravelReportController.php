@@ -169,7 +169,9 @@ class TravelReportController extends Controller
 
     public function edit($id)
     {
+        $admin = Employee::find(session('admin_id'));
         $report = TravelReport::with(['employee', 'budgetRequest', 'activities.documents'])
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
             ->findOrFail($id);
 
         if (!in_array($report->status, ['pending', 'in_review'])) {
@@ -191,7 +193,9 @@ class TravelReportController extends Controller
 
     public function update(Request $request, $id)
     {
-        $report = TravelReport::findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $report = TravelReport::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
 
         if (!in_array($report->status, ['pending', 'in_review'])) {
             return redirect()->route('admin.travel-reports.show', $id)
@@ -299,6 +303,7 @@ class TravelReportController extends Controller
 
     public function show($id)
     {
+        $admin = Employee::find(session('admin_id'));
         $report = TravelReport::with([
             'employee:id,full_name,photo,department_id,position,job_level',
             'employee.department:id,name',
@@ -306,13 +311,15 @@ class TravelReportController extends Controller
             'activities.documents',
             'documents',
             'approvalLogs.approver:id,full_name,photo',
-        ])->findOrFail($id);
+        ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+          ->findOrFail($id);
 
         return view('admin.travel-reports.show', compact('report'));
     }
 
     public function print($id)
     {
+        $admin = Employee::find(session('admin_id'));
         $report = TravelReport::with([
             'employee:id,full_name,photo,signature,department_id,position,job_level',
             'employee.department:id,name',
@@ -320,7 +327,8 @@ class TravelReportController extends Controller
             'activities.documents',
             'documents',
             'approvalLogs.approver:id,full_name,signature',
-        ])->findOrFail($id);
+        ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+          ->findOrFail($id);
 
         return view('admin.travel-reports.print', compact('report'));
     }
@@ -332,7 +340,8 @@ class TravelReportController extends Controller
             return back()->with('error', 'Tidak memiliki izin untuk menghapus LHP.');
         }
 
-        $report = TravelReport::findOrFail($id);
+        $report = TravelReport::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
 
         foreach ($report->documents as $doc) {
             Storage::disk('public')->delete($doc->file_path);

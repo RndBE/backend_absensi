@@ -47,6 +47,7 @@ class BudgetRequestController extends Controller
 
     public function show($id)
     {
+        $admin = Employee::find(session('admin_id'));
         $budgetRequest = BudgetRequest::with([
             'employee:id,full_name,photo,department_id,position,job_level',
             'employee.department:id,name',
@@ -55,7 +56,8 @@ class BudgetRequestController extends Controller
             'participants:id,full_name,photo',
             'approvalLogs.approver:id,full_name,photo',
             'payments.processor:id,full_name',
-        ])->findOrFail($id);
+        ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+          ->findOrFail($id);
 
         return view('admin.budget-requests.show', compact('budgetRequest'));
     }
@@ -67,7 +69,8 @@ class BudgetRequestController extends Controller
             return back()->with('error', 'Hanya superadmin yang dapat menghapus pengajuan.');
         }
 
-        $budgetRequest = BudgetRequest::findOrFail($id);
+        $budgetRequest = BudgetRequest::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
 
         // Delete related
         $budgetRequest->items()->each(fn($item) => $item->attachments()->delete());

@@ -99,22 +99,18 @@ class LpjExcelExporterTest extends TestCase
         ]));
 
         $sheet = LpjExcelExporter::build($lpj)->getActiveSheet();
-        $summaryRow = null;
 
-        for ($row = 1; $row <= $sheet->getHighestRow(); $row++) {
-            if ($sheet->getCell("C{$row}")->getValue() === 'OVER BUDGET') {
-                $summaryRow = $row;
-                break;
-            }
-        }
+        // Label OVER BUDGET kini diberi keterangan kategori, jadi dicari via prefix.
+        $summaryRow = $this->findRowByColumnPrefix($sheet, 'C', 'OVER BUDGET');
 
         $this->assertNotNull($summaryRow);
         $this->assertSame(-180000.0, (float) $sheet->getCell("E{$summaryRow}")->getValue());
         $this->assertSame('SALDO', $sheet->getCell('C' . ($summaryRow + 1))->getValue());
-        $this->assertSame(-180000.0, (float) $sheet->getCell('E' . ($summaryRow + 1))->getValue());
+        // Saldo = pemasukan 200k - pengeluaran 380k + over 180k = 0 (over di-reimburse terpisah).
+        $this->assertSame(0.0, (float) $sheet->getCell('E' . ($summaryRow + 1))->getValue());
     }
 
-    public function test_export_separates_income_budget_and_realization_expense(): void
+    public function test_export_shows_summary_box_and_expense_detail(): void
     {
         $budgetRequest = new BudgetRequest([
             'title' => 'Perjalanan Jakarta',
@@ -166,40 +162,46 @@ class LpjExcelExporterTest extends TestCase
 
         $sheet = LpjExcelExporter::build($lpj)->getActiveSheet();
 
-        $tolIncomeRow = $this->findRowByColumnValue($sheet, 'B', 'Tol Jogja-Jakarta');
-        $mealIncomeRow = $this->findRowByColumnValue($sheet, 'B', 'Uang makan');
+        // ── Kotak ringkasan (label di kolom C, nilai di kolom E) ──
+        $pemasukanRow = $this->findRowByColumnValue($sheet, 'C', 'TOTAL PEMASUKAN');
+        $this->assertNotNull($pemasukanRow);
+        $this->assertSame(200000.0, (float) $sheet->getCell("E{$pemasukanRow}")->getValue());
 
-        $this->assertNotNull($tolIncomeRow);
-        $this->assertNotNull($mealIncomeRow);
-        $this->assertSame('Transportasi', $sheet->getCell("D{$tolIncomeRow}")->getValue());
-        $this->assertSame(150000.0, (float) $sheet->getCell("E{$tolIncomeRow}")->getValue());
-        $this->assertSame('Makan', $sheet->getCell("D{$mealIncomeRow}")->getValue());
-        $this->assertSame(50000.0, (float) $sheet->getCell("E{$mealIncomeRow}")->getValue());
+        $pengeluaranRow = $this->findRowByColumnValue($sheet, 'C', 'TOTAL PENGELUARAN');
+        $this->assertNotNull($pengeluaranRow);
+        $this->assertSame(380000.0, (float) $sheet->getCell("E{$pengeluaranRow}")->getValue());
 
-        $tolExpenseRow = $this->findRowByColumnValue($sheet, 'D', 'Tol Jogja-Jakarta');
-        $mealExpenseRow = $this->findRowByColumnValue($sheet, 'D', 'Uang makan');
+        $overRow = $this->findRowByColumnPrefix($sheet, 'C', 'OVER BUDGET');
+        $this->assertNotNull($overRow);
+        $this->assertSame(-180000.0, (float) $sheet->getCell("E{$overRow}")->getValue());
 
-        $this->assertNotNull($tolExpenseRow);
-        $this->assertNotNull($mealExpenseRow);
-        $this->assertSame('Transportasi', $sheet->getCell("C{$tolExpenseRow}")->getValue());
-        $this->assertSame(300000.0, (float) $sheet->getCell("E{$tolExpenseRow}")->getValue());
-        $this->assertSame('Makan', $sheet->getCell("C{$mealExpenseRow}")->getValue());
-        $this->assertSame(80000.0, (float) $sheet->getCell("E{$mealExpenseRow}")->getValue());
-
-        $totalRow = $this->findRowByColumnValue($sheet, 'A', 'TOTAL PEMASUKAN');
-        $this->assertNotNull($totalRow);
-        $this->assertSame(200000.0, (float) $sheet->getCell("E{$totalRow}")->getValue());
-
-        $summaryRow = $this->findRowByColumnValue($sheet, 'C', 'OVER BUDGET');
-        $this->assertNotNull($summaryRow);
-        $this->assertSame(-180000.0, (float) $sheet->getCell("E{$summaryRow}")->getValue());
-        $this->assertSame(-180000.0, (float) $sheet->getCell('E' . ($summaryRow + 1))->getValue());
+        // ── Rincian PENGELUARAN: uraian item di kolom E, kategori di C, realisasi di D ──
+        $tolRow = $this->findRowByColumnValue($sheet, 'E', 'Tol Jogja-Jakarta');
+        $mealRow = $this->findRowByColumnValue($sheet, 'E', 'Uang makan');
+        $this->assertNotNull($tolRow);
+        $this->assertNotNull($mealRow);
+        $this->assertSame('Transportasi', $sheet->getCell("C{$tolRow}")->getValue());
+        $this->assertSame(300000.0, (float) $sheet->getCell("D{$tolRow}")->getValue());
+        $this->assertSame('Makan', $sheet->getCell("C{$mealRow}")->getValue());
+        $this->assertSame(80000.0, (float) $sheet->getCell("D{$mealRow}")->getValue());
     }
 
     private function findRowByColumnValue($sheet, string $column, string $value): ?int
     {
         for ($row = 1; $row <= $sheet->getHighestRow(); $row++) {
             if ($sheet->getCell("{$column}{$row}")->getValue() === $value) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    private function findRowByColumnPrefix($sheet, string $column, string $prefix): ?int
+    {
+        for ($row = 1; $row <= $sheet->getHighestRow(); $row++) {
+            $cell = $sheet->getCell("{$column}{$row}")->getValue();
+            if (is_string($cell) && str_starts_with($cell, $prefix)) {
                 return $row;
             }
         }

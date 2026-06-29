@@ -23,7 +23,7 @@
             <tbody>
                 @forelse($attendances as $i => $att)
                 <tr class="hover:bg-gray-50 transition-colors cursor-pointer" onclick="openDetail({{ $att->id }})">
-                    <td class="px-4 py-3.5 text-[13.5px] text-gray-500 border-b border-gray-100">{{ $i + 1 }}</td>
+                    <td class="px-4 py-3.5 text-[13.5px] text-gray-500 border-b border-gray-100">{{ $attendances->firstItem() + $i }}</td>
                     <td class="px-4 py-3.5 border-b border-gray-100">
                         <div class="flex items-center gap-2.5">
                             @if($att->employee->photo)
@@ -86,6 +86,9 @@
             </tbody>
         </table>
     </div>
+    @if($attendances->hasPages())
+        <div class="px-4 py-3 border-t border-gray-100">{{ $attendances->links() }}</div>
+    @endif
 </div>
 
 {{-- Detail Offcanvas --}}

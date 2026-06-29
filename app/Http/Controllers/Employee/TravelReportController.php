@@ -26,7 +26,7 @@ class TravelReportController extends Controller
             'reports' => TravelReport::with(['budgetRequest:id,title,total_amount', 'activities'])
                 ->where('employee_id', $employee->id)
                 ->latest()
-                ->get(),
+                ->paginate(15),
         ]);
     }
 

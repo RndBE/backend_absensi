@@ -26,7 +26,7 @@
                 <div>
                     <label class="block text-[12px] font-semibold text-gray-600 mb-1">Pilih Pengajuan Anggaran <span class="text-red-500">*</span></label>
                     <select name="budget_request_id" id="budget_request_id" required
-                        class="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none bg-white">
+                        class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none [color-scheme:light]">
                         <option value="">-- Pilih Anggaran --</option>
                         @foreach($availableRequests as $br)
                         <option value="{{ $br->id }}"
@@ -42,12 +42,12 @@
                 <div>
                     <label class="block text-[12px] font-semibold text-gray-600 mb-1">Nomor LPJ</label>
                     <input type="text" name="nomor_lpj" value="{{ old('nomor_lpj') }}" placeholder="contoh: LPJ/2026/001"
-                        class="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none">
+                        class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none [color-scheme:light]">
                 </div>
                 <div>
                     <label class="block text-[12px] font-semibold text-gray-600 mb-1">Catatan</label>
                     <textarea name="catatan" rows="2" placeholder="Catatan tambahan (opsional)"
-                        class="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none">{{ old('catatan') }}</textarea>
+                        class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none [color-scheme:light]">{{ old('catatan') }}</textarea>
                 </div>
             </div>
         </div>
@@ -196,21 +196,21 @@ function addRow(data = {}) {
         <td class="py-2 px-3 text-center text-gray-400 row-no"></td>
         <td class="py-2 px-3">
             <select name="items[${i}][kategori]" required
-                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none bg-white min-w-[130px]">
+                class="w-full px-2 py-1.5 text-[12px] bg-white text-gray-900 border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none [color-scheme:light] min-w-[130px]">
                 ${categoryOptions(data.kategori || '')}
             </select>
         </td>
         <td class="py-2 px-3">
             <textarea name="items[${i}][uraian]" rows="2" required
-                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none min-w-[160px] resize-y align-top" placeholder="Uraian pengeluaran">${data.uraian || ''}</textarea>
+                class="w-full px-2 py-1.5 text-[12px] bg-white text-gray-900 border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none [color-scheme:light] min-w-[160px] resize-y align-top" placeholder="Uraian pengeluaran">${data.uraian || ''}</textarea>
         </td>
         <td class="py-2 px-3">
             <input type="text" name="items[${i}][satuan]" value="${data.satuan || ''}"
-                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none min-w-[70px]" placeholder="Satuan">
+                class="w-full px-2 py-1.5 text-[12px] bg-white text-gray-900 border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none [color-scheme:light] min-w-[70px]" placeholder="Satuan">
         </td>
         <td class="py-2 px-3">
             <input type="number" name="items[${i}][volume]" value="${data.volume || 1}" min="0" step="any"
-                class="w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none text-center" style="min-width:60px">
+                class="w-full px-2 py-1.5 text-[12px] bg-white text-gray-900 border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none [color-scheme:light] text-center" style="min-width:60px">
         </td>
         <td class="py-2 px-3">
             <input type="number" name="items[${i}][realisasi]" value="${data.realisasi || 0}" min="0" step="any" required

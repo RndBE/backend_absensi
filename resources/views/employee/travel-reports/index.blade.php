@@ -54,6 +54,9 @@
                 </tbody>
             </table>
         </div>
+        @if($reports->hasPages())
+            <div class="px-4 py-3 border-t border-gray-100">{{ $reports->links() }}</div>
+        @endif
     </section>
 </div>
 @endsection

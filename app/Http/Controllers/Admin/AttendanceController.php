@@ -20,7 +20,7 @@ class AttendanceController extends Controller
             ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
             ->where('date', $today)
             ->orderBy('clock_in', 'desc')
-            ->get();
+            ->paginate(50);
 
         return view('admin.attendance.realtime', compact('attendances'));
     }

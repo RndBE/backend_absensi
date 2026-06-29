@@ -51,6 +51,7 @@ class PayrollAdjustmentController extends Controller
         ]);
 
         $admin = Employee::find(session('admin_id'));
+        Employee::where('company_id', $admin->company_id)->findOrFail($request->employee_id);
 
         PayrollAdjustment::create([
             ...$request->only(['employee_id', 'type', 'earning_type', 'name', 'amount', 'reference_period', 'target_period', 'notes']),
@@ -136,7 +137,9 @@ class PayrollAdjustmentController extends Controller
 
     public function cancel($id)
     {
-        $adj = PayrollAdjustment::findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $adj = PayrollAdjustment::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
         if ($adj->status !== 'pending') {
             return back()->with('error', 'Hanya adjustment pending yang bisa dibatalkan.');
         }
@@ -153,6 +156,7 @@ class PayrollAdjustmentController extends Controller
         ]);
 
         $admin = Employee::find(session('admin_id'));
+        Employee::where('company_id', $admin->company_id)->findOrFail($request->employee_id);
         $empId = $request->employee_id;
 
         // Get the employee's current and previous salary

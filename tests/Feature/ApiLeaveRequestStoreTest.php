@@ -172,17 +172,24 @@ class ApiLeaveRequestStoreTest extends TestCase
         $this->assertSame('Cuti Tahunan', $data[0]['name']);
     }
 
-    public function test_api_leave_request_rejects_leave_type_without_balance(): void
+    public function test_api_leave_request_rejects_cuti_tahunan_without_balance(): void
     {
+        // Aturan bisnis: hanya "Cuti Tahunan" yang butuh saldo. Tanpa saldo → ditolak 422.
         $this->seedEmployee();
-        $this->seedLeaveTypesWithAnnualBalanceOnly();
+        DB::table('leave_types')->insert([
+            'id' => 1,
+            'name' => 'Cuti Tahunan',
+            'max_days' => 12,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $request = Request::create('/api/leave/requests', 'POST', [
-            'leave_type_id' => 2,
+            'leave_type_id' => 1,
             'start_date' => '2026-06-01',
             'end_date' => '2026-06-02',
             'total_days' => 2,
-            'reason' => 'Cuti melahirkan',
+            'reason' => 'Cuti tahunan tanpa saldo',
         ]);
         $request->setUserResolver(fn () => Employee::findOrFail(1));
 
@@ -194,7 +201,33 @@ class ApiLeaveRequestStoreTest extends TestCase
         $this->assertSame('Saldo cuti belum tersedia.', $payload['message']);
         $this->assertDatabaseMissing('leave_requests', [
             'employee_id' => 1,
+            'leave_type_id' => 1,
+        ]);
+    }
+
+    public function test_api_leave_request_allows_non_quota_type_without_balance(): void
+    {
+        // Aturan bisnis: izin/cuti selain "Cuti Tahunan" bebas saldo → boleh dibuat.
+        $this->seedEmployee();
+        $this->seedLeaveTypesWithAnnualBalanceOnly();
+
+        $request = Request::create('/api/leave/requests', 'POST', [
+            'leave_type_id' => 2, // Cuti Melahirkan (tanpa saldo)
+            'start_date' => '2026-06-01',
+            'end_date' => '2026-06-02',
+            'total_days' => 2,
+            'reason' => 'Cuti melahirkan',
+        ]);
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new LeaveController)->store($request);
+        $payload = $response->getData(true);
+
+        $this->assertTrue($payload['success']);
+        $this->assertDatabaseHas('leave_requests', [
+            'employee_id' => 1,
             'leave_type_id' => 2,
+            'status' => 'pending',
         ]);
     }
 

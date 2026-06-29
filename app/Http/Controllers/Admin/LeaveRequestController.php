@@ -178,6 +178,7 @@ class LeaveRequestController extends Controller
 
     public function show($id)
     {
+        $admin = Employee::find(session('admin_id'));
         $leave = LeaveRequest::with([
             'employee:id,full_name,photo,department_id,job_level,approver_id',
             'employee.department:id,name',
@@ -186,7 +187,8 @@ class LeaveRequestController extends Controller
             'attachments',
             'approvalLogs' => fn($q) => $q->orderBy('created_at'),
             'approvalLogs.approver:id,full_name,position',
-        ])->findOrFail($id);
+        ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+          ->findOrFail($id);
 
         // Build the approval chain for this employee
         $chain = $this->buildApprovalChain($leave->employee);
@@ -196,7 +198,9 @@ class LeaveRequestController extends Controller
 
     public function destroy($id)
     {
-        $leave = LeaveRequest::findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $leave = LeaveRequest::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
 
         if ($leave->status !== 'pending') {
             return back()->with('error', 'Hanya bisa hapus pengajuan dengan status pending.');

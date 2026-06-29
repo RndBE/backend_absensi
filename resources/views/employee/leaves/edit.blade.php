@@ -17,7 +17,7 @@
         @method('PUT')
         <div>
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Jenis Cuti / Izin</label>
-            <select name="leave_type_id" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+            <select name="leave_type_id" required class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
                 <option value="">Pilih jenis</option>
                 @foreach($leaveTypes as $type)
                     @php $balance = $balances->get($type->id); @endphp
@@ -32,21 +32,21 @@
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Mulai</label>
-                <input type="date" id="leaveStartDate" name="start_date" value="{{ old('start_date', $leave->start_date?->format('Y-m-d')) }}" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="date" id="leaveStartDate" name="start_date" value="{{ old('start_date', $leave->start_date?->format('Y-m-d')) }}" required class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
             </div>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Selesai</label>
-                <input type="date" id="leaveEndDate" name="end_date" value="{{ old('end_date', $leave->end_date?->format('Y-m-d')) }}" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                <input type="date" id="leaveEndDate" name="end_date" value="{{ old('end_date', $leave->end_date?->format('Y-m-d')) }}" required class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
             </div>
             <div>
                 <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Total Hari</label>
-                <input type="number" id="leaveTotalDays" name="total_days" value="{{ old('total_days', $leave->total_days_label) }}" min="1" step="1" required readonly class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg bg-gray-50 text-gray-700 outline-none focus:border-indigo-500 cursor-not-allowed">
+                <input type="number" id="leaveTotalDays" name="total_days" value="{{ old('total_days', $leave->total_days_label) }}" min="1" step="1" required readonly class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg bg-gray-50 text-gray-700 outline-none focus:border-indigo-500 cursor-not-allowed [color-scheme:light]">
             </div>
         </div>
 
         <div>
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Alasan</label>
-            <textarea name="reason" rows="4" required class="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 resize-none" placeholder="Tuliskan alasan pengajuan">{{ old('reason', $leave->reason) }}</textarea>
+            <textarea name="reason" rows="4" required class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 resize-none [color-scheme:light]" placeholder="Tuliskan alasan pengajuan">{{ old('reason', $leave->reason) }}</textarea>
             @error('reason')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
         </div>
 

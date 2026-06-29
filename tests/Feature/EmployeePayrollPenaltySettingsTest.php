@@ -40,6 +40,17 @@ class EmployeePayrollPenaltySettingsTest extends TestCase
             'is_active' => true,
         ]);
 
+        $admin = Employee::create([
+            'employee_code' => 'ADM-PAY-001',
+            'company_id' => 1,
+            'full_name' => 'Payroll Admin',
+            'email' => 'payroll-admin@example.test',
+            'password' => 'secret',
+            'role' => 'superadmin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
         $request = Request::create('/admin/employee-payrolls/'.$employee->id, 'PUT', [
             'basic_salary' => 6000000,
             'payment_schedule' => 'monthly',

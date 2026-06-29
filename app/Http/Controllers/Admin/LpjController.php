@@ -46,6 +46,7 @@ class LpjController extends Controller
 
     public function show($id)
     {
+        $admin = Employee::find(session('admin_id'));
         $lpj = Lpj::with([
             'employee:id,full_name,photo,department_id,position,job_level',
             'employee.department:id,name',
@@ -53,7 +54,8 @@ class LpjController extends Controller
             'travelReport:id,destination_city,departure_date,return_date',
             'items.budgetRequestItem',
             'approvalLogs.approver:id,full_name,photo',
-        ])->findOrFail($id);
+        ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+          ->findOrFail($id);
 
         return view('admin.lpj.show', compact('lpj'));
     }
@@ -65,7 +67,8 @@ class LpjController extends Controller
             return back()->with('error', 'Hanya superadmin yang dapat menghapus LPJ.');
         }
 
-        $lpj = Lpj::findOrFail($id);
+        $lpj = Lpj::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
 
         foreach ($lpj->items as $item) {
             if ($item->bukti_file) {
@@ -83,7 +86,11 @@ class LpjController extends Controller
 
     public function exportExcel($id)
     {
-        return LpjExcelExporter::download(Lpj::findOrFail($id));
+        $admin = Employee::find(session('admin_id'));
+        $lpj = Lpj::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
+
+        return LpjExcelExporter::download($lpj);
     }
 
     /**
@@ -100,7 +107,10 @@ class LpjController extends Controller
             'lpj_file.max' => 'Ukuran file maksimal 10MB.',
         ]);
 
-        $lpj = Lpj::with('items')->findOrFail($id);
+        $admin = Employee::find(session('admin_id'));
+        $lpj = Lpj::with('items')
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
 
         if (! in_array($lpj->status, ['pending', 'in_review'], true)) {
             return back()->with('error', 'Hanya LPJ berstatus menunggu/sedang direview yang bisa diimpor.');

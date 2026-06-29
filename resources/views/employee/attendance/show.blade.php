@@ -93,7 +93,7 @@
                         Kembali
                     </button>
                     <button id="captureBtn" type="button"
-                            class="inline-flex items-center justify-center gap-2 px-5 py-3 text-[13px] font-bold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all">
+                            class="inline-flex items-center justify-center gap-2 px-5 py-3 text-[13px] font-bold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed">
                         <span class="material-symbols-outlined text-[18px]">photo_camera</span>
                         Ambil Foto
                     </button>
@@ -111,6 +111,10 @@ const endpoint = @json($endpoint);
 const settings = @json($settings);
 const attendanceType = @json($type);
 const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+// Akurasi GPS maksimal (meter) yang dianggap layak. Di atas ini = peringatan.
+// 150m dipilih karena GPS HP di area padat/dalam gedung umumnya ±50-150m.
+const MAX_ACCURACY_METERS = 150;
 
 let map;
 let userMarker;
@@ -172,6 +176,25 @@ backBtn.addEventListener('click', () => {
 captureBtn.addEventListener('click', submitAttendance);
 retryLocationBtn.addEventListener('click', initLocation);
 
+// Matikan kamera saat pindah halaman/refresh/tutup tab agar lampu kamera tidak menyala terus.
+window.addEventListener('beforeunload', stopCamera);
+window.addEventListener('pagehide', stopCamera);
+
+// Pin kustom berwarna + ikon, supaya marker kantor dan lokasi user mudah dibedakan.
+function pinIcon(color, icon) {
+    return L.divIcon({
+        className: '',
+        html:
+            '<div style="position:relative;width:34px;height:44px;">' +
+                '<div style="position:absolute;left:1px;top:0;width:30px;height:30px;background:' + color + ';border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 5px rgba(0,0,0,0.35);"></div>' +
+                '<span class="material-symbols-outlined" style="position:absolute;left:16px;top:15px;transform:translate(-50%,-50%);color:#fff;font-size:17px;line-height:1;">' + icon + '</span>' +
+            '</div>',
+        iconSize: [34, 44],
+        iconAnchor: [16, 42],
+        popupAnchor: [0, -38],
+    });
+}
+
 function initMap() {
     const officeLat = Number(settings.office_latitude || 0);
     const officeLng = Number(settings.office_longitude || 0);
@@ -185,7 +208,7 @@ function initMap() {
     }).addTo(map);
 
     if (officeLat && officeLng) {
-        officeMarker = L.marker(center).addTo(map).bindPopup('Lokasi Kantor');
+        officeMarker = L.marker(center, { icon: pinIcon('#6366f1', 'apartment') }).addTo(map).bindPopup('Lokasi Kantor');
         officeCircle = L.circle(center, {
             radius,
             color: '#6366f1',
@@ -222,7 +245,7 @@ function initLocation() {
 
             const latLng = [currentPosition.latitude, currentPosition.longitude];
             if (userMarker) userMarker.remove();
-            userMarker = L.marker(latLng).addTo(map).bindPopup('Lokasi Anda').openPopup();
+            userMarker = L.marker(latLng, { icon: pinIcon('#10b981', 'person') }).addTo(map).bindPopup('Lokasi Anda').openPopup();
             map.setView(latLng, 17);
 
             const distance = distanceToOffice(currentPosition.latitude, currentPosition.longitude);
@@ -238,9 +261,21 @@ function renderLocationStatus(distance) {
     const accuracy = Math.round(currentPosition.accuracy || 0);
     const radius = Number(settings.office_radius_meters || 100);
     const outside = distance !== null && distance > radius;
+    const lowAccuracy = (currentPosition.accuracy || 0) > MAX_ACCURACY_METERS;
     const distanceText = distance === null ? '-' : `${Math.round(distance)}m`;
 
     statusBadge.classList.remove('hidden', 'bg-gray-100', 'text-gray-600', 'bg-emerald-100', 'text-emerald-700', 'bg-amber-100', 'text-amber-800');
+
+    if (lowAccuracy) {
+        statusBadge.classList.add('bg-amber-100', 'text-amber-800');
+        statusBadge.textContent = 'Akurasi rendah';
+        locationAlert.className = 'rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800';
+        locationAlert.textContent = `Akurasi GPS ±${accuracy}m terlalu rendah (maks ${MAX_ACCURACY_METERS}m). Coba ambil lokasi lagi di area terbuka agar lebih akurat.`;
+        retryLocationBtn.classList.remove('hidden');
+        retryLocationBtn.classList.add('inline-flex');
+        if (remoteNotesWrap && outside) remoteNotesWrap.classList.remove('hidden');
+        return;
+    }
 
     if (outside) {
         statusBadge.classList.add('bg-amber-100', 'text-amber-800');
