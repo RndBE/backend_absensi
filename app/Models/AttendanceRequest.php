@@ -33,4 +33,26 @@ class AttendanceRequest extends Model
     {
         return $this->morphMany(ApprovalLog::class, 'approvable');
     }
+
+    /**
+     * Terapkan pengajuan presensi yang sudah disetujui ke tabel Attendance:
+     * buat/perbarui record presensi pada tanggal terkait dengan jam yang diajukan.
+     * Hanya menulis jam yang diisi agar tidak menimpa data lama dengan null.
+     */
+    public function applyToAttendance(): void
+    {
+        $values = ['status' => 'present'];
+
+        if ($this->clock_in) {
+            $values['clock_in'] = $this->clock_in;
+        }
+        if ($this->clock_out) {
+            $values['clock_out'] = $this->clock_out;
+        }
+
+        Attendance::updateOrCreate(
+            ['employee_id' => $this->employee_id, 'date' => $this->date->toDateString()],
+            $values,
+        );
+    }
 }

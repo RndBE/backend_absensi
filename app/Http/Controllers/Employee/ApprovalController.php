@@ -195,12 +195,15 @@ class ApprovalController extends Controller
 
     private function onFinalApproval(string $modelClass, Model $item): void
     {
-        if ($modelClass !== LeaveRequest::class) {
-            return;
+        // Kurangi saldo untuk jenis berkuota (Cuti Tahunan & WFH). WFH tidak minus.
+        if ($modelClass === LeaveRequest::class) {
+            LeaveQuota::deduct($item);
         }
 
-        // Kurangi saldo untuk jenis berkuota (Cuti Tahunan & WFH). WFH tidak minus.
-        LeaveQuota::deduct($item);
+        // Pengajuan presensi: tulis jam yang disetujui ke tabel Attendance.
+        if ($modelClass === AttendanceRequest::class) {
+            $item->applyToAttendance();
+        }
     }
 
     private function resolveModel(string $type): string

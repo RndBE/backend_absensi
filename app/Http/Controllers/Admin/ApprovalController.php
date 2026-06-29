@@ -344,14 +344,25 @@ class ApprovalController extends Controller
             LeaveQuota::deduct($item);
         }
 
+        // Pengajuan presensi: tulis jam yang disetujui ke tabel Attendance.
+        if ($modelClass === AttendanceRequest::class) {
+            $item->applyToAttendance();
+        }
+
         // Data change: apply the approved change to employee record
         if ($modelClass === DataChangeRequest::class) {
             $employee = Employee::find($item->employee_id);
             if ($employee && $item->field_name) {
                 $allowedFields = [
-                    'full_name', 'nik', 'residential_address', 'ktp_address',
-                    'religion', 'phone', 'email', 'marital_status',
-                    'blood_type', 'postal_code',
+                    // Kontak
+                    'phone', 'email', 'residential_address', 'ktp_address', 'postal_code',
+                    // Kepegawaian
+                    'position', 'department_id', 'job_level', 'employment_status',
+                    'join_date', 'contract_start_date', 'contract_end_date',
+                    // Identitas
+                    'full_name', 'birth_place', 'birth_date', 'gender', 'marital_status', 'blood_type', 'religion',
+                    // Pajak / bank
+                    'nik', 'npwp_15', 'npwp_16', 'bpjs_tk', 'bpjs_kesehatan', 'bank_account', 'bank_name', 'ptkp',
                 ];
                 if (in_array($item->field_name, $allowedFields)) {
                     $employee->update([$item->field_name => $item->new_value]);

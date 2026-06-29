@@ -327,6 +327,11 @@ class ApprovalController extends Controller
                 LeaveQuota::deduct($item);
             }
 
+            // Pengajuan presensi: tulis jam yang disetujui ke tabel Attendance.
+            if ($modelClass === AttendanceRequest::class) {
+                $item->applyToAttendance();
+            }
+
             // Notify the employee - final approval
             $notification = Notification::create([
                 'employee_id' => $item->employee_id,
