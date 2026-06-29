@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EmployeeSessionLifetime;
+use App\Http\Middleware\TessaApiKey;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(prepend: [
             EmployeeSessionLifetime::class,
+        ]);
+
+        $middleware->alias([
+            'tessa.api' => TessaApiKey::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

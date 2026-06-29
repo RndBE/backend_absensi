@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\TravelReportController;
 use App\Http\Controllers\Api\TravelZoneController;
+use App\Http\Controllers\Api\Tessa\TessaController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -118,4 +119,38 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/payslips', [PayslipController::class, 'index']);
     Route::get('/payslips/{id}', [PayslipController::class, 'show']);
     Route::get('/payslips/{id}/download', [PayslipController::class, 'downloadPdf']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Tessa (AI kantor) — API key statis, read + sebagian aksi.
+| Tidak ada endpoint payroll/slip gaji di sini (lihat middleware tessa.api).
+|--------------------------------------------------------------------------
+*/
+Route::middleware('tessa.api')->prefix('tessa')->group(function () {
+    Route::get('/ping', [TessaController::class, 'ping']);
+
+    // Karyawan & profil (tanpa gaji)
+    Route::get('/employees', [TessaController::class, 'employees']);
+    Route::get('/employees/{id}', [TessaController::class, 'employee']);
+
+    // Presensi & jadwal
+    Route::get('/attendance', [TessaController::class, 'attendance']);
+    Route::get('/attendance/recap', [TessaController::class, 'attendanceRecap']);
+
+    // Cuti, lembur & pengajuan
+    Route::get('/leaves', [TessaController::class, 'leaves']);
+    Route::get('/overtimes', [TessaController::class, 'overtimes']);
+    Route::get('/attendance-requests', [TessaController::class, 'attendanceRequests']);
+    Route::get('/budget-requests', [TessaController::class, 'budgetRequests']);
+    Route::get('/travel-reports', [TessaController::class, 'travelReports']);
+    Route::get('/lpj', [TessaController::class, 'lpj']);
+    Route::get('/approvals/summary', [TessaController::class, 'approvalsSummary']);
+
+    // Perusahaan & pengumuman
+    Route::get('/company', [TessaController::class, 'company']);
+    Route::get('/announcements', [TessaController::class, 'announcements']);
+
+    // Aksi
+    Route::post('/notifications', [TessaController::class, 'sendNotification']);
 });

@@ -61,4 +61,12 @@ return [
         'timeout' => env('WHATSAPP_TIMEOUT', 15),
     ],
 
+    // Integrasi AI kantor "Tessa". API key statis untuk akses read + sebagian aksi.
+    // Payroll/slip gaji TIDAK pernah diekspos ke Tessa (lihat middleware tessa.api).
+    'tessa' => [
+        'api_key' => env('TESSA_API_KEY'),
+        // Batasi Tessa ke satu perusahaan tertentu (opsional). Kosong = semua perusahaan.
+        'company_id' => env('TESSA_COMPANY_ID'),
+    ],
+
 ];
