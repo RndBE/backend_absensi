@@ -51,6 +51,20 @@
         </div>
 
         <div>
+            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Delegasi ke <span class="font-semibold text-gray-400">(opsional)</span></label>
+            <select name="delegate_to" class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
+                <option value="">— Tidak ada —</option>
+                @foreach($colleagues as $colleague)
+                    <option value="{{ $colleague->id }}" @selected(old('delegate_to', $leave->delegate_to) == $colleague->id)>
+                        {{ $colleague->full_name }}{{ $colleague->position ? ' — '.$colleague->position : '' }}
+                    </option>
+                @endforeach
+            </select>
+            <p class="text-[11px] text-gray-400 mt-1">Rekan yang menggantikan tugas Anda selama cuti/izin.</p>
+            @error('delegate_to')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
+        </div>
+
+        <div>
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Lampiran <span class="font-semibold text-gray-400">(opsional)</span></label>
             @if($leave->attachments->isNotEmpty())
                 <div class="mb-1.5 flex flex-wrap gap-2">

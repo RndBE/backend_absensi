@@ -54,6 +54,7 @@ class LeaveController extends Controller
                 ->sortBy('name')
                 ->values(),
             'balances' => $balances,
+            'colleagues' => $this->colleagues($employee),
         ]);
     }
 
@@ -150,7 +151,20 @@ class LeaveController extends Controller
                 ->sortBy('name')
                 ->values(),
             'balances' => $balances,
+            'colleagues' => $this->colleagues($employee),
         ]);
+    }
+
+    /**
+     * Daftar rekan kerja (satu perusahaan, aktif, selain diri sendiri) untuk pilihan delegasi.
+     */
+    private function colleagues(Employee $employee)
+    {
+        return Employee::where('company_id', $employee->company_id)
+            ->where('is_active', true)
+            ->where('id', '!=', $employee->id)
+            ->orderBy('full_name')
+            ->get(['id', 'full_name', 'position']);
     }
 
     public function update(Request $request, $id)

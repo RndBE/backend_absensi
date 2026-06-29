@@ -50,6 +50,20 @@
         </div>
 
         <div>
+            <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Delegasi ke <span class="font-semibold text-gray-400">(opsional)</span></label>
+            <select name="delegate_to" class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light]">
+                <option value="">— Tidak ada —</option>
+                @foreach($colleagues as $colleague)
+                    <option value="{{ $colleague->id }}" @selected(old('delegate_to') == $colleague->id)>
+                        {{ $colleague->full_name }}
+                    </option>
+                @endforeach
+            </select>
+            <p class="text-[11px] text-gray-400 mt-1">Rekan yang menggantikan tugas Anda selama cuti/izin.</p>
+            @error('delegate_to')<div class="text-red-600 text-[11px] mt-1">{{ $message }}</div>@enderror
+        </div>
+
+        <div>
             <label class="block text-[12px] font-bold text-gray-600 mb-1.5">Lampiran <span class="font-semibold text-gray-400">(opsional)</span></label>
             <input type="file" name="attachment" accept="image/*,.pdf" class="w-full text-[12px] text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 file:text-[12px] file:font-semibold file:cursor-pointer">
             <p class="text-[11px] text-gray-400 mt-1">Mis. surat dokter untuk izin sakit. Format JPG/PNG/PDF, maks 5MB.</p>
