@@ -375,6 +375,8 @@ function closeEdit() {
             'department' => $row['employee']->department->name ?? '-',
             'status' => $row['status'],
             'status_label' => $row['status_label'],
+            // Telat tapi berizin: controller menyetel status tetap 'present' (bukan 'late').
+            'late_excused' => $row['status'] === 'present' && $att->is_late,
             'clock_in' => $att->clock_in,
             'clock_out' => $att->clock_out,
             'clock_in_lat' => $att->clock_in_lat,
@@ -474,7 +476,8 @@ function openDetail(id) {
 
     let html = '';
     html += '<div class="flex items-center gap-2 flex-wrap">';
-    if (att.is_late) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800">⏰ Terlambat</span>';
+    if (att.is_late && att.late_excused) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">✅ Hadir - Izin Terlambat</span>';
+    else if (att.is_late) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800">⏰ Terlambat</span>';
     else html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">✅ Tepat Waktu</span>';
     if (att.is_remote) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-700">📍 Remote</span>';
     html += '</div>';
@@ -532,7 +535,8 @@ function escapeHtml(value) {
 
 function buildAttendanceStatusBadges(att) {
     let status = att.status || (att.is_late ? 'late' : 'present');
-    if (status === 'present' && att.is_late) status = 'late';
+    // Telat tanpa izin → 'late' (amber). Telat berizin → tetap 'present' (hijau, label izin).
+    if (status === 'present' && att.is_late && !att.late_excused) status = 'late';
 
     let badgeClass = 'bg-emerald-100 text-emerald-800';
     let icon = 'check_circle';

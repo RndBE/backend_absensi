@@ -189,7 +189,7 @@
 </div>
 
 @php
-    $attData = $attendances->map(function($att) {
+    $attData = $attendances->map(function($att) use ($leavesByEmployee) {
         return [
             'id' => $att->id,
             'name' => $att->employee->full_name ?? '-',
@@ -206,6 +206,12 @@
             'clock_in_photo_archived' => $att->clock_in_photo && !\Illuminate\Support\Facades\Storage::disk('public')->exists($att->clock_in_photo),
             'clock_out_photo_archived' => $att->clock_out_photo && !\Illuminate\Support\Facades\Storage::disk('public')->exists($att->clock_out_photo),
             'is_late' => $att->is_late,
+            'late_excused' => $att->is_late && (
+                \App\Support\AttendanceLateExcuse::manualPermissionStatusLabel($att->status) !== null
+                || \App\Support\AttendanceLateExcuse::isLateArrivalLeave(
+                    \App\Support\AttendanceLateExcuse::firstForDate($leavesByEmployee[$att->employee_id] ?? collect(), $att->date)
+                )
+            ),
             'is_remote' => $att->is_remote,
             'remote_notes' => $att->remote_notes,
             'review_status' => $att->review_status,
@@ -235,7 +241,8 @@ function openDetail(id) {
 
     let html = '';
     html += '<div class="flex items-center gap-2 flex-wrap">';
-    if (att.is_late) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800">⏰ Terlambat</span>';
+    if (att.is_late && att.late_excused) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">✅ Hadir - Izin Terlambat</span>';
+    else if (att.is_late) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800">⏰ Terlambat</span>';
     else html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">✅ Tepat Waktu</span>';
     if (att.is_remote) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-700">📍 Remote</span>';
     html += '</div>';

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use App\Support\AttendanceLateExcuse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -21,6 +22,25 @@ class AttendanceController extends Controller
             ->where('date', $today)
             ->orderBy('clock_in', 'desc')
             ->paginate(50);
+
+        // Izin datang terlambat hari ini → ditandai "Izin Terlambat", bukan "Terlambat".
+        $leaves = LeaveRequest::with('leaveType')
+            ->whereIn('employee_id', $attendances->getCollection()->pluck('employee_id'))
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $today->toDateString())
+            ->whereDate('end_date', '>=', $today->toDateString())
+            ->get()->groupBy('employee_id');
+
+        $attendances->getCollection()->transform(function ($att) use ($leaves) {
+            $att->late_excused = $att->is_late && (
+                AttendanceLateExcuse::manualPermissionStatusLabel($att->status) !== null
+                || AttendanceLateExcuse::isLateArrivalLeave(
+                    AttendanceLateExcuse::firstForDate($leaves->get($att->employee_id) ?? collect(), $att->date)
+                )
+            );
+
+            return $att;
+        });
 
         return view('admin.attendance.realtime', compact('attendances'));
     }

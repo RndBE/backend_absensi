@@ -65,7 +65,9 @@
                         @endif
                     </td>
                     <td class="px-4 py-3.5 border-b border-gray-100">
-                        @if($att->is_late)
+                        @if($att->is_late && $att->late_excused)
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Hadir - Izin Terlambat</span>
+                        @elseif($att->is_late)
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-amber-100 text-amber-800">Terlambat</span>
                         @else
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Tepat Waktu</span>
@@ -123,6 +125,7 @@
             'clock_in_photo' => $att->clock_in_photo ? asset('storage/' . $att->clock_in_photo) : null,
             'clock_out_photo' => $att->clock_out_photo ? asset('storage/' . $att->clock_out_photo) : null,
             'is_late' => $att->is_late,
+            'late_excused' => $att->late_excused ?? false,
             'is_remote' => $att->is_remote,
             'remote_notes' => $att->remote_notes,
         ];
@@ -143,7 +146,8 @@ function openDetail(id) {
 
     // Status badges
     html += '<div class="flex items-center gap-2 flex-wrap">';
-    if (att.is_late) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800">⏰ Terlambat</span>';
+    if (att.is_late && att.late_excused) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">✅ Hadir - Izin Terlambat</span>';
+    else if (att.is_late) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800">⏰ Terlambat</span>';
     else html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">✅ Tepat Waktu</span>';
     if (att.is_remote) html += '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-700">📍 Remote</span>';
     html += '</div>';
