@@ -109,6 +109,13 @@
     </form>
     @endif
 
+    {{-- Download semua payslip jadi satu PDF (tersedia setelah finalized) --}}
+    @if(in_array($run->status, ['finalized', 'published', 'locked']))
+    <a href="{{ route('admin.payslips.download-run', $run->id) }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+        <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span> Download Semua Payslip (PDF)
+    </a>
+    @endif
+
     {{-- Inject BPJS: tersedia di semua status untuk fix data lama --}}
     @php
         $hasBpjs = $details->contains(function($d) {
@@ -194,8 +201,8 @@
                             @if($run->status === 'draft' && $canUpdatePayrollRun)
                             <button type="button" onclick="openPayrollDetailEdit({{ $detail->id }})" class="p-1 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer" title="Edit Detail"><span class="material-symbols-outlined text-[14px]">edit</span></button>
                             @endif
-                            @if(in_array($run->status, ['published', 'locked']))
-                            <a href="{{ route('admin.payslips.show', $detail->id) }}" class="p-1 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors" title="Lihat Payslip"><span class="material-symbols-outlined text-[14px]">receipt</span></a>
+                            @if(in_array($run->status, ['finalized', 'published', 'locked']))
+                            <a href="{{ route('admin.payslips.show', ['id' => $detail->id, 'from_run' => $run->id]) }}" class="p-1 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors" title="Lihat Payslip"><span class="material-symbols-outlined text-[14px]">receipt</span></a>
                             <a href="{{ route('admin.payslips.download', $detail->id) }}" class="p-1 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 transition-colors" title="Download PDF"><span class="material-symbols-outlined text-[14px]">download</span></a>
                             @endif
                             @if($detail->is_manual_edited)

@@ -304,33 +304,82 @@ class ReportController extends Controller
             ->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
             ->with(['employee'])->get();
 
-        $rows = $details->map(function ($d) {
-            $comps = is_array($d->components) ? $d->components : json_decode($d->components, true);
-            $pph21 = 0; $bpjsEmp = 0; $bpjsCo = 0; $lembur = 0;
-            foreach ($comps ?? [] as $c) {
-                if (str_contains($c['name'] ?? '', 'PPh 21') && ($c['type'] ?? '') === 'deduction') $pph21 += $c['amount'] ?? 0;
-                if (str_contains($c['name'] ?? '', 'BPJS (Karyawan)')) $bpjsEmp += $c['amount'] ?? 0;
-                if (str_contains($c['name'] ?? '', 'BPJS (Perusahaan)')) $bpjsCo += $c['amount'] ?? 0;
-                if (str_contains($c['name'] ?? '', 'Lembur')) $lembur += $c['amount'] ?? 0;
+        // Kumpulkan SEMUA nama komponen lintas karyawan (union), dipisah per jenis.
+        // Karyawan yang tak punya komponen tertentu otomatis 0 di kolom itu.
+        $earningNames = [];
+        $deductionNames = [];
+        $otherNames = []; // mis. kontribusi/benefit perusahaan (type selain earning/deduction)
+        $parsed = [];
+
+        foreach ($details as $d) {
+            $comps = is_array($d->components) ? $d->components : (json_decode($d->components, true) ?? []);
+            $bucket = ['earning' => [], 'deduction' => [], 'other' => []];
+
+            foreach ($comps as $c) {
+                $name = $c['name'] ?? null;
+                if (! $name) {
+                    continue;
+                }
+                $amount = (float) ($c['amount'] ?? 0);
+                $type = $c['type'] ?? '';
+
+                if ($type === 'earning') {
+                    $bucket['earning'][$name] = ($bucket['earning'][$name] ?? 0) + $amount;
+                    if (! in_array($name, $earningNames, true)) $earningNames[] = $name;
+                } elseif ($type === 'deduction') {
+                    $bucket['deduction'][$name] = ($bucket['deduction'][$name] ?? 0) + $amount;
+                    if (! in_array($name, $deductionNames, true)) $deductionNames[] = $name;
+                } else {
+                    $bucket['other'][$name] = ($bucket['other'][$name] ?? 0) + $amount;
+                    if (! in_array($name, $otherNames, true)) $otherNames[] = $name;
+                }
             }
-            return [
+
+            $parsed[$d->id] = $bucket;
+        }
+
+        $headers = array_merge(
+            ['Kode', 'Nama', 'Jabatan', 'Gaji Pokok'],
+            $earningNames,
+            ['Total Earning'],
+            $deductionNames,
+            ['Total Potongan', 'Gaji Bersih'],
+            $otherNames,
+        );
+
+        $rows = $details->map(function ($d) use ($parsed, $earningNames, $deductionNames, $otherNames) {
+            $b = $parsed[$d->id] ?? ['earning' => [], 'deduction' => [], 'other' => []];
+
+            $row = [
                 $d->employee->employee_code ?? '',
                 $d->employee->full_name ?? '',
                 $d->employee->position ?? '-',
-                $d->basic_salary,
-                $lembur,
-                $d->total_earning,
-                $bpjsEmp,
-                $pph21,
-                $d->total_deduction,
-                $d->net_salary,
-                $bpjsCo,
+                (float) $d->basic_salary,
             ];
+            foreach ($earningNames as $name) {
+                $row[] = (float) ($b['earning'][$name] ?? 0);
+            }
+            $row[] = (float) $d->total_earning;
+            foreach ($deductionNames as $name) {
+                $row[] = (float) ($b['deduction'][$name] ?? 0);
+            }
+            $row[] = (float) $d->total_deduction;
+            $row[] = (float) $d->net_salary;
+            foreach ($otherNames as $name) {
+                $row[] = (float) ($b['other'][$name] ?? 0);
+            }
+
+            return $row;
         });
 
-        return $this->streamXlsx("payroll_{$period}.xlsx", [
-            'Kode', 'Nama', 'Jabatan', 'Gaji Pokok', 'Lembur', 'Total Earning', 'BPJS Karyawan', 'PPh 21', 'Total Potongan', 'Gaji Bersih', 'BPJS Perusahaan',
-        ], $rows, 'Laporan Payroll');
+        $companyName = \App\Models\Company::where('id', $admin->company_id)->value('name') ?? 'Perusahaan';
+        $binary = \App\Support\PayrollReportExport::build($headers, $rows->all(), $companyName, $period, 4);
+
+        return response()->streamDownload(function () use ($binary) {
+            echo $binary;
+        }, "payroll_{$period}.xlsx", [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     // ========================

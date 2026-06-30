@@ -229,6 +229,54 @@ class PayslipController extends Controller
     }
 
     /**
+     * Unduh SEMUA payslip dalam satu payroll run sebagai SATU file PDF
+     * (tiap karyawan satu halaman). Berguna untuk arsip/cetak sekaligus.
+     */
+    public function downloadRunBundle($runId)
+    {
+        $admin = Employee::find(session('admin_id'));
+        $run = PayrollRun::findOrFail($runId);
+
+        $details = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->with(['employee', 'employee.department:id,name', 'employee.activePayroll'])
+            ->get()
+            ->sortBy(fn ($d) => $d->employee->full_name ?? '')
+            ->values();
+
+        if ($details->isEmpty()) {
+            return back()->with('error', 'Tidak ada payslip untuk diunduh pada payroll run ini.');
+        }
+
+        $payslips = $details->map(function (PayrollRunDetail $detail) {
+            $company = Company::find($detail->employee->company_id);
+
+            $logoBase64 = null;
+            if ($company && $company->logo) {
+                $logoPath = storage_path('app/public/'.$company->logo);
+                if (file_exists($logoPath)) {
+                    $logoBase64 = 'data:'.mime_content_type($logoPath).';base64,'.base64_encode(file_get_contents($logoPath));
+                }
+            }
+
+            return [
+                'detail' => $detail,
+                'company' => $company,
+                'logoBase64' => $logoBase64,
+                'bpjsData' => $this->buildBpjsData($detail),
+                'loanSummary' => PayslipLoanSummary::fromComponents($detail->components),
+                // Tampilkan benefit (ditanggung perusahaan) — sama seperti download payslip admin per karyawan.
+                'hideBenefits' => false,
+            ];
+        })->all();
+
+        $pdf = Pdf::loadView('admin.payslips.pdf-bulk', ['payslips' => $payslips])
+            ->setPaper('A4', 'portrait');
+
+        return $pdf->download('payslips_'.$run->period.'.pdf');
+    }
+
+    /**
      * Build structured BPJS benefit data for the payslip view.
      * Only includes programs with non-zero amounts (respects rate settings in DB).
      */

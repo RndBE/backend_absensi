@@ -355,6 +355,7 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Payslips
     Route::get('/payslips', [PayslipController::class, 'index'])->name('payslips.index');
     Route::post('/payslips/import', [PayslipController::class, 'import'])->name('payslips.import');
+    Route::get('/payslips/run/{runId}/download', [PayslipController::class, 'downloadRunBundle'])->name('payslips.download-run');
     Route::get('/payslips/{id}', [PayslipController::class, 'show'])->name('payslips.show');
     Route::get('/payslips/{id}/download', [PayslipController::class, 'downloadPdf'])->name('payslips.download');
 
