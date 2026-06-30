@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\BudgetRequest;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
 use Illuminate\Http\Request;
 
 class BudgetRequestController extends Controller
@@ -60,6 +61,27 @@ class BudgetRequestController extends Controller
           ->findOrFail($id);
 
         return view('admin.budget-requests.show', compact('budgetRequest'));
+    }
+
+    public function print($id)
+    {
+        $admin = Employee::find(session('admin_id'));
+        $budgetRequest = BudgetRequest::with([
+            'employee:id,full_name,photo,signature,department_id,position,job_level',
+            'employee.department:id,name',
+            'items.attachments',
+            'attachments',
+            'participants:id,full_name,photo',
+            'approvalLogs.approver:id,full_name,signature,position,job_level',
+            'travelZone',
+        ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+          ->findOrFail($id);
+
+        return view('budget-requests.print', [
+            'budgetRequest' => $budgetRequest,
+            'approvalChain' => EmployeeApprover::getChain($budgetRequest->employee_id, 'budget'),
+            'backUrl' => route('admin.budget-requests.show', $budgetRequest->id),
+        ]);
     }
 
     public function destroy($id)

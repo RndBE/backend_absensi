@@ -49,6 +49,32 @@ class ApprovalController extends Controller
         ]);
     }
 
+    public function printBudget(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $budgetRequest = BudgetRequest::with([
+            'employee:id,full_name,photo,signature,department_id,position,job_level',
+            'employee.department:id,name',
+            'items.attachments',
+            'attachments',
+            'participants:id,full_name,photo',
+            'approvalLogs.approver:id,full_name,signature,position,job_level',
+            'travelZone',
+        ])->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'budget', $budgetRequest)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Anda bukan approver untuk step pengajuan ini.');
+        }
+
+        return view('budget-requests.print', [
+            'budgetRequest' => $budgetRequest,
+            'approvalChain' => EmployeeApprover::getChain($budgetRequest->employee_id, 'budget'),
+            'backUrl' => route('employee.approvals.index'),
+        ]);
+    }
+
     public function approve(Request $request, string $type, int $id)
     {
         $validated = $request->validate([

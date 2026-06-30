@@ -46,10 +46,16 @@
                     Diajukan {{ $budgetRequest->created_at->format('d M Y H:i') }}
                 </p>
             </div>
-            <a href="{{ route('admin.budget-requests.index') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
-                <span class="material-symbols-outlined text-[16px]">arrow_back</span>
-                Kembali
-            </a>
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('admin.budget-requests.print', $budgetRequest->id) }}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-all duration-200">
+                    <span class="material-symbols-outlined text-[16px]">print</span>
+                    Cetak
+                </a>
+                <a href="{{ route('admin.budget-requests.index') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                    <span class="material-symbols-outlined text-[16px]">arrow_back</span>
+                    Kembali
+                </a>
+            </div>
         </div>
 
         <div class="p-5">

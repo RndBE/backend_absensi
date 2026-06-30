@@ -137,6 +137,13 @@
                             </div>
                         @endif
                     </div>
+
+                    @if($type === 'budget')
+                    <a href="{{ route('employee.approvals.budget.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
+                        <span class="material-symbols-outlined text-[16px]">print</span>
+                        Cetak
+                    </a>
+                    @endif
                 </div>
 
                 <div class="p-5 space-y-4">
@@ -201,7 +208,7 @@
                             </details>
                         </div>
 
-                        <div class="approval-action-bar grid grid-cols-2 gap-2">
+                        <div class="approval-action-bar grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <form id="{{ $rejectFormId }}" method="POST" action="{{ route('employee.approvals.reject', [$type, $request->id]) }}">
                                 @csrf
                                 <button type="submit" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[12px] font-bold text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">

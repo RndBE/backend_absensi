@@ -55,7 +55,7 @@
                 data-estimate-url="{{ route('employee.travel.estimate-zone') }}"
             >
                 <label class="block">
-                    <span class="block text-[12px] font-bold text-gray-600 mb-1">Kota Tujuan <span class="font-semibold text-gray-400">(opsional)</span></span>
+                    <span class="block text-[12px] font-bold text-gray-600 mb-1">Kota Tujuan <span class="font-semibold text-gray-400">(zona perjalanan)</span></span>
                     <input
                         name="destination_city"
                         value="{{ old('destination_city') }}"

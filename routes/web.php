@@ -112,6 +112,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::post('/lpj', [EmployeeLpjController::class, 'store'])->name('lpj.store');
     Route::get('/lpj/{id}', [EmployeeLpjController::class, 'show'])->name('lpj.show');
     Route::get('/approvals', [EmployeeApprovalController::class, 'index'])->name('approvals.index');
+    Route::get('/approvals/budget/{id}/print', [EmployeeApprovalController::class, 'printBudget'])->name('approvals.budget.print');
     Route::post('/approvals/{type}/{id}/approve', [EmployeeApprovalController::class, 'approve'])
         ->whereIn('type', ['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'])
         ->name('approvals.approve');
@@ -253,6 +254,7 @@ Route::prefix('admin')->name('admin.')->middleware([
 
     // Budget Requests
     Route::get('/budget-requests', [BudgetRequestController::class, 'index'])->name('budget-requests.index');
+    Route::get('/budget-requests/{id}/print', [BudgetRequestController::class, 'print'])->name('budget-requests.print');
     Route::get('/budget-requests/{id}', [BudgetRequestController::class, 'show'])->name('budget-requests.show');
     Route::delete('/budget-requests/{id}', [BudgetRequestController::class, 'destroy'])->name('budget-requests.destroy');
 

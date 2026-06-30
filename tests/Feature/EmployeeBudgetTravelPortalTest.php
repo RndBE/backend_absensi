@@ -27,6 +27,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'lpj_items',
             'lpjs',
             'travel_reports',
+            'budget_payments',
             'budget_request_participants',
             'budget_request_items',
             'budget_requests',
@@ -42,9 +43,16 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'leave_requests',
             'settings',
             'employees',
+            'departments',
         ] as $table) {
             Schema::dropIfExists($table);
         }
+
+        Schema::create('departments', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
 
         Schema::create('employees', function (Blueprint $table) {
             $table->id();
@@ -56,6 +64,9 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->string('password');
             $table->string('role')->default('employee');
             $table->string('position')->nullable();
+            $table->integer('job_level')->nullable();
+            $table->string('photo')->nullable();
+            $table->string('signature')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
@@ -215,6 +226,20 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('budget_payments', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('budget_request_id');
+            $table->decimal('amount', 15, 2)->default(0);
+            $table->string('payment_method')->default('transfer');
+            $table->string('reference_no')->nullable();
+            $table->string('payment_proof')->nullable();
+            $table->string('status')->default('paid');
+            $table->text('notes')->nullable();
+            $table->timestamp('paid_at')->nullable();
+            $table->unsignedBigInteger('processed_by')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('travel_reports', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('employee_id');
@@ -305,6 +330,13 @@ class EmployeeBudgetTravelPortalTest extends TestCase
                 'updated_at' => now(),
             ]);
         }
+
+        DB::table('departments')->insert([
+            'id' => 1,
+            'name' => 'Operasional',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     protected function tearDown(): void
@@ -713,6 +745,121 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'id' => $reportId,
             'status' => 'approved',
         ]);
+    }
+
+    public function test_admin_can_open_print_page_from_budget_request_detail(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'ADM001',
+            'email' => 'admin@example.test',
+            'full_name' => 'Admin Finance',
+            'role' => 'superadmin',
+            'department_id' => 1,
+        ]);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_request_items')->insert([
+            'budget_request_id' => $budgetId,
+            'type' => 'transport',
+            'description' => 'Taksi Bandara',
+            'amount' => 225000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['admin_id' => 2])
+            ->get("/admin/budget-requests/{$budgetId}")
+            ->assertOk()
+            ->assertSee("/admin/budget-requests/{$budgetId}/print", false)
+            ->assertSee('Cetak');
+
+        $this->withSession(['admin_id' => 2])
+            ->get("/admin/budget-requests/{$budgetId}/print")
+            ->assertOk()
+            ->assertSee('FORM PENGAJUAN ANGGARAN PT. ARTA TEKNOLOGI COMUNINDO')
+            ->assertSee('Divisi')
+            ->assertSee('Project')
+            ->assertSee('Rincian')
+            ->assertSee('Anggaran')
+            ->assertSee('Total Anggaran')
+            ->assertSee('PJ/Leader')
+            ->assertSee('Manager Admin')
+            ->assertSee('Tanda* (Wajib diisi)')
+            ->assertSee('Perjalanan Batam')
+            ->assertSeeInOrder([
+                '<td class="col-rincian">Transportasi</td>',
+                '<td class="col-anggaran">225.000</td>',
+                '<td class="col-keterangan">Taksi Bandara</td>',
+            ], false)
+            ->assertSee('Rp 225.000');
+    }
+
+    public function test_employee_current_budget_approver_can_print_from_approval_chain(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'EMP002',
+            'email' => 'approver@example.test',
+            'full_name' => 'Approver One',
+            'department_id' => 1,
+        ]);
+        $this->seedApprover(1, 'budget', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        DB::table('budget_requests')->where('id', $budgetId)->update([
+            'status' => 'pending',
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee("/employee/approvals/budget/{$budgetId}/print", false)
+            ->assertSee('approval-print-link', false)
+            ->assertSee('bg-teal-600', false)
+            ->assertSee('hover:bg-teal-700', false)
+            ->assertSee('approval-action-bar grid grid-cols-1 sm:grid-cols-2', false)
+            ->assertDontSee('approval-action-bar grid grid-cols-1 sm:grid-cols-3', false)
+            ->assertSee('Cetak');
+
+        $this->withSession(['employee_id' => 2])
+            ->get("/employee/approvals/budget/{$budgetId}/print")
+            ->assertOk()
+            ->assertSee('FORM PENGAJUAN ANGGARAN PT. ARTA TEKNOLOGI COMUNINDO')
+            ->assertSee('PJ/Leader')
+            ->assertSee('Manager Admin')
+            ->assertSee('Perjalanan Batam')
+            ->assertSee('Approver One');
+    }
+
+    public function test_employee_cannot_print_budget_approval_when_not_current_approver(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'EMP002',
+            'email' => 'approver@example.test',
+            'full_name' => 'Approver One',
+            'department_id' => 1,
+        ]);
+        $this->seedEmployee([
+            'id' => 3,
+            'employee_code' => 'EMP003',
+            'email' => 'other@example.test',
+            'full_name' => 'Other Employee',
+            'department_id' => 1,
+        ]);
+        $this->seedApprover(1, 'budget', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        DB::table('budget_requests')->where('id', $budgetId)->update([
+            'status' => 'pending',
+        ]);
+
+        $this->withSession(['employee_id' => 3])
+            ->get("/employee/approvals/budget/{$budgetId}/print")
+            ->assertRedirect(route('employee.approvals.index'));
     }
 
     public function test_employee_approver_can_see_and_approve_lpj_requests(): void
