@@ -14,12 +14,6 @@
                 <p class="text-[13px] text-gray-500 mt-1">{{ $budgetRequest->type === 'budget' ? 'Budget' : 'Reimbursement' }} · Rp {{ number_format((float) $budgetRequest->total_amount, 0, ',', '.') }}</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-                @if($budgetRequest->status === 'pending')
-                    <a href="{{ route('employee.budget-requests.edit', $budgetRequest->id) }}" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-indigo-700">
-                        <span class="material-symbols-outlined text-[16px]">edit</span>
-                        Edit
-                    </a>
-                @endif
                 @include('employee.partials.status-badge', ['status' => $budgetRequest->status])
             </div>
         </div>

@@ -79,10 +79,18 @@
                             <td class="px-4 py-3.5 text-[13px] font-bold text-gray-900 border-b border-gray-100 whitespace-nowrap">Rp {{ number_format((float) $budgetRequest->total_amount, 0, ',', '.') }}</td>
                             <td class="px-4 py-3.5 border-b border-gray-100 whitespace-nowrap">@include('employee.partials.status-badge', ['status' => $budgetRequest->status])</td>
                             <td class="px-4 py-3.5 text-right border-b border-gray-100 whitespace-nowrap">
-                                <a href="{{ route('employee.budget-requests.show', $budgetRequest->id) }}" class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">
-                                    <span class="material-symbols-outlined text-[15px]">visibility</span>
-                                    Detail
-                                </a>
+                                <div class="inline-flex items-center justify-end gap-2">
+                                    <a href="{{ route('employee.budget-requests.show', $budgetRequest->id) }}" class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">
+                                        <span class="material-symbols-outlined text-[15px]">visibility</span>
+                                        Detail
+                                    </a>
+                                    @if($budgetRequest->status === 'pending')
+                                        <a href="{{ route('employee.budget-requests.edit', $budgetRequest->id) }}" class="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-gray-800">
+                                            <span class="material-symbols-outlined text-[15px]">edit</span>
+                                            Edit
+                                        </a>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @empty
