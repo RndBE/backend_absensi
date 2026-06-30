@@ -342,6 +342,8 @@ class ApprovalController extends Controller
         // Kurangi saldo untuk jenis berkuota (Cuti Tahunan & WFH). WFH tidak minus.
         if ($modelClass === LeaveRequest::class) {
             LeaveQuota::deduct($item);
+            // Beri tahu delegasi (bila ditunjuk) bahwa pengajuan disetujui.
+            \App\Services\LeaveDelegateNotifier::notifyApproved($item);
         }
 
         // Pengajuan presensi: tulis jam yang disetujui ke tabel Attendance.
