@@ -98,6 +98,8 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/budget-requests', [EmployeeBudgetRequestController::class, 'index'])->name('budget-requests.index');
     Route::get('/budget-requests/create', [EmployeeBudgetRequestController::class, 'create'])->name('budget-requests.create');
     Route::post('/budget-requests', [EmployeeBudgetRequestController::class, 'store'])->name('budget-requests.store');
+    Route::get('/budget-requests/{id}/edit', [EmployeeBudgetRequestController::class, 'edit'])->name('budget-requests.edit');
+    Route::put('/budget-requests/{id}', [EmployeeBudgetRequestController::class, 'update'])->name('budget-requests.update');
     Route::get('/budget-requests/{id}', [EmployeeBudgetRequestController::class, 'show'])->name('budget-requests.show');
     Route::get('/travel/estimate-zone', [ApiTravelZoneController::class, 'estimateZone'])->name('travel.estimate-zone');
     Route::get('/travel-reports', [EmployeeTravelReportController::class, 'index'])->name('travel-reports.index');

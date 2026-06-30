@@ -151,6 +151,121 @@ class BudgetRequestController extends Controller
         }
     }
 
+    public function edit(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $budgetRequest = BudgetRequest::with(['items', 'travelZone'])
+            ->where('employee_id', $employee->id)
+            ->findOrFail($id);
+
+        if ($budgetRequest->status !== 'pending') {
+            return redirect()
+                ->route('employee.budget-requests.show', $budgetRequest->id)
+                ->with('error', 'Pengajuan hanya bisa diedit saat status pending.');
+        }
+
+        return view('employee.budget-requests.edit', [
+            'employee' => $employee,
+            'budgetRequest' => $budgetRequest,
+            'itemTypes' => self::ITEM_TYPES,
+        ]);
+    }
+
+    public function update(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'type' => 'required|in:budget,reimbursement',
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'surat_tugas_no' => 'nullable|string|max:255',
+            'surat_tugas_date' => 'nullable|date',
+            'distance_km' => 'nullable|integer|min:0',
+            'attachments' => 'nullable|array',
+            'attachments.*' => 'file|max:5120',
+            'items' => 'required|array|min:1',
+            'items.*.type' => 'required|in:transport,meal,lumpsum,entertain,operasional,lainnya',
+            'items.*.description' => 'nullable|string|max:500',
+            'items.*.amount' => 'required|numeric|min:0',
+            'item_attachments_*' => 'nullable|array',
+            'item_attachments_*.*' => 'file|max:5120',
+        ]);
+
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $budgetRequest = BudgetRequest::with('items.attachments')
+            ->where('employee_id', $employee->id)
+            ->findOrFail($id);
+
+        if ($budgetRequest->status !== 'pending') {
+            return redirect()
+                ->route('employee.budget-requests.show', $budgetRequest->id)
+                ->with('error', 'Pengajuan hanya bisa diedit saat status pending.');
+        }
+
+        DB::beginTransaction();
+        try {
+            $distanceKm = $request->filled('distance_km') ? (int) $validated['distance_km'] : null;
+            $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
+
+            $budgetRequest->update([
+                'type' => $validated['type'],
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? null,
+                'surat_tugas_no' => $validated['surat_tugas_no'] ?? null,
+                'surat_tugas_date' => $validated['surat_tugas_date'] ?? null,
+                'distance_km' => $distanceKm,
+                'travel_zone_id' => $travelZone?->id,
+            ]);
+
+            $budgetRequest->items->each(fn ($item) => $item->attachments()->delete());
+            $budgetRequest->items()->delete();
+
+            $total = 0;
+            foreach ($validated['items'] as $index => $itemData) {
+                $amount = (float) $itemData['amount'];
+                $item = $budgetRequest->items()->create([
+                    'type' => $itemData['type'],
+                    'description' => $itemData['description'] ?? '',
+                    'amount' => $amount,
+                ]);
+                $total += $amount;
+
+                foreach ($request->file("item_attachments_{$index}", []) as $file) {
+                    $path = $file->store('budget-attachments', 'public');
+                    $item->attachments()->create([
+                        'file_path' => $path,
+                        'file_name' => $file->getClientOriginalName(),
+                        'file_size' => $file->getSize(),
+                    ]);
+                }
+            }
+
+            foreach ($request->file('attachments', []) as $file) {
+                $path = $file->store('budget-attachments', 'public');
+                $budgetRequest->attachments()->create([
+                    'file_path' => $path,
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_size' => $file->getSize(),
+                ]);
+            }
+
+            $budgetRequest->update(['total_amount' => $total]);
+
+            DB::commit();
+
+            return redirect()
+                ->route('employee.budget-requests.show', $budgetRequest->id)
+                ->with('success', 'Pengajuan anggaran berhasil diperbarui.');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return back()
+                ->withInput()
+                ->with('error', 'Gagal memperbarui pengajuan anggaran: '.$e->getMessage());
+        }
+    }
+
     public function show(Request $request, int $id)
     {
         /** @var Employee $employee */

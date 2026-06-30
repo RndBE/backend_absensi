@@ -458,6 +458,114 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         ]);
     }
 
+    public function test_employee_can_edit_own_pending_budget_request(): void
+    {
+        $this->seedEmployee();
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_requests')->where('id', $budgetId)->update([
+            'status' => 'pending',
+        ]);
+        DB::table('budget_request_items')->insert([
+            'budget_request_id' => $budgetId,
+            'type' => 'transport',
+            'description' => 'Taksi lama',
+            'amount' => 225000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/budget-requests')
+            ->assertOk()
+            ->assertSee("/employee/budget-requests/{$budgetId}/edit", false)
+            ->assertSee('Edit');
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/budget-requests/{$budgetId}")
+            ->assertOk()
+            ->assertDontSee("/employee/budget-requests/{$budgetId}/edit", false);
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/budget-requests/{$budgetId}/edit")
+            ->assertOk()
+            ->assertSee('Edit Pengajuan Anggaran')
+            ->assertSee('Perjalanan Batam')
+            ->assertSee('Taksi lama')
+            ->assertSee("action=\"http://192.168.12.104:8000/employee/budget-requests/{$budgetId}\"", false)
+            ->assertSee('name="_method" value="PUT"', false);
+
+        $this->withSession(['employee_id' => 1])
+            ->put("/employee/budget-requests/{$budgetId}", [
+                'type' => 'budget',
+                'title' => 'Perjalanan Bandung',
+                'description' => 'Kunjungan project update',
+                'surat_tugas_no' => 'ST-EDIT',
+                'surat_tugas_date' => '2026-06-18',
+                'distance_km' => 20,
+                'items' => [
+                    ['type' => 'transport', 'description' => 'Kereta', 'amount' => 100000],
+                    ['type' => 'meal', 'description' => 'Makan', 'amount' => 50000],
+                ],
+            ])
+            ->assertRedirect(route('employee.budget-requests.show', $budgetId));
+
+        $this->assertDatabaseHas('budget_requests', [
+            'id' => $budgetId,
+            'title' => 'Perjalanan Bandung',
+            'description' => 'Kunjungan project update',
+            'surat_tugas_no' => 'ST-EDIT',
+            'total_amount' => 150000,
+            'status' => 'pending',
+        ]);
+        $this->assertDatabaseMissing('budget_request_items', [
+            'budget_request_id' => $budgetId,
+            'description' => 'Taksi lama',
+        ]);
+        $this->assertDatabaseHas('budget_request_items', [
+            'budget_request_id' => $budgetId,
+            'type' => 'meal',
+            'description' => 'Makan',
+            'amount' => 50000,
+        ]);
+    }
+
+    public function test_employee_cannot_edit_budget_request_after_pending_status(): void
+    {
+        $this->seedEmployee();
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/budget-requests')
+            ->assertOk()
+            ->assertDontSee("/employee/budget-requests/{$budgetId}/edit", false);
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/budget-requests/{$budgetId}")
+            ->assertOk()
+            ->assertDontSee("/employee/budget-requests/{$budgetId}/edit", false);
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/budget-requests/{$budgetId}/edit")
+            ->assertRedirect(route('employee.budget-requests.show', $budgetId));
+
+        $this->withSession(['employee_id' => 1])
+            ->put("/employee/budget-requests/{$budgetId}", [
+                'type' => 'budget',
+                'title' => 'Tidak boleh berubah',
+                'items' => [
+                    ['type' => 'transport', 'description' => 'Kereta', 'amount' => 100000],
+                ],
+            ])
+            ->assertRedirect(route('employee.budget-requests.show', $budgetId));
+
+        $this->assertDatabaseHas('budget_requests', [
+            'id' => $budgetId,
+            'title' => 'Perjalanan Batam',
+            'total_amount' => 225000,
+            'status' => 'approved',
+        ]);
+    }
+
     public function test_employee_budget_and_lhp_forms_use_mobile_native_field_styles(): void
     {
         $views = [
@@ -778,6 +886,9 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             ->get("/admin/budget-requests/{$budgetId}/print")
             ->assertOk()
             ->assertSee('FORM PENGAJUAN ANGGARAN PT. ARTA TEKNOLOGI COMUNINDO')
+            ->assertSee('@page { size: A4 portrait;', false)
+            ->assertSee('width: 277mm;', false)
+            ->assertSee('transform: scale(0.68);', false)
             ->assertSee('Divisi')
             ->assertSee('Project')
             ->assertSee('Rincian')

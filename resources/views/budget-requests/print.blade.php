@@ -6,12 +6,12 @@
     <title>Form Pengajuan Anggaran - {{ $budgetRequest->title }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        @page { size: A4 landscape; margin: 8mm 10mm; }
+        @page { size: A4 portrait; margin: 8mm 10mm; }
         body { background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif; font-size: 10px; line-height: 1.2; }
         .no-print { position: fixed; top: 14px; z-index: 10; border: 0; border-radius: 5px; padding: 9px 14px; font: 700 12px Arial, sans-serif; text-decoration: none; cursor: pointer; }
         .back-btn { left: 14px; background: #374151; color: #fff; }
         .print-btn { right: 14px; background: #0f766e; color: #fff; }
-        .sheet { width: 100%; max-width: 277mm; margin: 0 auto; }
+        .sheet { width: 277mm; max-width: 100%; margin: 0 auto; }
         .kop-table, .info-table, .budget-table, .signature-table, .payment-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .kop-table td { border-bottom: 3px solid #000; padding: 4px 6px 5px; vertical-align: top; }
         .logo-cell { width: 150px; }
@@ -44,7 +44,8 @@
         .footnote { margin-top: 4px; font-size: 10px; font-weight: 800; }
         @media print {
             .no-print { display: none !important; }
-            .sheet { max-width: none; }
+            body { width: 190mm; overflow: hidden; }
+            .sheet { max-width: none; margin: 0; transform: scale(0.68); transform-origin: top left; }
         }
     </style>
 </head>
