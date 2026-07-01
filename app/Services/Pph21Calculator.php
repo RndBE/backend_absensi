@@ -341,6 +341,9 @@ class Pph21Calculator
             'tax_already_paid'    => round($taxAlreadyPaid, 0),
             'tax_final_month'     => $taxFinalMonth,              // yang harus dipotong bulan terakhir
             'tax_method'          => $taxMethod,
+            // Compat dengan caller yang memakai pph21_deduction / tunjangan_pajak
+            'pph21_deduction'     => ($taxMethod === 'nett') ? 0 : $taxFinalMonth,
+            'tunjangan_pajak'     => 0,  // gross-up iterasi tidak dihitung untuk bulan terakhir
             'note'                => "Dihitung berdasarkan {$monthsWorked} bulan bekerja (bukan 12 bulan)",
         ];
     }

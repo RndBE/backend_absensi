@@ -378,10 +378,20 @@ class PayrollRunController extends Controller
     {
         $admin = Employee::find(session('admin_id'));
 
-        // Get active payrolls for selected employees
+        $periodDate = Carbon::parse($run->period.'-01');
+        $periodStart = $periodDate->copy()->startOfMonth();
+        $periodEnd = $periodDate->copy()->endOfMonth();
+
+        // Get active payrolls for selected employees.
+        // Sertakan juga karyawan yang resign di periode ini agar payroll bulan
+        // terakhirnya tetap tergenerate meski is_active sudah false.
         $query = EmployeePayroll::where('is_active', true)
-            ->whereHas('employee', function ($q) use ($admin) {
-                $q->where('company_id', $admin->company_id)->where('is_active', true);
+            ->whereHas('employee', function ($q) use ($admin, $periodStart, $periodEnd) {
+                $q->where('company_id', $admin->company_id)
+                    ->where(function ($sub) use ($periodStart, $periodEnd) {
+                        $sub->where('is_active', true)
+                            ->orWhereBetween('resign_date', [$periodStart, $periodEnd]);
+                    });
             });
 
         if (! empty($employeeIds)) {
@@ -389,9 +399,6 @@ class PayrollRunController extends Controller
         }
 
         $payrolls = $query->with('employee')->get();
-        $periodDate = Carbon::parse($run->period.'-01');
-        $periodStart = $periodDate->copy()->startOfMonth();
-        $periodEnd = $periodDate->copy()->endOfMonth();
 
         // Collect holiday dates for the period
         $holidayDates = Holiday::where('company_id', $admin->company_id)
@@ -693,6 +700,10 @@ class PayrollRunController extends Controller
             $pph21Calc = new Pph21Calculator($periodStart->format('Y-m-d'));
             $isDecember = ($periodDate->month === 12);
 
+            // Deteksi bulan terakhir karyawan (resign di periode ini).
+            $resignDate = $employee->resign_date ? Carbon::parse($employee->resign_date) : null;
+            $isResignMonth = $resignDate && $resignDate->between($periodStart, $periodEnd);
+
             if ($isDecember) {
                 // ── Desember: Penghitungan Kembali berdasarkan penghasilan sebenarnya ──
                 // Ambil akumulasi bruto & PPh21 Jan-Nov dari payroll run detail tahun ini
@@ -728,6 +739,45 @@ class PayrollRunController extends Controller
                             .'Bruto Jan-Nov: Rp '.number_format($brutoJanToNov, 0, ',', '.').' | '
                             .'Pajak Jan-Nov: Rp '.number_format($taxJanToNov, 0, ',', '.').' | '
                             .'PKP Aktual: Rp '.number_format($tax['pkp'], 0, ',', '.');
+            } elseif ($isResignMonth) {
+                // ── Bulan terakhir karyawan resign: penghitungan progresif (PMK-168/2023) ──
+                // Disetahunkan berdasarkan jumlah bulan bekerja tahun ini, lalu dikurangi
+                // PPh21 yang sudah dipotong bulan-bulan sebelumnya (true-up masa pajak terakhir).
+                $year = $periodDate->year;
+                $joinDate = $employee->join_date ? Carbon::parse($employee->join_date) : null;
+                $firstMonth = ($joinDate && $joinDate->year === $year) ? $joinDate->month : 1;
+                $monthsWorked = max(1, $periodDate->month - $firstMonth + 1);
+
+                // Akumulasi PPh21 yang sudah dipotong bulan-bulan sebelumnya tahun ini
+                $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year, $periodDate) {
+                    $q->whereYear('period', $year)
+                        ->whereMonth('period', '<', $periodDate->month)
+                        ->where('status', '!=', 'draft');
+                })->where('employee_id', $empId)->get();
+
+                $taxAlreadyPaid = 0;
+                foreach ($prevDetails as $pd) {
+                    $comps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
+                    foreach ($comps as $c) {
+                        if (str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction') {
+                            $taxAlreadyPaid += (float) ($c['amount'] ?? 0);
+                        }
+                    }
+                }
+
+                $tax = $pph21Calc->calculateFinalMonth(
+                    avgBrutoMonthly: (float) $payroll->basic_salary,
+                    ptkpStatus     : $ptkpStatus,
+                    taxMethod      : $taxMethod,
+                    bpjsEmployee   : $bpjs['employee_total'],
+                    monthsWorked   : $monthsWorked,
+                    taxAlreadyPaid : $taxAlreadyPaid
+                );
+                $detailNote = 'Bulan terakhir (resign '.$resignDate->format('d/m/Y').') — '
+                    .'Penghitungan progresif PMK-168/2023 | '
+                    ."Masa kerja: {$monthsWorked} bln, PPh21 sudah dipotong: Rp ".number_format($taxAlreadyPaid, 0, ',', '.').' | '
+                    .'PKP: Rp '.number_format($tax['pkp'], 0, ',', '.').', '
+                    .'Pajak periode: Rp '.number_format($tax['tax_for_period'], 0, ',', '.');
             } else {
                 // ── Jan-Nov: annualized × 12 (metode normal) ──
                 $tax = $pph21Calc->calculateMonthly($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);

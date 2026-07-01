@@ -89,31 +89,9 @@
                 <div class="hidden rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-700" data-zone-error></div>
             </div>
 
-            {{-- <div>
-                @php
-                    $selectedParticipants = collect(old('participants', []))->map(fn ($id) => (int) $id)->all();
-                @endphp
-                <div class="flex items-center justify-between gap-3 mb-2">
-                    <span class="block text-[12px] font-bold text-gray-600">Peserta</span>
-                    <span class="text-[11px] font-semibold text-gray-400">Opsional</span>
-                </div>
-                <div class="max-h-44 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        @foreach($employees as $participant)
-                            <label class="flex min-h-10 items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-[13px] font-semibold text-gray-700 hover:border-indigo-200 hover:bg-indigo-50">
-                                <input
-                                    type="checkbox"
-                                    name="participants[]"
-                                    value="{{ $participant->id }}"
-                                    @checked(in_array($participant->id, $selectedParticipants, true))
-                                    class="h-4 w-4 rounded border-gray-300 accent-indigo-600"
-                                >
-                                <span class="leading-4">{{ $participant->full_name }}</span>
-                            </label>
-                        @endforeach
-                    </div>
-                </div>
-            </div> --}}
+            @include('employee.budget-requests.partials.participants', [
+                'selected' => collect(old('participants', []))->map(fn ($id) => (int) $id)->all(),
+            ])
 
             <label class="block">
                 <span class="block text-[12px] font-bold text-gray-600 mb-1">Lampiran Utama</span>

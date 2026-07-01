@@ -373,9 +373,13 @@ class TravelReportController extends Controller
     {
         $employee = $request->user();
 
-        $requests = BudgetRequest::where('employee_id', $employee->id)
+        $requests = BudgetRequest::where(function ($query) use ($employee) {
+                // Budget milik sendiri ATAU budget yang men-tag user sebagai peserta tim.
+                $query->where('employee_id', $employee->id)
+                    ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+            })
             ->whereIn('status', ['approved', 'paid'])
-            ->whereDoesntHave('travelReport')
+            ->whereDoesntHave('travelReport', fn ($q) => $q->where('employee_id', $employee->id))
             ->latest()
             ->get(['id', 'title', 'total_amount', 'surat_tugas_no', 'surat_tugas_date']);
 

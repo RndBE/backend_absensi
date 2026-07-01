@@ -65,6 +65,11 @@
                 </label>
             </div>
 
+            @include('employee.budget-requests.partials.participants', [
+                'selected' => collect(old('participants', $budgetRequest->participants->pluck('id')->all()))
+                    ->map(fn ($id) => (int) $id)->all(),
+            ])
+
             <label class="block">
                 <span class="block text-[12px] font-bold text-gray-600 mb-1">Tambah Lampiran Utama</span>
                 <input type="file" name="attachments[]" multiple class="block w-full text-[13px] text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-[12px] file:font-bold file:text-indigo-700">

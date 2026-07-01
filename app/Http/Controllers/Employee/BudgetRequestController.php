@@ -155,7 +155,7 @@ class BudgetRequestController extends Controller
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
-        $budgetRequest = BudgetRequest::with(['items', 'travelZone'])
+        $budgetRequest = BudgetRequest::with(['items', 'travelZone', 'participants:id'])
             ->where('employee_id', $employee->id)
             ->findOrFail($id);
 
@@ -169,6 +169,10 @@ class BudgetRequestController extends Controller
             'employee' => $employee,
             'budgetRequest' => $budgetRequest,
             'itemTypes' => self::ITEM_TYPES,
+            'employees' => Employee::where('is_active', true)
+                ->where('id', '!=', $employee->id)
+                ->orderBy('full_name')
+                ->get(['id', 'full_name']),
         ]);
     }
 
@@ -181,6 +185,8 @@ class BudgetRequestController extends Controller
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
             'distance_km' => 'nullable|integer|min:0',
+            'participants' => 'nullable|array',
+            'participants.*' => 'exists:employees,id',
             'attachments' => 'nullable|array',
             'attachments.*' => 'file|max:5120',
             'items' => 'required|array|min:1',
@@ -217,6 +223,8 @@ class BudgetRequestController extends Controller
                 'distance_km' => $distanceKm,
                 'travel_zone_id' => $travelZone?->id,
             ]);
+
+            $budgetRequest->participants()->sync($validated['participants'] ?? []);
 
             $budgetRequest->items->each(fn ($item) => $item->attachments()->delete());
             $budgetRequest->items()->delete();

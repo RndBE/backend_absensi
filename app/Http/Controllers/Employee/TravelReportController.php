@@ -13,6 +13,7 @@ use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class TravelReportController extends Controller
 {
@@ -47,6 +48,8 @@ class TravelReportController extends Controller
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
+
+        $this->assertBudgetAccessible($employee, $validated['budget_request_id'] ?? null);
 
         DB::beginTransaction();
         try {
@@ -110,6 +113,8 @@ class TravelReportController extends Controller
         }
 
         $validated = $this->validateRequest($request);
+
+        $this->assertBudgetAccessible($employee, $validated['budget_request_id'] ?? null);
 
         DB::beginTransaction();
         try {
@@ -236,16 +241,44 @@ class TravelReportController extends Controller
 
     private function availableBudgetRequests(Employee $employee, ?TravelReport $report = null)
     {
-        return BudgetRequest::where('employee_id', $employee->id)
+        return BudgetRequest::where(function ($query) use ($employee) {
+                // Budget milik sendiri ATAU budget yang men-tag user sebagai peserta tim.
+                $query->where('employee_id', $employee->id)
+                    ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+            })
             ->whereIn('status', ['approved', 'paid'])
-            ->where(function ($query) use ($report) {
-                $query->whereDoesntHave('travelReport');
+            ->where(function ($query) use ($report, $employee) {
+                // "Sudah punya LHP" dinilai per-user: tiap peserta bikin LHP-nya sendiri.
+                $query->whereDoesntHave('travelReport', fn ($q) => $q->where('employee_id', $employee->id));
                 if ($report?->budget_request_id) {
                     $query->orWhere('id', $report->budget_request_id);
                 }
             })
             ->latest()
             ->get(['id', 'title', 'total_amount', 'surat_tugas_no', 'surat_tugas_date', 'distance_km', 'travel_zone_id']);
+    }
+
+    /**
+     * Pastikan employee berhak memakai budget request tsb (pemilik atau peserta yang di-tag).
+     */
+    private function assertBudgetAccessible(Employee $employee, ?int $budgetRequestId): void
+    {
+        if (! $budgetRequestId) {
+            return;
+        }
+
+        $accessible = BudgetRequest::where('id', $budgetRequestId)
+            ->where(function ($query) use ($employee) {
+                $query->where('employee_id', $employee->id)
+                    ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+            })
+            ->exists();
+
+        if (! $accessible) {
+            throw ValidationException::withMessages([
+                'budget_request_id' => 'Anda tidak berhak memakai budget request ini.',
+            ]);
+        }
     }
 
     private function canEditTravelReport(TravelReport $report): bool
