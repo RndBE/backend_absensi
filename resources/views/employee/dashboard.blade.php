@@ -35,6 +35,22 @@
         </div>
     </section>
 
+    @if(isset($pendingLhp) && $pendingLhp->isNotEmpty())
+        <section class="rounded-xl border border-amber-200 bg-amber-50/60 shadow-sm p-4 sm:p-5">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="material-symbols-outlined text-[20px] text-amber-600">assignment_late</span>
+                <h2 class="text-[14px] font-black text-gray-900">Pengingat LHP</h2>
+                <span class="ml-auto inline-flex items-center justify-center rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">{{ $pendingLhp->count() }}</span>
+            </div>
+            <p class="text-[12px] text-gray-500 mb-3">Perjalanan berikut belum dibuat LHP-nya. Segera buat sebelum melewati batas.</p>
+            <div class="space-y-2">
+                @foreach($pendingLhp as $budgetRequest)
+                    @include('employee.budget-requests.partials.lhp-reminder', ['budgetRequest' => $budgetRequest])
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div class="flex items-start gap-3">
@@ -222,11 +238,19 @@
     @endif
 
     <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div class="px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <h2 class="text-[15px] font-bold text-gray-900 flex items-center gap-2">
                 <span class="material-symbols-outlined text-[18px]">history</span>
-                Riwayat Presensi Bulan Ini
+                Riwayat Presensi
             </h2>
+            <form method="GET" action="{{ route('employee.dashboard') }}" class="flex items-center gap-2">
+                <label class="text-[12px] font-semibold text-gray-500">Bulan</label>
+                <input type="month" name="history_period"
+                       value="{{ $historyPeriod->format('Y-m') }}"
+                       max="{{ now()->format('Y-m') }}"
+                       onchange="this.form.submit()"
+                       class="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-semibold text-gray-800 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 [color-scheme:light]">
+            </form>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full">
@@ -243,8 +267,8 @@
                         @php
                             $attendanceDateKey = $attendance->date?->format('Y-m-d');
                             $manualPermissionLabel = \App\Support\AttendanceLateExcuse::manualPermissionStatusLabel($attendance->status);
-                            $hasLateExcuse = $manualPermissionLabel === null && $attendance->is_late && $attendanceDateKey && $lateExcuseDates->has($attendanceDateKey);
-                            $hasEarlyDeparture = $manualPermissionLabel === null && $attendanceDateKey && $earlyDepartureDates->has($attendanceDateKey);
+                            $hasLateExcuse = $manualPermissionLabel === null && $attendance->is_late && $attendanceDateKey && $historyLateExcuseDates->has($attendanceDateKey);
+                            $hasEarlyDeparture = $manualPermissionLabel === null && $attendanceDateKey && $historyEarlyDepartureDates->has($attendanceDateKey);
                         @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $attendance->date?->format('d/m/Y') }}</td>
@@ -272,7 +296,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="4" class="text-center py-10 text-[13px] text-gray-400">Belum ada riwayat presensi bulan ini.</td>
+                            <td colspan="4" class="text-center py-10 text-[13px] text-gray-400">Belum ada riwayat presensi pada {{ $historyPeriod->translatedFormat('F Y') }}.</td>
                         </tr>
                     @endforelse
                 </tbody>

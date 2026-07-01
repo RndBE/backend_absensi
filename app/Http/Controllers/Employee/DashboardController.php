@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Employee;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
+use App\Models\BudgetRequest;
 use App\Models\Employee;
 use App\Models\Holiday;
 use App\Models\LeaveRequest;
@@ -41,12 +42,37 @@ class DashboardController extends Controller
             }
         }
 
+        // Riwayat presensi dengan filter bulan (default bulan ini). Format query: Y-m.
+        try {
+            $historyPeriod = $request->filled('history_period')
+                ? Carbon::createFromFormat('Y-m', (string) $request->query('history_period'))->startOfMonth()
+                : $today->copy()->startOfMonth();
+        } catch (\Throwable $e) {
+            $historyPeriod = $today->copy()->startOfMonth();
+        }
+        // Tidak boleh memilih bulan di masa depan.
+        if ($historyPeriod->greaterThan($today->copy()->startOfMonth())) {
+            $historyPeriod = $today->copy()->startOfMonth();
+        }
+
         $recentAttendances = Attendance::where('employee_id', $employee->id)
-            ->whereYear('date', $today->year)
-            ->whereMonth('date', $today->month)
+            ->whereYear('date', $historyPeriod->year)
+            ->whereMonth('date', $historyPeriod->month)
             ->orderBy('date', 'desc')
-            ->limit(8)
             ->get();
+
+        // Tanggal izin (datang telat/pulang cepat) untuk bulan riwayat yang dipilih,
+        // agar badge status di widget riwayat tetap akurat lintas bulan.
+        $historyMonthStart = $historyPeriod->copy()->startOfMonth();
+        $historyMonthEnd = $historyPeriod->copy()->endOfMonth();
+        $historyLeaves = LeaveRequest::with('leaveType')
+            ->where('employee_id', $employee->id)
+            ->where('status', 'approved')
+            ->where('start_date', '<=', $historyMonthEnd->toDateString())
+            ->where('end_date', '>=', $historyMonthStart->toDateString())
+            ->get();
+        $historyLateExcuseDates = AttendanceLateExcuse::lateExcuseDates($historyLeaves, $historyMonthStart, $historyMonthEnd);
+        $historyEarlyDepartureDates = AttendanceLateExcuse::earlyDepartureDates($historyLeaves, $historyMonthStart, $historyMonthEnd);
 
         $monthStart = $today->copy()->startOfMonth();
         $monthEnd = $today->copy()->endOfMonth();
@@ -59,7 +85,26 @@ class DashboardController extends Controller
         $lateExcuseDates = AttendanceLateExcuse::lateExcuseDates($approvedLeaves, $monthStart, $monthEnd);
         $earlyDepartureDates = AttendanceLateExcuse::earlyDepartureDates($approvedLeaves, $monthStart, $monthEnd);
 
+        // Perjalanan yang LHP-nya belum dibuat oleh karyawan ini (pemilik atau peserta).
+        $pendingLhp = Schema::hasTable('budget_requests')
+            ? BudgetRequest::query()
+                ->where(function ($query) use ($employee) {
+                    $query->where('employee_id', $employee->id)
+                        ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+                })
+                ->whereIn('status', ['approved', 'paid'])
+                ->whereNotNull('return_date')
+                ->whereDoesntHave('travelReport', fn ($q) => $q->where('employee_id', $employee->id))
+                ->with('employee:id,company_id')
+                ->orderBy('return_date')
+                ->get()
+            : collect();
+
         return view('employee.dashboard', [
+            'pendingLhp' => $pendingLhp,
+            'historyPeriod' => $historyPeriod,
+            'historyLateExcuseDates' => $historyLateExcuseDates,
+            'historyEarlyDepartureDates' => $historyEarlyDepartureDates,
             'employee' => $employee,
             'today' => $today,
             'todayAttendance' => $todayAttendance,
