@@ -232,16 +232,25 @@ class PayslipController extends Controller
      * Unduh SEMUA payslip dalam satu payroll run sebagai SATU file PDF
      * (tiap karyawan satu halaman). Berguna untuk arsip/cetak sekaligus.
      */
-    public function downloadRunBundle($runId)
+    public function downloadRunBundle(Request $request, $runId)
     {
         $admin = Employee::find(session('admin_id'));
         $run = PayrollRun::findOrFail($runId);
+
+        // Urutan payslip: berdasarkan abjad nama (default) atau tanggal masuk karyawan.
+        $sort = $request->query('sort') === 'join_date' ? 'join_date' : 'name';
 
         $details = PayrollRunDetail::where('payroll_run_id', $run->id)
             ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
             ->with(['employee', 'employee.department:id,name', 'employee.activePayroll'])
             ->get()
-            ->sortBy(fn ($d) => $d->employee->full_name ?? '')
+            ->sortBy(function ($d) use ($sort) {
+                if ($sort === 'join_date') {
+                    // Yang belum ada tanggal masuk ditaruh paling akhir.
+                    return $d->employee->join_date?->format('Y-m-d') ?? '9999-12-31';
+                }
+                return strtolower($d->employee->full_name ?? '');
+            })
             ->values();
 
         if ($details->isEmpty()) {

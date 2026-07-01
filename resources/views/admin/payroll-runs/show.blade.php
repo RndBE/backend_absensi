@@ -111,9 +111,9 @@
 
     {{-- Download semua payslip jadi satu PDF (tersedia setelah finalized) --}}
     @if(in_array($run->status, ['finalized', 'published', 'locked']))
-    <a href="{{ route('admin.payslips.download-run', $run->id) }}" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200">
+    <button type="button" onclick="openPayslipDownloadModal()" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
         <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span> Download Semua Payslip (PDF)
-    </a>
+    </button>
     @endif
 
     {{-- Inject BPJS: tersedia di semua status untuk fix data lama --}}
@@ -132,6 +132,56 @@
     </form>
     @endif
 </div>
+
+{{-- Modal: pilih urutan download semua payslip --}}
+@if(in_array($run->status, ['finalized', 'published', 'locked']))
+<style>
+    @keyframes payslipModalIn {
+        from { opacity: 0; transform: translateY(8px) scale(0.97); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    #payslipDownloadModal:not(.hidden) .payslip-modal-box {
+        animation: payslipModalIn 0.18s ease-out;
+    }
+</style>
+<div id="payslipDownloadModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/45 backdrop-blur-sm px-4 py-5 overflow-y-auto">
+    <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 payslip-modal-box">
+        {{-- Header dengan aksen gradient --}}
+        <div class="relative flex items-center gap-3.5 rounded-t-2xl bg-gradient-to-br from-red-600 to-rose-500 px-5 py-4">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm ring-1 ring-white/30">
+                <span class="material-symbols-outlined text-[24px] text-white">picture_as_pdf</span>
+            </div>
+            <div class="min-w-0">
+                <h3 class="text-[15px] font-bold text-white">Download Semua Payslip</h3>
+                <p class="mt-0.5 text-[11.5px] text-white/80">{{ $details->count() }} karyawan · {{ \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y') }}</p>
+            </div>
+            <button type="button" onclick="closePayslipDownloadModal()" class="ml-auto rounded-lg p-1 text-white/80 hover:bg-white/20 hover:text-white transition-colors cursor-pointer">
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        </div>
+
+        <form method="GET" action="{{ route('admin.payslips.download-run', $run->id) }}">
+            <div class="p-5">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Urutkan berdasarkan</label>
+                <select name="sort" class="w-full text-[13px]">
+                    <option value="name">Abjad Nama (A–Z)</option>
+                    <option value="join_date">Tanggal Masuk (paling lama bergabung)</option>
+                </select>
+                <p class="mt-2.5 flex items-start gap-1.5 text-[11px] text-gray-400">
+                    <span class="material-symbols-outlined text-[14px] mt-px">info</span>
+                    Semua payslip digabung jadi satu file PDF sesuai urutan yang dipilih.
+                </p>
+            </div>
+            <div class="flex justify-end gap-2 rounded-b-2xl border-t border-gray-100 bg-gray-50/60 px-5 py-3.5">
+                <button type="button" onclick="closePayslipDownloadModal()" class="rounded-lg px-4 py-2 text-[12.5px] font-semibold text-gray-600 hover:bg-gray-200/70 transition-colors cursor-pointer">Batal</button>
+                <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-red-600 to-rose-500 px-5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-red-500/30 hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer">
+                    <span class="material-symbols-outlined text-[16px]">download</span> Download PDF
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+@endif
 
 {{-- Detail Table --}}
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-5">
@@ -358,6 +408,25 @@
 
 @push('scripts')
 <script>
+function openPayslipDownloadModal() {
+    const modal = document.getElementById('payslipDownloadModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closePayslipDownloadModal() {
+    const modal = document.getElementById('payslipDownloadModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+// Tutup modal saat klik area gelap di luar kotak
+document.getElementById('payslipDownloadModal')?.addEventListener('click', function (e) {
+    if (e.target === this) closePayslipDownloadModal();
+});
+
 function openPayrollDetailEdit(id) {
     document.getElementById('editPayrollDetail-' + id)?.classList.remove('hidden');
 }
