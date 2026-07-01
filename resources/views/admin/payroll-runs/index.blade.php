@@ -121,15 +121,22 @@
                     {{-- Employee List --}}
                     <div class="border border-gray-200 rounded-lg overflow-hidden max-h-[280px] overflow-y-auto" id="employeeList">
                         @foreach($employees as $emp)
+                        @php $empResign = $emp->resign_date ? \Carbon\Carbon::parse($emp->resign_date) : null; @endphp
                         <label class="emp-item flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50/50 transition-colors cursor-pointer border-b border-gray-100 last:border-0"
-                               data-name="{{ strtolower($emp->full_name) }}" data-code="{{ strtolower($emp->employee_code) }}">
+                               data-name="{{ strtolower($emp->full_name) }}" data-code="{{ strtolower($emp->employee_code) }}"
+                               data-active="{{ $emp->is_active ? '1' : '0' }}" data-resign="{{ $empResign?->format('Y-m') ?? '' }}">
                             <input type="checkbox" name="employee_ids[]" value="{{ $emp->id }}"
                                    class="emp-checkbox w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
                                    onchange="updateSelectedCount()">
                             <div class="flex items-center gap-2 flex-1 min-w-0">
                                 <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[10px] font-bold shrink-0">{{ substr($emp->full_name, 0, 1) }}</div>
                                 <div class="min-w-0">
-                                    <div class="text-[12.5px] font-semibold text-gray-800 truncate">{{ $emp->full_name }}</div>
+                                    <div class="text-[12.5px] font-semibold text-gray-800 truncate">
+                                        {{ $emp->full_name }}
+                                        @unless($emp->is_active)
+                                            <span class="ml-1 inline-flex items-center rounded bg-rose-100 px-1.5 py-0.5 text-[9.5px] font-bold text-rose-700 align-middle">Resign {{ $empResign?->format('d/m/y') }}</span>
+                                        @endunless
+                                    </div>
                                     <div class="text-[10.5px] text-gray-400 truncate">{{ $emp->employee_code }} · {{ $emp->department->name ?? '-' }}</div>
                                 </div>
                             </div>
@@ -170,15 +177,38 @@ function updateSelectedCount() {
     document.getElementById('selectedCount').textContent = count + ' dipilih';
 }
 
-document.getElementById('empSearchInput')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase().trim();
+function selectedPayrollPeriod() {
+    return document.querySelector('#createPayrollForm [name="period"]')?.value || '';
+}
+
+// Gabungan filter: pencarian + kelayakan periode.
+// Karyawan resign hanya layak untuk bulan tanggal resign-nya (mengikuti logika generate).
+function applyEmployeeFilters() {
+    const q = (document.getElementById('empSearchInput')?.value || '').toLowerCase().trim();
+    const period = selectedPayrollPeriod(); // format YYYY-MM
     document.querySelectorAll('.emp-item').forEach(item => {
         const name = item.dataset.name || '';
         const code = item.dataset.code || '';
-        const match = name.includes(q) || code.includes(q);
-        item.classList.toggle('hidden', !match);
+        const matchSearch = !q || name.includes(q) || code.includes(q);
+
+        const isActive = item.dataset.active === '1';
+        const resign = item.dataset.resign || '';
+        const eligiblePeriod = isActive || (resign !== '' && resign === period);
+
+        item.classList.toggle('hidden', !(matchSearch && eligiblePeriod));
+
+        // Karyawan yang tidak layak untuk periode ini jangan sampai ikut terpilih.
+        if (!eligiblePeriod) {
+            const cb = item.querySelector('.emp-checkbox');
+            if (cb) cb.checked = false;
+        }
     });
-});
+    updateSelectedCount();
+}
+
+document.getElementById('empSearchInput')?.addEventListener('input', applyEmployeeFilters);
+document.querySelector('#createPayrollForm [name="period"]')?.addEventListener('change', applyEmployeeFilters);
+document.addEventListener('DOMContentLoaded', applyEmployeeFilters);
 
 document.getElementById('createPayrollForm')?.addEventListener('submit', function(e) {
     const checked = document.querySelectorAll('.emp-checkbox:checked').length;

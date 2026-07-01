@@ -39,13 +39,18 @@ class PayrollRunController extends Controller
 
         $admin = Employee::find(session('admin_id'));
 
-        // Get all active employees with payroll data for the employee picker
+        // Karyawan untuk picker: yang aktif, DAN yang sudah resign (agar tetap bisa
+        // dipilih untuk payroll bulan mereka resign). Filter per-periode dilakukan di sisi
+        // klien: karyawan resign hanya muncul untuk bulan tanggal resign-nya.
         $employees = Employee::where('company_id', $admin->company_id)
-            ->where('is_active', true)
+            ->where(function ($q) {
+                $q->where('is_active', true)
+                    ->orWhereNotNull('resign_date');
+            })
             ->whereHas('activePayroll')
             ->with(['department:id,name'])
             ->orderBy('full_name')
-            ->get(['id', 'full_name', 'employee_code', 'department_id']);
+            ->get(['id', 'full_name', 'employee_code', 'department_id', 'is_active', 'resign_date']);
 
         return view('admin.payroll-runs.index', compact('runs', 'employees'));
     }

@@ -60,6 +60,10 @@ class LeaveController extends Controller
 
     public function store(Request $request)
     {
+        if ($failed = $this->guardAttachmentUpload($request)) {
+            return $failed;
+        }
+
         $validated = $request->validate([
             'leave_type_id' => 'required|exists:leave_types,id',
             'start_date' => 'required|date',
@@ -180,6 +184,10 @@ class LeaveController extends Controller
                 ->with('error', 'Pengajuan yang sudah diproses tidak bisa diedit.');
         }
 
+        if ($failed = $this->guardAttachmentUpload($request)) {
+            return $failed;
+        }
+
         $validated = $request->validate([
             'leave_type_id' => 'required|exists:leave_types,id',
             'start_date' => 'required|date',
@@ -268,5 +276,50 @@ class LeaveController extends Controller
             'attachment.mimes'    => 'Lampiran harus berformat JPG, PNG, atau PDF.',
             'attachment.file'     => 'Lampiran harus berupa file yang valid.',
         ];
+    }
+
+    /**
+     * Deteksi kegagalan upload di level PHP (sebelum validasi Laravel) dan
+     * kembalikan pesan spesifik + catat kode errornya ke log untuk diagnosa.
+     */
+    private function guardAttachmentUpload(Request $request): ?\Illuminate\Http\RedirectResponse
+    {
+        $file = $request->file('attachment');
+
+        if (! $file instanceof \Illuminate\Http\UploadedFile || $file->isValid()) {
+            return null;
+        }
+
+        $code = $file->getError();
+
+        \Illuminate\Support\Facades\Log::warning('Upload lampiran izin gagal', [
+            'error_code'  => $code,
+            'error_php'   => $file->getErrorMessage(),
+            'client_name' => $file->getClientOriginalName(),
+            'employee_id' => optional($request->attributes->get('employee'))->id,
+        ]);
+
+        return back()->withInput()->withErrors(['attachment' => $this->uploadErrorMessage($code)]);
+    }
+
+    /**
+     * Terjemahkan kode error upload PHP menjadi pesan yang bisa ditindaklanjuti.
+     */
+    private function uploadErrorMessage(int $code): string
+    {
+        return match ($code) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
+                'File terlalu besar untuk diunggah (melebihi batas server). Kompres/perkecil file, maksimal 5MB.',
+            UPLOAD_ERR_PARTIAL =>
+                'Upload terputus — file hanya terkirim sebagian. Pastikan koneksi stabil dan file tidak sedang disinkron dari cloud, lalu coba lagi.',
+            UPLOAD_ERR_NO_TMP_DIR =>
+                'Folder sementara server tidak ditemukan. Hubungi admin/IT.',
+            UPLOAD_ERR_CANT_WRITE =>
+                'Server gagal menyimpan file ke disk (mungkin penuh atau masalah izin). Hubungi admin/IT.',
+            UPLOAD_ERR_EXTENSION =>
+                'Upload dihentikan oleh konfigurasi server. Hubungi admin/IT.',
+            default =>
+                'Gagal mengunggah lampiran. Coba lagi dengan file dan koneksi yang stabil.',
+        };
     }
 }
