@@ -83,7 +83,7 @@
                     <td class="px-4 py-2 border-b border-gray-100"><div class="text-[12px] font-semibold text-gray-800">{{ $l->employee->full_name }}</div></td>
                     <td class="px-4 py-2 border-b border-gray-100 text-[12px] text-gray-700">{{ $l->leaveType->name ?? '-' }}</td>
                     <td class="px-4 py-2 border-b border-gray-100 text-center text-[12px] text-gray-700">{{ $l->start_date->format('d/m') }} - {{ $l->end_date->format('d/m/Y') }}</td>
-                    <td class="px-4 py-2 border-b border-gray-100 text-center text-[12px] font-bold text-gray-800">{{ $l->total_days }}</td>
+                    <td class="px-4 py-2 border-b border-gray-100 text-center text-[12px] font-bold text-gray-800">{{ $l->total_days_label }}</td>
                     <td class="px-4 py-2 border-b border-gray-100 text-center">
                         @php $lc = ['approved'=>'emerald','pending'=>'amber','rejected'=>'red']; @endphp
                         <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-{{ $lc[$l->status] ?? 'gray' }}-50 text-{{ $lc[$l->status] ?? 'gray' }}-700">{{ ucfirst($l->status) }}</span>
