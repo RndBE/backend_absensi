@@ -108,6 +108,11 @@ class LoanRequestController extends Controller
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'installment_count' => ['required', 'integer', 'min:1', 'max:1080'],
             'monthly_installment' => ['nullable', 'numeric', 'min:0'],
+            'installment_mode' => ['nullable', Rule::in(['auto', 'manual', 'scheduled'])],
+            'schedule_period' => ['nullable', 'array'],
+            'schedule_period.*' => ['nullable', 'date_format:Y-m'],
+            'schedule_amount' => ['nullable', 'array'],
+            'schedule_amount.*' => ['nullable', 'numeric', 'min:0'],
             'remaining_amount' => ['nullable', 'numeric', 'min:0'],
             'start_period' => ['nullable', 'date_format:Y-m'],
             'status' => ['required', Rule::in(['active', 'paid', 'cancelled'])],
@@ -122,15 +127,48 @@ class LoanRequestController extends Controller
         $interestAmount = round($amount * ($interestRate / 100), 2);
         $totalRepayable = round($amount + $interestAmount, 2);
 
+        // Mode terjadwal: cicilan default (untuk bulan tak terdaftar) boleh diisi manual;
+        // kalau dikosongkan, dihitung otomatis. Bulan tertentu ditimpa via installment_schedule.
         $data['interest_rate'] = $interestRate;
         $data['interest_amount'] = $interestAmount;
         $data['total_repayable'] = $totalRepayable;
         $data['monthly_installment'] = $this->monthlyInstallment($data, $totalRepayable);
+        $data['installment_schedule'] = $this->buildInstallmentSchedule($data);
         $data['remaining_amount'] = $this->hasInputAmount($data, 'remaining_amount')
             ? (float) $data['remaining_amount']
             : $totalRepayable;
 
         return $data;
+    }
+
+    /**
+     * Bangun peta cicilan per bulan { "Y-m": nominal } dari input mode terjadwal.
+     * Bulan yang tidak terdaftar akan memakai monthly_installment (default).
+     */
+    private function buildInstallmentSchedule(array $data): ?array
+    {
+        if (($data['installment_mode'] ?? null) !== 'scheduled') {
+            return null;
+        }
+
+        $periods = $data['schedule_period'] ?? [];
+        $amounts = $data['schedule_amount'] ?? [];
+        $schedule = [];
+
+        foreach ($periods as $i => $period) {
+            $period = trim((string) $period);
+            $amount = (float) ($amounts[$i] ?? 0);
+
+            if ($period === '' || $amount <= 0) {
+                continue;
+            }
+
+            $schedule[$period] = $amount; // baris terakhir menang bila periode sama
+        }
+
+        ksort($schedule);
+
+        return $schedule !== [] ? $schedule : null;
     }
 
     private function monthlyInstallment(array $data, float $totalRepayable): float

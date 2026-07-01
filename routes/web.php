@@ -258,6 +258,7 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::get('/budget-requests', [BudgetRequestController::class, 'index'])->name('budget-requests.index');
     Route::get('/budget-requests/{id}/print', [BudgetRequestController::class, 'print'])->name('budget-requests.print');
     Route::get('/budget-requests/{id}', [BudgetRequestController::class, 'show'])->name('budget-requests.show');
+    Route::put('/budget-requests/{id}/lhp-deadline', [BudgetRequestController::class, 'updateLhpDeadline'])->name('budget-requests.update-lhp-deadline');
     Route::delete('/budget-requests/{id}', [BudgetRequestController::class, 'destroy'])->name('budget-requests.destroy');
 
     // Pinjaman

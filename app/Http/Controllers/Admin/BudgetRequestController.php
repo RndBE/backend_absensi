@@ -50,7 +50,7 @@ class BudgetRequestController extends Controller
     {
         $admin = Employee::find(session('admin_id'));
         $budgetRequest = BudgetRequest::with([
-            'employee:id,full_name,photo,department_id,position,job_level',
+            'employee:id,full_name,photo,department_id,position,job_level,company_id',
             'employee.department:id,name',
             'items.attachments',
             'attachments',
@@ -61,6 +61,33 @@ class BudgetRequestController extends Controller
           ->findOrFail($id);
 
         return view('admin.budget-requests.show', compact('budgetRequest'));
+    }
+
+    /**
+     * Override batas pengumpulan LHP (hari kerja) untuk pengajuan ini — keringanan HR.
+     * Kosongkan untuk kembali ke default global.
+     */
+    public function updateLhpDeadline(Request $request, $id)
+    {
+        $admin = Employee::find(session('admin_id'));
+
+        if (! app(\App\Support\AdminPermission::class)->can($admin, 'budget.manage')) {
+            return back()->with('error', 'Anda tidak berhak mengubah batas LHP.');
+        }
+
+        $validated = $request->validate([
+            'lhp_deadline_days' => 'nullable|integer|min:1|max:60',
+        ], [
+            'lhp_deadline_days.min' => 'Batas minimal 1 hari kerja.',
+            'lhp_deadline_days.max' => 'Batas maksimal 60 hari kerja.',
+        ]);
+
+        $budgetRequest = BudgetRequest::whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
+
+        $budgetRequest->update(['lhp_deadline_days' => $validated['lhp_deadline_days'] ?? null]);
+
+        return back()->with('success', 'Batas pengumpulan LHP diperbarui.');
     }
 
     public function print($id)

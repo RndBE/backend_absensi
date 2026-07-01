@@ -1,5 +1,5 @@
 @php
-    $selectedBudgetId = old('budget_request_id', $report?->budget_request_id);
+    $selectedBudgetId = old('budget_request_id', $report?->budget_request_id ?? request('budget_request_id'));
     $activities = old('activities');
     if (! is_array($activities)) {
         $activities = $report
@@ -40,18 +40,24 @@
         <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
             <label class="block">
                 <span class="block text-[12px] font-bold text-gray-600 mb-1">Budget Request Terkait</span>
+                @php $deadlineHints = $lhpDeadlines ?? []; @endphp
                 <select name="budget_request_id" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
                     <option value="">- Tanpa Budget Request -</option>
                     @foreach($availableRequests as $budgetRequest)
+                        @php $hint = $deadlineHints[$budgetRequest->id] ?? null; @endphp
                         <option value="{{ $budgetRequest->id }}"
                             data-surat-no="{{ $budgetRequest->surat_tugas_no }}"
                             data-surat-date="{{ $budgetRequest->surat_tugas_date?->format('Y-m-d') }}"
                             data-distance="{{ $budgetRequest->distance_km }}"
+                            data-deadline="{{ $hint['date'] ?? '' }}"
+                            data-deadline-days="{{ $hint['days'] ?? '' }}"
+                            data-deadline-late="{{ $hint ? ($hint['late'] ? '1' : '0') : '' }}"
                             @selected((string) $selectedBudgetId === (string) $budgetRequest->id)>
                             {{ $budgetRequest->title }} - Rp {{ number_format((float) $budgetRequest->total_amount, 0, ',', '.') }}
                         </option>
                     @endforeach
                 </select>
+                <div data-lhp-deadline-hint class="mt-2 hidden rounded-lg border px-3 py-2 text-[12px]"></div>
             </label>
 
             {{-- Jarak KM tidak ditampilkan (mengikuti aplikasi mobile); nilai lama tetap dipertahankan. --}}
@@ -177,8 +183,30 @@
 
     // Auto-isi data dari Budget Request yang dipilih.
     const budgetSelect = document.querySelector('select[name="budget_request_id"]');
+    const deadlineHint = document.querySelector('[data-lhp-deadline-hint]');
+
+    function renderDeadlineHint(opt) {
+        if (!deadlineHint) return;
+        const date = opt?.dataset.deadline || '';
+        if (!opt || !opt.value || !date) {
+            deadlineHint.classList.add('hidden');
+            return;
+        }
+        const days = opt.dataset.deadlineDays || '';
+        const isLate = opt.dataset.deadlineLate === '1';
+        deadlineHint.classList.remove('hidden', 'bg-red-50', 'border-red-200', 'text-red-700', 'bg-emerald-50', 'border-emerald-200', 'text-emerald-700');
+        if (isLate) {
+            deadlineHint.classList.add('bg-red-50', 'border-red-200', 'text-red-700');
+            deadlineHint.innerHTML = `⚠️ Batas pengumpulan LHP <b>${date}</b> (${days} hari kerja) sudah terlewat. LHP akan ditandai <b>Terlambat</b>.`;
+        } else {
+            deadlineHint.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-700');
+            deadlineHint.innerHTML = `🗓️ Batas pengumpulan LHP: <b>${date}</b> (${days} hari kerja setelah pulang).`;
+        }
+    }
+
     budgetSelect?.addEventListener('change', function () {
         const opt = this.selectedOptions[0];
+        renderDeadlineHint(opt);
         if (!opt || !this.value) return;
         const form = this.closest('form');
         const setVal = (name, val) => {
@@ -193,6 +221,9 @@
         setVal('surat_tugas_date', opt.dataset.suratDate);
         setVal('distance_km', opt.dataset.distance);
     });
+
+    // Tampilkan hint untuk pilihan awal (mis. saat edit / old input).
+    if (budgetSelect?.value) renderDeadlineHint(budgetSelect.selectedOptions[0]);
 
     document.querySelector('[data-add-recommendation]')?.addEventListener('click', function () {
         const list = document.getElementById('recommendations');

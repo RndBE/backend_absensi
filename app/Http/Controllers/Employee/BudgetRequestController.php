@@ -35,7 +35,8 @@ class BudgetRequestController extends Controller
         return view('employee.budget-requests.index', [
             'employee' => $employee,
             'period' => $period,
-            'requests' => BudgetRequest::with(['items', 'travelZone'])
+            'requests' => BudgetRequest::with(['items', 'travelZone', 'employee:id,company_id'])
+                ->withExists(['travelReport as has_lhp' => fn ($q) => $q->where('employee_id', $employee->id)])
                 ->where('employee_id', $employee->id)
                 ->whereYear('created_at', $period->year)
                 ->whereMonth('created_at', $period->month)
@@ -68,6 +69,8 @@ class BudgetRequestController extends Controller
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
             'distance_km' => 'nullable|integer|min:0',
+            'departure_date' => 'nullable|required_with:distance_km|date',
+            'return_date' => 'nullable|required_with:distance_km|date|after_or_equal:departure_date',
             'participants' => 'nullable|array',
             'participants.*' => 'exists:employees,id',
             'attachments' => 'nullable|array',
@@ -78,7 +81,7 @@ class BudgetRequestController extends Controller
             'items.*.amount' => 'required|numeric|min:0',
             'item_attachments_*' => 'nullable|array',
             'item_attachments_*.*' => 'file|max:5120',
-        ]);
+        ], $this->travelDateMessages());
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
@@ -100,6 +103,8 @@ class BudgetRequestController extends Controller
                 'surat_tugas_date' => $validated['surat_tugas_date'] ?? null,
                 'distance_km' => $distanceKm,
                 'travel_zone_id' => $travelZone?->id,
+                'departure_date' => $validated['departure_date'] ?? null,
+                'return_date' => $validated['return_date'] ?? null,
             ]);
 
             $total = 0;
@@ -185,6 +190,8 @@ class BudgetRequestController extends Controller
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
             'distance_km' => 'nullable|integer|min:0',
+            'departure_date' => 'nullable|required_with:distance_km|date',
+            'return_date' => 'nullable|required_with:distance_km|date|after_or_equal:departure_date',
             'participants' => 'nullable|array',
             'participants.*' => 'exists:employees,id',
             'attachments' => 'nullable|array',
@@ -195,7 +202,7 @@ class BudgetRequestController extends Controller
             'items.*.amount' => 'required|numeric|min:0',
             'item_attachments_*' => 'nullable|array',
             'item_attachments_*.*' => 'file|max:5120',
-        ]);
+        ], $this->travelDateMessages());
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
@@ -222,6 +229,8 @@ class BudgetRequestController extends Controller
                 'surat_tugas_date' => $validated['surat_tugas_date'] ?? null,
                 'distance_km' => $distanceKm,
                 'travel_zone_id' => $travelZone?->id,
+                'departure_date' => $validated['departure_date'] ?? null,
+                'return_date' => $validated['return_date'] ?? null,
             ]);
 
             $budgetRequest->participants()->sync($validated['participants'] ?? []);
@@ -286,10 +295,24 @@ class BudgetRequestController extends Controller
                 'participants:id,full_name',
                 'approvalLogs.approver:id,full_name',
                 'travelZone',
+                'employee:id,company_id',
             ])
+                ->withExists(['travelReport as has_lhp' => fn ($q) => $q->where('employee_id', $employee->id)])
                 ->where('employee_id', $employee->id)
                 ->findOrFail($id),
         ]);
+    }
+
+    /**
+     * Pesan validasi ramah untuk tanggal berangkat/pulang perjalanan dinas.
+     */
+    private function travelDateMessages(): array
+    {
+        return [
+            'departure_date.required_with' => 'Tanggal berangkat wajib diisi untuk perjalanan dinas.',
+            'return_date.required_with' => 'Tanggal pulang wajib diisi untuk perjalanan dinas.',
+            'return_date.after_or_equal' => 'Tanggal pulang tidak boleh sebelum tanggal berangkat.',
+        ];
     }
 
     private function notifyFirstApprover(Employee $employee, BudgetRequest $budgetRequest): void

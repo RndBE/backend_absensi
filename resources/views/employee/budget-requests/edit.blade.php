@@ -47,7 +47,13 @@
                 <textarea name="description" rows="3" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Keterangan pengajuan">{{ old('description', $budgetRequest->description) }}</textarea>
             </label>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            @php $distanceValue = old('distance_km', $budgetRequest->distance_km); @endphp
+            @if($distanceValue)
+                {{-- Jarak KM tidak ditampilkan; nilai lama dipertahankan agar zona perjalanan tidak hilang. --}}
+                <input type="hidden" name="distance_km" value="{{ $distanceValue }}">
+            @endif
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">No. Surat Tugas</span>
                     <input name="surat_tugas_no" value="{{ old('surat_tugas_no', $budgetRequest->surat_tugas_no) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
@@ -59,11 +65,25 @@
                         <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
                     </span>
                 </label>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label>
-                    <span class="block text-[12px] font-bold text-gray-600 mb-1">Jarak KM</span>
-                    <input type="number" min="0" name="distance_km" value="{{ old('distance_km', $budgetRequest->distance_km) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="0">
+                    <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Berangkat</span>
+                    <span class="employee-date-shell" data-employee-date-shell>
+                        <input type="date" name="departure_date" value="{{ old('departure_date', $budgetRequest->departure_date?->format('Y-m-d')) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                        <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+                    </span>
+                </label>
+                <label>
+                    <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Pulang</span>
+                    <span class="employee-date-shell" data-employee-date-shell>
+                        <input type="date" name="return_date" value="{{ old('return_date', $budgetRequest->return_date?->format('Y-m-d')) }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                        <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+                    </span>
                 </label>
             </div>
+            <p class="text-[11px] text-gray-400">Untuk perjalanan dinas, isi tanggal berangkat & pulang. Tanggal pulang jadi acuan batas pengumpulan LHP.</p>
 
             @include('employee.budget-requests.partials.participants', [
                 'selected' => collect(old('participants', $budgetRequest->participants->pluck('id')->all()))

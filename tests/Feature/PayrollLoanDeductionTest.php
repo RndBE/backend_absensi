@@ -100,6 +100,98 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertGreaterThanOrEqual(500000, (float) $detail->total_deduction);
     }
 
+    public function test_scheduled_installment_overrides_default_for_that_period(): void
+    {
+        [$employee, $admin] = $this->seedLoanScenario('sched-a');
+
+        $loan = LoanRequest::create([
+            'employee_id' => $employee->id,
+            'amount' => 5000000,
+            'installment_count' => 10,
+            'monthly_installment' => 500000, // default bulan biasa
+            'installment_schedule' => ['2026-06' => 800000], // override Juni
+            'remaining_amount' => 5000000,
+            'start_period' => '2026-06',
+            'status' => 'active',
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $loanComponent = collect(PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail()->components)
+            ->firstWhere('name', 'Potongan Pinjaman');
+
+        $this->assertSame(800000.0, (float) $loanComponent['amount']);
+        $this->assertSame($loan->id, $loanComponent['loan']['id']);
+    }
+
+    public function test_scheduled_loan_uses_default_for_unlisted_period(): void
+    {
+        [$employee, $admin] = $this->seedLoanScenario('sched-b');
+
+        LoanRequest::create([
+            'employee_id' => $employee->id,
+            'amount' => 5000000,
+            'installment_count' => 10,
+            'monthly_installment' => 500000, // default
+            'installment_schedule' => ['2026-06' => 800000], // hanya Juni yang di-override
+            'remaining_amount' => 5000000,
+            'start_period' => '2026-06',
+            'status' => 'active',
+        ]);
+
+        // Periode Juli tidak ada di jadwal → pakai default 500000.
+        $run = PayrollRun::create(['period' => '2026-07', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $loanComponent = collect(PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail()->components)
+            ->firstWhere('name', 'Potongan Pinjaman');
+
+        $this->assertSame(500000.0, (float) $loanComponent['amount']);
+    }
+
+    /**
+     * Buat company + admin + employee + payroll aktif; kembalikan [employee, admin].
+     */
+    private function seedLoanScenario(string $suffix): array
+    {
+        $company = Company::create(['name' => 'PT Loan '.$suffix]);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-'.$suffix,
+            'company_id' => $company->id,
+            'full_name' => 'Admin '.$suffix,
+            'email' => 'admin-'.$suffix.'@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-'.$suffix,
+            'company_id' => $company->id,
+            'full_name' => 'Employee '.$suffix,
+            'email' => 'employee-'.$suffix.'@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        return [$employee, $admin];
+    }
+
     public function test_payroll_loan_deduction_is_capped_by_remaining_amount(): void
     {
         $company = Company::create(['name' => 'PT Payroll Loan Cap']);
@@ -509,6 +601,7 @@ class PayrollLoanDeductionTest extends TestCase
             $table->decimal('total_repayable', 15, 2)->default(0);
             $table->unsignedSmallInteger('installment_count');
             $table->decimal('monthly_installment', 15, 2);
+            $table->json('installment_schedule')->nullable();
             $table->decimal('remaining_amount', 15, 2)->default(0);
             $table->string('start_period', 7)->nullable();
             $table->text('purpose')->nullable();

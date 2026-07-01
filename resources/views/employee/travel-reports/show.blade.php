@@ -20,6 +20,11 @@
                         Edit
                     </a>
                 @endif
+                @if($report->is_late)
+                    <span class="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 text-[12px] font-bold text-red-600" title="LHP dikumpulkan melewati batas">
+                        <span class="material-symbols-outlined text-[15px]">schedule</span> Terlambat
+                    </span>
+                @endif
                 @include('employee.partials.status-badge', ['status' => $report->status])
             </div>
         </div>
@@ -42,6 +47,23 @@
             <div class="text-[11px] font-bold uppercase text-gray-400">Jarak / Zona</div>
             <div class="mt-1 text-[13px] text-gray-700">{{ $report->distance_km ? $report->distance_km.' km' : '-' }} @if($report->travelZone) · {{ $report->travelZone->name }} @endif</div>
         </div>
+        <div>
+            <div class="text-[11px] font-bold uppercase text-gray-400">Dibuat</div>
+            <div class="mt-1 text-[13px] text-gray-700">{{ $report->created_at?->format('d/m/Y H:i') ?? '-' }}</div>
+        </div>
+        <div>
+            <div class="text-[11px] font-bold uppercase text-gray-400">Terakhir Diedit</div>
+            <div class="mt-1 text-[13px] text-gray-700">{{ $report->updated_at?->format('d/m/Y H:i') ?? '-' }}</div>
+        </div>
+        @if($report->submission_deadline)
+        <div>
+            <div class="text-[11px] font-bold uppercase text-gray-400">Batas Pengumpulan LHP</div>
+            <div class="mt-1 text-[13px] {{ $report->is_late ? 'text-red-600 font-semibold' : 'text-gray-700' }}">
+                {{ $report->submission_deadline->format('d/m/Y') }}
+                @if($report->is_late) · Terlambat @endif
+            </div>
+        </div>
+        @endif
     </section>
 
     <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">

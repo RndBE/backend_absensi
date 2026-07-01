@@ -218,6 +218,35 @@
                             </div>
                         </div>
                     </div>
+
+                    {{-- Reminder LHP --}}
+                    <div class="p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition-all">
+                        <label class="flex items-center justify-between cursor-pointer mb-3">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-[20px] text-gray-400">flight_takeoff</span>
+                                <div>
+                                    <div class="text-[13px] font-semibold text-gray-800">Reminder LHP</div>
+                                    <div class="text-[11px] text-gray-400">Ingatkan pengaju & peserta membuat LHP setelah pulang & menjelang batas</div>
+                                </div>
+                            </div>
+                            <input type="checkbox" name="lhp_reminder_enabled" value="1" {{ $settings['lhp_reminder_enabled'] == '1' ? 'checked' : '' }}
+                                class="w-5 h-5 accent-indigo-500 rounded cursor-pointer" id="lhpReminderCheck" onchange="toggleLhpReminder()">
+                        </label>
+                        <div id="lhpReminderWrap" class="grid grid-cols-1 sm:grid-cols-3 gap-3 {{ $settings['lhp_reminder_enabled'] == '1' ? '' : 'opacity-40 pointer-events-none' }}">
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Hari Setelah Pulang</label>
+                                <input type="number" name="lhp_reminder_after_days" min="1" max="30" value="{{ $settings['lhp_reminder_after_days'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">H- Sebelum Batas (hari kerja)</label>
+                                <input type="number" name="lhp_reminder_before_days" min="1" max="30" value="{{ $settings['lhp_reminder_before_days'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Jam Kirim</label>
+                                <input type="time" name="lhp_reminder_time" value="{{ $settings['lhp_reminder_time'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -245,6 +274,13 @@ function toggleAutoClockoutTime() {
 function toggleLpjReminder() {
     const w = document.getElementById('lpjReminderWrap');
     const c = document.getElementById('lpjReminderCheck').checked;
+    w.classList.toggle('opacity-40', !c);
+    w.classList.toggle('pointer-events-none', !c);
+}
+
+function toggleLhpReminder() {
+    const w = document.getElementById('lhpReminderWrap');
+    const c = document.getElementById('lhpReminderCheck').checked;
     w.classList.toggle('opacity-40', !c);
     w.classList.toggle('pointer-events-none', !c);
 }

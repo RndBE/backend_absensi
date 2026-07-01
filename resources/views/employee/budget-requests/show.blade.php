@@ -19,6 +19,8 @@
         </div>
     </div>
 
+    @include('employee.budget-requests.partials.lhp-reminder', ['budgetRequest' => $budgetRequest])
+
     <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
             <div class="text-[11px] font-bold uppercase text-gray-400">Deskripsi</div>

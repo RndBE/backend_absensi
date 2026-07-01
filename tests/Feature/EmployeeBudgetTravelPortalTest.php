@@ -206,7 +206,19 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->date('surat_tugas_date')->nullable();
             $table->unsignedInteger('distance_km')->nullable();
             $table->unsignedBigInteger('travel_zone_id')->nullable();
+            $table->date('departure_date')->nullable();
+            $table->date('return_date')->nullable();
+            $table->unsignedTinyInteger('lhp_deadline_days')->nullable();
             $table->text('rejection_reason')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('holidays', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id')->nullable();
+            $table->date('date');
+            $table->string('name')->nullable();
+            $table->boolean('is_national')->default(false);
             $table->timestamps();
         });
 
@@ -251,6 +263,8 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->unsignedBigInteger('travel_zone_id')->nullable();
             $table->date('departure_date');
             $table->date('return_date');
+            $table->date('submission_deadline')->nullable();
+            $table->boolean('is_late')->default(false);
             $table->text('purpose');
             $table->text('conclusion')->nullable();
             $table->json('recommendations')->nullable();
@@ -387,6 +401,8 @@ class EmployeeBudgetTravelPortalTest extends TestCase
                 'surat_tugas_no' => 'ST-001',
                 'surat_tugas_date' => '2026-06-16',
             'distance_km' => 12,
+            'departure_date' => '2026-06-20',
+            'return_date' => '2026-06-21',
             'items' => [
                 ['type' => 'transport', 'description' => 'Taksi', 'amount' => 150000],
                 ['type' => 'meal', 'description' => 'Makan 1 hari', 'amount' => 75000],
@@ -437,6 +453,8 @@ class EmployeeBudgetTravelPortalTest extends TestCase
                 'title' => 'Perjalanan Tanpa Biaya Makan',
                 'description' => 'Kunjungan klien',
                 'distance_km' => 12,
+                'departure_date' => '2026-06-20',
+                'return_date' => '2026-06-21',
                 'items' => [
                     ['type' => 'transport', 'description' => 'Taksi', 'amount' => 50000],
                     ['type' => 'meal', 'description' => 'Uang makan ditanggung klien', 'amount' => 0],
@@ -502,6 +520,8 @@ class EmployeeBudgetTravelPortalTest extends TestCase
                 'surat_tugas_no' => 'ST-EDIT',
                 'surat_tugas_date' => '2026-06-18',
                 'distance_km' => 20,
+                'departure_date' => '2026-06-20',
+                'return_date' => '2026-06-21',
                 'items' => [
                     ['type' => 'transport', 'description' => 'Kereta', 'amount' => 100000],
                     ['type' => 'meal', 'description' => 'Makan', 'amount' => 50000],

@@ -74,6 +74,17 @@
                             <td class="px-4 py-3.5 border-b border-gray-100 min-w-[220px]">
                                 <div class="text-[13px] font-bold text-gray-900">{{ $budgetRequest->title }}</div>
                                 <div class="text-[12px] text-gray-500 mt-0.5">{{ $budgetRequest->description ?: '-' }}</div>
+                                @if(in_array($budgetRequest->status, ['approved', 'paid']) && $budgetRequest->return_date && ! ($budgetRequest->has_lhp ?? false))
+                                    @php
+                                        $lhpDeadline = $budgetRequest->lhpDeadlineDate();
+                                        $lhpLate = $lhpDeadline && \Illuminate\Support\Carbon::today()->gt($lhpDeadline);
+                                    @endphp
+                                    <a href="{{ route('employee.travel-reports.create', ['budget_request_id' => $budgetRequest->id]) }}"
+                                       class="mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold {{ $lhpLate ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700' }} hover:opacity-80">
+                                        <span class="material-symbols-outlined text-[12px]">assignment_late</span>
+                                        {{ $lhpLate ? 'LHP terlambat' : 'Buat LHP' }}@if($lhpDeadline) · batas {{ $lhpDeadline->format('d/m') }}@endif
+                                    </a>
+                                @endif
                             </td>
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100 whitespace-nowrap">{{ $budgetRequest->type === 'budget' ? 'Budget' : 'Reimbursement' }}</td>
                             <td class="px-4 py-3.5 text-[13px] font-bold text-gray-900 border-b border-gray-100 whitespace-nowrap">Rp {{ number_format((float) $budgetRequest->total_amount, 0, ',', '.') }}</td>

@@ -43,6 +43,7 @@ class LoanComponentSyncTest extends TestCase
             $table->decimal('total_repayable', 15, 2)->default(0);
             $table->unsignedSmallInteger('installment_count');
             $table->decimal('monthly_installment', 15, 2);
+            $table->json('installment_schedule')->nullable();
             $table->decimal('remaining_amount', 15, 2)->default(0);
             $table->string('start_period', 7)->nullable();
             $table->text('purpose')->nullable();

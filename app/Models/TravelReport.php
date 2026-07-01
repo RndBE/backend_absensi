@@ -12,6 +12,8 @@ class TravelReport extends Model
         'departure_date' => 'date',
         'return_date' => 'date',
         'surat_tugas_date' => 'date',
+        'submission_deadline' => 'date',
+        'is_late' => 'boolean',
         'recommendations' => 'array',
     ];
 

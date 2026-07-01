@@ -31,6 +31,11 @@
                     };
                 @endphp
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold {{ $statusBg }}">{{ strtoupper($report->status) }}</span>
+                @if($report->is_late)
+                    <span class="ml-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-red-100 text-red-700" title="Dikumpulkan melewati batas{{ $report->submission_deadline ? ' ('.$report->submission_deadline->format('d M Y').')' : '' }}">
+                        <span class="material-symbols-outlined text-[13px]">schedule</span> TERLAMBAT
+                    </span>
+                @endif
             </div>
             <div>
                 <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Pembuat LHP</div>
@@ -65,6 +70,14 @@
                 <a href="{{ route('admin.budget-requests.show', $report->budget_request_id) }}" class="text-[13px] text-indigo-600 hover:underline">{{ $report->budgetRequest->title }}</a>
             </div>
             @endif
+            <div>
+                <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Dibuat</div>
+                <div class="text-[13px] text-gray-800">{{ $report->created_at?->format('d M Y, H:i') ?? '-' }}</div>
+            </div>
+            <div>
+                <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Terakhir Diedit</div>
+                <div class="text-[13px] text-gray-800">{{ $report->updated_at?->format('d M Y, H:i') ?? '-' }}</div>
+            </div>
         </div>
     </div>
 </div>

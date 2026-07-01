@@ -72,6 +72,20 @@
             <div class="text-[14px] font-bold text-gray-900 mt-1">{{ $loanRequest->installment_count }}x - Rp {{ number_format($loanRequest->monthly_installment, 0, ',', '.') }}/bulan</div>
             <div class="text-[12px] text-gray-500">Sisa pinjaman Rp {{ number_format($loanRequest->remaining_amount, 0, ',', '.') }}</div>
         </div>
+        @if(! empty($loanRequest->installment_schedule) && is_array($loanRequest->installment_schedule))
+        <div class="md:col-span-2">
+            <div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Cicilan Terjadwal per Bulan</div>
+            <div class="mt-1.5 flex flex-wrap gap-2">
+                @foreach($loanRequest->installment_schedule as $period => $amount)
+                    <span class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[12px]">
+                        <span class="font-semibold text-indigo-700">{{ \Carbon\Carbon::parse($period.'-01')->translatedFormat('M Y') }}</span>
+                        <span class="text-gray-700">Rp {{ number_format($amount, 0, ',', '.') }}</span>
+                    </span>
+                @endforeach
+            </div>
+            <div class="text-[11px] text-gray-400 mt-1">Bulan lain memakai cicilan default Rp {{ number_format($loanRequest->monthly_installment, 0, ',', '.') }}/bulan.</div>
+        </div>
+        @endif
         <div class="md:col-span-2">
             <div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">Catatan</div>
             <div class="text-[13px] text-gray-700 mt-1 whitespace-pre-line">{{ $loanRequest->purpose ?: '-' }}</div>

@@ -36,9 +36,12 @@ class TravelReportController extends Controller
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
 
+        $availableRequests = $this->availableBudgetRequests($employee);
+
         return view('employee.travel-reports.create', [
             'employee' => $employee,
-            'availableRequests' => $this->availableBudgetRequests($employee),
+            'availableRequests' => $availableRequests,
+            'lhpDeadlines' => $this->buildDeadlineHints($availableRequests, $employee),
         ]);
     }
 
@@ -93,10 +96,13 @@ class TravelReportController extends Controller
                 ->with('error', 'LHP tidak dapat diedit karena sedang dalam proses persetujuan lanjutan atau sudah selesai.');
         }
 
+        $availableRequests = $this->availableBudgetRequests($employee, $report);
+
         return view('employee.travel-reports.edit', [
             'employee' => $employee,
             'report' => $report,
-            'availableRequests' => $this->availableBudgetRequests($employee, $report),
+            'availableRequests' => $availableRequests,
+            'lhpDeadlines' => $this->buildDeadlineHints($availableRequests, $employee),
         ]);
     }
 
@@ -191,11 +197,16 @@ class TravelReportController extends Controller
             }
             $report->documents()->delete();
             $report->activities()->delete();
+            // Batas & status telat di-snapshot saat submit pertama; tidak diubah saat edit.
             $report->update($payload);
         } else {
+            [$deadline, $isLate] = $this->resolveSubmissionDeadline($validated['budget_request_id'] ?? null);
+
             $report = TravelReport::create($payload + [
                 'status' => 'pending',
                 'current_step' => 1,
+                'submission_deadline' => $deadline,
+                'is_late' => $isLate,
             ]);
         }
 
@@ -223,6 +234,26 @@ class TravelReportController extends Controller
         }
 
         return $report->load(['activities.documents', 'documents']);
+    }
+
+    /**
+     * Hitung batas pengumpulan LHP dari tanggal pulang di Pengajuan Anggaran
+     * beserta status terlambat (dibanding hari ini). Mengembalikan [deadline, isLate].
+     */
+    private function resolveSubmissionDeadline(?int $budgetRequestId): array
+    {
+        if (! $budgetRequestId) {
+            return [null, false];
+        }
+
+        $budgetRequest = BudgetRequest::with('employee:id,company_id')->find($budgetRequestId);
+        $deadline = $budgetRequest?->lhpDeadlineDate();
+
+        if (! $deadline) {
+            return [null, false];
+        }
+
+        return [$deadline, now()->startOfDay()->gt($deadline)];
     }
 
     private function ownedReport(Employee $employee, int $id): TravelReport
@@ -255,7 +286,33 @@ class TravelReportController extends Controller
                 }
             })
             ->latest()
-            ->get(['id', 'title', 'total_amount', 'surat_tugas_no', 'surat_tugas_date', 'distance_km', 'travel_zone_id']);
+            ->get(['id', 'title', 'total_amount', 'surat_tugas_no', 'surat_tugas_date', 'distance_km', 'travel_zone_id', 'return_date', 'lhp_deadline_days']);
+    }
+
+    /**
+     * Hint batas pengumpulan LHP per budget request untuk ditampilkan di form.
+     * Nilai final tetap di-snapshot ulang saat submit (resolveSubmissionDeadline).
+     */
+    private function buildDeadlineHints($requests, Employee $employee): array
+    {
+        $hints = [];
+
+        foreach ($requests as $budgetRequest) {
+            if (! $budgetRequest->return_date) {
+                continue;
+            }
+
+            $days = $budgetRequest->effectiveLhpDeadlineDays();
+            $deadline = \App\Support\WorkingDays::add($budgetRequest->return_date, $days, $employee->company_id);
+
+            $hints[$budgetRequest->id] = [
+                'date' => $deadline->translatedFormat('d M Y'),
+                'days' => $days,
+                'late' => now()->startOfDay()->gt($deadline),
+            ];
+        }
+
+        return $hints;
     }
 
     /**

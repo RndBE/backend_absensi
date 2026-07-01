@@ -30,3 +30,18 @@ try {
 Schedule::command('lpj:remind')->dailyAt($lpjReminderTime)
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/lpj-reminder.log'));
+
+// Ingatkan karyawan membuat LHP — setelah pulang & menjelang batas pengumpulan.
+// Toggle aktif/nonaktif & hari dicek di dalam LhpReminderService.
+$lhpReminderTime = '08:00';
+try {
+    if (Schema::hasTable('settings')) {
+        $lhpReminderTime = Setting::getValue('lhp_reminder_time', '08:00') ?: '08:00';
+    }
+} catch (\Throwable $e) {
+    // Abaikan saat tabel belum siap (mis. fresh migrate).
+}
+
+Schedule::command('lhp:remind')->dailyAt($lhpReminderTime)
+    ->withoutOverlapping()
+    ->appendOutputTo(storage_path('logs/lhp-reminder.log'));

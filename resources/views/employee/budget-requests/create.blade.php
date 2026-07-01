@@ -87,6 +87,24 @@
                 </div>
 
                 <div class="hidden rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-700" data-zone-error></div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                    <label>
+                        <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Berangkat</span>
+                        <span class="employee-date-shell" data-employee-date-shell>
+                            <input type="date" name="departure_date" value="{{ old('departure_date') }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                            <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+                        </span>
+                    </label>
+                    <label>
+                        <span class="block text-[12px] font-bold text-gray-600 mb-1">Tanggal Pulang</span>
+                        <span class="employee-date-shell" data-employee-date-shell>
+                            <input type="date" name="return_date" value="{{ old('return_date') }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                            <span class="employee-date-placeholder" data-date-placeholder>mm/dd/yyyy</span>
+                        </span>
+                    </label>
+                </div>
+                <p class="text-[11px] text-gray-400">Untuk perjalanan dinas, isi tanggal berangkat & pulang. Tanggal pulang jadi acuan batas pengumpulan LHP.</p>
             </div>
 
             @include('employee.budget-requests.partials.participants', [

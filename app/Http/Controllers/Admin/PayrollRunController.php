@@ -850,7 +850,11 @@ class PayrollRunController extends Controller
 
         foreach ($loans as $loan) {
             $remainingBefore = (float) $loan->remaining_amount;
-            $deductionAmount = min((float) $loan->monthly_installment, $remainingBefore);
+
+            // Nominal cicilan bulan ini: pakai jadwal per-bulan bila ada override
+            // untuk periode ini, jika tidak pakai monthly_installment (default).
+            $baseInstallment = $this->loanInstallmentForPeriod($loan, $period);
+            $deductionAmount = min($baseInstallment, $remainingBefore);
 
             if ($deductionAmount <= 0) {
                 continue;
@@ -875,7 +879,7 @@ class PayrollRunController extends Controller
                     'interest_rate' => (float) ($loan->interest_rate ?? 0),
                     'interest_amount' => (float) ($loan->interest_amount ?? 0),
                     'total_repayable' => $totalRepayable,
-                    'installment_amount' => (float) $loan->monthly_installment,
+                    'installment_amount' => $baseInstallment,
                     'installment_number' => $this->loanInstallmentNumber($loan, $remainingAfter),
                     'installment_count' => (int) $loan->installment_count,
                     'paid_amount' => $paidAfter,
@@ -886,6 +890,22 @@ class PayrollRunController extends Controller
         }
 
         return $components;
+    }
+
+    /**
+     * Nominal cicilan untuk periode tertentu. Bila pinjaman punya jadwal per-bulan
+     * (installment_schedule) dan periode ini terdaftar, pakai nominal itu; jika tidak,
+     * pakai monthly_installment (default).
+     */
+    private function loanInstallmentForPeriod(LoanRequest $loan, string $period): float
+    {
+        $schedule = $loan->installment_schedule;
+
+        if (is_array($schedule) && array_key_exists($period, $schedule) && $schedule[$period] !== null && $schedule[$period] !== '') {
+            return (float) $schedule[$period];
+        }
+
+        return (float) $loan->monthly_installment;
     }
 
     private function loanInstallmentNumber(LoanRequest $loan, float $remainingAfter): int

@@ -26,6 +26,10 @@ class AttendanceSettingController extends Controller
         'lpj_reminder_enabled' => '1',
         'lpj_reminder_days' => '3',
         'lpj_reminder_time' => '08:00',
+        'lhp_reminder_enabled' => '1',
+        'lhp_reminder_after_days' => '1',
+        'lhp_reminder_before_days' => '2',
+        'lhp_reminder_time' => '08:00',
     ];
 
     public function index()
@@ -49,6 +53,9 @@ class AttendanceSettingController extends Controller
             'auto_clockout_time' => 'nullable|date_format:H:i',
             'lpj_reminder_days' => 'nullable|integer|min:1|max:30',
             'lpj_reminder_time' => 'nullable|date_format:H:i',
+            'lhp_reminder_after_days' => 'nullable|integer|min:1|max:30',
+            'lhp_reminder_before_days' => 'nullable|integer|min:1|max:30',
+            'lhp_reminder_time' => 'nullable|date_format:H:i',
         ]);
 
         $booleanKeys = [
@@ -56,12 +63,14 @@ class AttendanceSettingController extends Controller
             'remote_requires_approval', 'remote_requires_notes',
             'clockin_reminder_enabled', 'auto_clockout_enabled',
             'face_verification_enabled', 'lpj_reminder_enabled',
+            'lhp_reminder_enabled',
         ];
 
         $textKeys = [
             'office_latitude', 'office_longitude', 'office_radius_meters',
             'office_address', 'clockin_reminder_time', 'auto_clockout_time',
             'lpj_reminder_days', 'lpj_reminder_time',
+            'lhp_reminder_after_days', 'lhp_reminder_before_days', 'lhp_reminder_time',
         ];
 
         foreach ($booleanKeys as $key) {

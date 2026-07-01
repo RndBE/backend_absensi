@@ -89,6 +89,59 @@
                         </p>
                     </div>
                     @endif
+
+                    @if($budgetRequest->departure_date || $budgetRequest->return_date || $budgetRequest->distance_km)
+                    @php
+                        $lhpDeadline = $budgetRequest->lhpDeadlineDate();
+                        $lhpDays = $budgetRequest->effectiveLhpDeadlineDays();
+                        $lhpOverridden = ! is_null($budgetRequest->lhp_deadline_days);
+                    @endphp
+                    <div class="mt-3 rounded-lg bg-indigo-50/60 border border-indigo-100 px-4 py-3">
+                        <div class="flex items-center gap-1.5 mb-2">
+                            <span class="material-symbols-outlined text-[16px] text-indigo-500">flight_takeoff</span>
+                            <div class="text-[11px] font-bold text-indigo-500 uppercase">Perjalanan Dinas</div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 text-[12px]">
+                            <div>
+                                <div class="text-gray-400 font-semibold">Berangkat</div>
+                                <div class="text-gray-700">{{ $budgetRequest->departure_date?->format('d M Y') ?? '-' }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-400 font-semibold">Pulang</div>
+                                <div class="text-gray-700">{{ $budgetRequest->return_date?->format('d M Y') ?? '-' }}</div>
+                            </div>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-indigo-100">
+                            <div class="text-[11px] font-bold text-gray-400 uppercase mb-0.5">Batas Pengumpulan LHP</div>
+                            @if($lhpDeadline)
+                                <div class="text-[13px] font-bold text-gray-800">{{ $lhpDeadline->translatedFormat('d F Y') }}</div>
+                            @else
+                                <div class="text-[12px] text-gray-500">Belum bisa dihitung (tanggal pulang belum diisi)</div>
+                            @endif
+                            <div class="mt-0.5 text-[11px] text-gray-500">
+                                {{ $lhpDays }} hari kerja setelah pulang
+                                @if($lhpOverridden)
+                                    <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">Keringanan HR</span>
+                                @else
+                                    <span class="ml-1 text-gray-400">(default)</span>
+                                @endif
+                            </div>
+
+                            @if($canManageBudget)
+                            <form action="{{ route('admin.budget-requests.update-lhp-deadline', $budgetRequest->id) }}" method="POST" class="mt-3 flex items-end gap-2">
+                                @csrf
+                                @method('PUT')
+                                <label class="flex-1">
+                                    <span class="block text-[10px] font-bold text-gray-400 uppercase mb-1">Ubah batas (hari kerja)</span>
+                                    <input type="number" name="lhp_deadline_days" min="1" max="60" value="{{ $budgetRequest->lhp_deadline_days }}" placeholder="Default {{ \App\Models\BudgetRequest::DEFAULT_LHP_DEADLINE_DAYS }}" class="h-9 w-full rounded-lg border border-gray-300 px-3 text-[12px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                </label>
+                                <button type="submit" class="h-9 rounded-lg bg-indigo-600 px-3 text-[12px] font-semibold text-white hover:bg-indigo-700 transition-colors">Simpan</button>
+                            </form>
+                            <p class="mt-1 text-[10.5px] text-gray-400">Kosongkan untuk kembali ke default global.</p>
+                            @endif
+                        </div>
+                    </div>
+                    @endif
                 </div>
 
                 <div class="rounded-xl bg-gray-900 px-5 py-4 text-white">
