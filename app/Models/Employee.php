@@ -116,6 +116,11 @@ class Employee extends Authenticatable
         return $this->hasMany(Notification::class);
     }
 
+    public function payrollRunDetails(): HasMany
+    {
+        return $this->hasMany(PayrollRunDetail::class);
+    }
+
     public function magicLinks(): HasMany
     {
         return $this->hasMany(EmployeeMagicLink::class);

@@ -210,6 +210,59 @@ class TaxCertificateGenerationTest extends TestCase
         $this->assertSame('draft', $certificate->status);
     }
 
+    public function test_bukti_potong_employee_picker_includes_inactive_employees_with_final_payroll_in_selected_year(): void
+    {
+        DB::table('employees')->insert([
+            [
+                'id' => 1,
+                'company_id' => 1,
+                'employee_code' => 'ADM',
+                'email' => 'admin@example.test',
+                'password' => 'secret',
+                'full_name' => 'Admin',
+                'role' => 'admin',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 2,
+                'company_id' => 1,
+                'employee_code' => 'RES',
+                'email' => 'resigned@example.test',
+                'password' => 'secret',
+                'full_name' => 'Resigned Employee',
+                'role' => 'employee',
+                'is_active' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 3,
+                'company_id' => 1,
+                'employee_code' => 'OLD',
+                'email' => 'old@example.test',
+                'password' => 'secret',
+                'full_name' => 'Old Employee',
+                'role' => 'employee',
+                'is_active' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->createPayrollDetail(1, '2026-05', 'published', 2, 10000000);
+        $this->createPayrollDetail(2, '2025-12', 'published', 3, 10000000);
+
+        $response = $this->withSession(['admin_id' => 1])
+            ->get(route('admin.tax.bukti-potong', ['year' => 2026]));
+
+        $response->assertOk();
+        $response->assertSee('RES');
+        $response->assertSee('Resigned Employee');
+        $response->assertDontSee('Old Employee');
+    }
+
     public function test_finalize_bukti_potong_changes_status_to_final(): void
     {
         DB::table('employees')->insert([

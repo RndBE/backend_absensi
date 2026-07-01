@@ -130,7 +130,16 @@ class TaxController extends Controller
             ->orderBy('certificate_number')
             ->get();
 
-        $employees = Employee::where('company_id', $admin->company_id)->where('is_active', true)->orderBy('full_name')->get();
+        $employees = Employee::where('company_id', $admin->company_id)
+            ->where(function ($q) use ($year) {
+                $q->where('is_active', true)
+                    ->orWhereHas('payrollRunDetails.payrollRun', function ($q) use ($year) {
+                        $q->where('period', 'like', $year.'-%')
+                            ->whereIn('status', ['finalized', 'published', 'locked']);
+                    });
+            })
+            ->orderBy('full_name')
+            ->get();
 
         return view('admin.tax.bukti-potong', compact('certificates', 'employees', 'year'));
     }
