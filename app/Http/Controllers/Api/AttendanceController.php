@@ -931,39 +931,8 @@ class AttendanceController extends Controller
      */
     private function getShiftStartTime(Employee $employee, Carbon $date): ?string
     {
-        // 1. Check override in schedule_assignments
-        $override = ScheduleAssignment::with('shift')
-            ->where('employee_id', $employee->id)
-            ->where('date', $date)
-            ->first();
-
-        if ($override?->shift) {
-            return $override->shift->is_off ? null : $override->shift->start_time;
-        }
-
-        $holiday = Holiday::where('company_id', $employee->company_id)
-            ->where('date', $date->toDateString())
-            ->exists();
-
-        if ($holiday) {
-            return null;
-        }
-
-        // 2. Fallback to schedule template
-        if ($employee->schedule_template_id) {
-            $employee->loadMissing('scheduleTemplate.days.shift');
-            $shift = $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
-            if ($shift && !$shift->is_off) {
-                return $shift->start_time;
-            }
-        }
-
-        // 3. Fallback to work schedule
-        if ($employee->work_schedule_id) {
-            $employee->loadMissing('workSchedule');
-            return $employee->workSchedule?->start_time;
-        }
-
-        return null;
+        // Delegasi ke helper bersama agar hitung-ulang saat ganti shift memakai
+        // logika resolusi shift yang identik dengan saat clock-in.
+        return \App\Support\AttendanceLate::shiftStartTime($employee, $date);
     }
 }

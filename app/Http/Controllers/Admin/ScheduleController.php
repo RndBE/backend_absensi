@@ -9,6 +9,7 @@ use App\Models\ScheduleAssignment;
 use App\Models\Shift;
 use App\Models\ScheduleTemplate;
 use App\Models\Holiday;
+use App\Support\AttendanceLate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -114,6 +115,12 @@ class ScheduleController extends Controller
             ['shift_id' => $request->shift_id, 'notes' => $request->notes]
         );
 
+        // Jika absensi pada tanggal ini sudah ada, hitung ulang status terlambatnya
+        // terhadap shift yang baru (mis. tukeran shift yang diinput belakangan).
+        if ($employee = Employee::find($request->employee_id)) {
+            AttendanceLate::recalculate($employee, $request->date);
+        }
+
         return back()->with('success', 'Jadwal berhasil disimpan.');
     }
 
@@ -143,6 +150,9 @@ class ScheduleController extends Controller
             ->map(fn($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
 
+        $employees = Employee::whereIn('id', $request->employee_ids)->get()->keyBy('id');
+        $today = Carbon::today();
+
         foreach ($request->employee_ids as $empId) {
             $current = $start->copy();
             while ($current->lte($end)) {
@@ -165,6 +175,12 @@ class ScheduleController extends Controller
                     ['shift_id' => $request->shift_id]
                 );
                 $count++;
+
+                // Hitung ulang status terlambat untuk absensi yang sudah ada (tanggal lampau/hari ini).
+                if ($current->lte($today) && ($employee = $employees->get($empId))) {
+                    AttendanceLate::recalculate($employee, $dateStr);
+                }
+
                 $current->addDay();
             }
         }
@@ -175,7 +191,16 @@ class ScheduleController extends Controller
 
     public function destroy($id)
     {
-        ScheduleAssignment::findOrFail($id)->delete();
+        $assignment = ScheduleAssignment::findOrFail($id);
+        $employeeId = $assignment->employee_id;
+        $date = $assignment->date;
+        $assignment->delete();
+
+        // Setelah override dihapus, hitung ulang status terlambat terhadap jadwal fallback.
+        if ($employee = Employee::find($employeeId)) {
+            AttendanceLate::recalculate($employee, $date);
+        }
+
         return back()->with('success', 'Jadwal berhasil dihapus.');
     }
 
@@ -189,6 +214,10 @@ class ScheduleController extends Controller
         ScheduleAssignment::where('employee_id', $request->employee_id)
             ->where('date', $request->date)
             ->delete();
+
+        if ($employee = Employee::find($request->employee_id)) {
+            AttendanceLate::recalculate($employee, $request->date);
+        }
 
         return back()->with('success', 'Jadwal pada tanggal tersebut berhasil dihapus.');
     }
