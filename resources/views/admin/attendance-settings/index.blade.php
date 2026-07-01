@@ -261,8 +261,20 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
 }).addTo(map);
 
-// Office marker (draggable)
-const marker = L.marker([initLat, initLng], { draggable: true }).addTo(map);
+// Office marker (draggable) — custom building icon so it reads as "kantor", not a generic pin
+const officeIcon = L.divIcon({
+    className: 'office-marker-icon',
+    html: `
+        <div style="width:36px;height:36px;border-radius:50% 50% 50% 0;background:#4f46e5;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
+            <span class="material-symbols-outlined" style="transform:rotate(45deg);color:#fff;font-size:20px;">apartment</span>
+        </div>
+    `,
+    iconSize: [36, 36],
+    iconAnchor: [18, 36],
+    popupAnchor: [0, -34],
+});
+
+const marker = L.marker([initLat, initLng], { draggable: true, icon: officeIcon }).addTo(map);
 marker.bindPopup('<b>Lokasi Kantor</b>').openPopup();
 
 // Radius circle
