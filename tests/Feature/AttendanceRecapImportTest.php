@@ -85,6 +85,9 @@ class AttendanceRecapImportTest extends TestCase
             $table->time('clock_out')->nullable();
             $table->string('status')->default('present');
             $table->string('review_status')->nullable();
+            $table->text('suspicious_reason')->nullable();
+            $table->unsignedBigInteger('reviewed_by')->nullable();
+            $table->timestamp('reviewed_at')->nullable();
             $table->boolean('is_late')->default(false);
             $table->boolean('is_remote')->default(false);
             $table->text('remote_notes')->nullable();

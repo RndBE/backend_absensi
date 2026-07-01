@@ -132,6 +132,10 @@
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-red-100 text-red-800">Absen</span>
                             @elseif($att->status === 'leave')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-blue-100 text-blue-800">Cuti</span>
+                            @elseif($att->status === 'sick')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-violet-100 text-violet-800">Sakit</span>
+                            @elseif($att->status === 'wfh')
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-teal-100 text-teal-800">WFH</span>
                             @elseif($rowManualPermission)
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">{{ $rowManualPermission }}</span>
                             @elseif($att->status === 'present' && $att->is_late && $rowLateExcuse)

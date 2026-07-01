@@ -340,11 +340,19 @@ class AttendanceRecapController extends Controller
                 'date' => $dateString,
             ]);
 
+        $admin = Employee::find(session('admin_id'));
+
         $attendance->fill([
             'clock_in' => $request->clock_in,
             'clock_out' => $request->clock_out,
             'status' => $request->status,
             'is_late' => $isLate,
+            // Status diubah manual oleh admin → bersihkan flag review keamanan agar
+            // konsisten di semua tampilan (riwayat & rekap tidak lagi menandai Alpha).
+            'review_status' => null,
+            'suspicious_reason' => null,
+            'reviewed_by' => $admin?->id,
+            'reviewed_at' => now(),
         ]);
         $attendance->save();
 
