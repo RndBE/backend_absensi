@@ -192,6 +192,97 @@ class PayrollLoanDeductionTest extends TestCase
         return [$employee, $admin];
     }
 
+    public function test_resigned_employee_with_deactivated_payroll_is_generated_for_resign_month(): void
+    {
+        [$admin, $employee] = $this->seedResignedEmployee('res-a', '2026-07-15');
+
+        $run = PayrollRun::create(['period' => '2026-07', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        // Karyawan resign Juli tetap tergenerate di payroll Juli meski payroll-nya nonaktif.
+        $this->assertDatabaseHas('payroll_run_details', [
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+        ]);
+    }
+
+    public function test_resigned_employee_is_excluded_from_later_month(): void
+    {
+        [$admin, $employee] = $this->seedResignedEmployee('res-b', '2026-06-20');
+
+        // Resign Juni → tidak boleh muncul di payroll Juli.
+        $run = PayrollRun::create(['period' => '2026-07', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $this->assertDatabaseMissing('payroll_run_details', [
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+        ]);
+    }
+
+    public function test_prorate_and_inclusion_use_last_working_date_not_resign_date(): void
+    {
+        // Surat resign 30 Mei, tapi hari kerja terakhir 10 Juni → payable di JUNI, 10 hari.
+        [$admin, $employee] = $this->seedResignedEmployee('lwd', '2026-05-30', '2026-06-10');
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->first();
+
+        // Inklusi berdasar hari kerja terakhir (Juni), bukan tanggal resign (Mei).
+        $this->assertNotNull($detail, 'Karyawan harus masuk payroll Juni berdasar hari kerja terakhir.');
+        // Pro-rata 10/30 hari: 6.000.000 × 10/30 = 2.000.000 (bukan 1 hari dari resign_date).
+        $this->assertSame(2000000.0, (float) $detail->basic_salary);
+    }
+
+    /**
+     * Karyawan yang sudah resign: is_active=false + resign_date, dan EmployeePayroll
+     * sudah dinonaktifkan (meniru proses resign). Kembalikan [admin, employee].
+     */
+    private function seedResignedEmployee(string $suffix, string $resignDate, ?string $lastWorkingDate = null): array
+    {
+        $company = Company::create(['name' => 'PT Resign '.$suffix]);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-'.$suffix,
+            'company_id' => $company->id,
+            'full_name' => 'Admin '.$suffix,
+            'email' => 'admin-'.$suffix.'@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-'.$suffix,
+            'company_id' => $company->id,
+            'full_name' => 'Resigned '.$suffix,
+            'email' => 'emp-'.$suffix.'@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => false,
+            'resign_date' => $resignDate,
+            'last_working_date' => $lastWorkingDate,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 6000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => false, // dinonaktifkan saat resign
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        return [$admin, $employee];
+    }
+
     public function test_payroll_loan_deduction_is_capped_by_remaining_amount(): void
     {
         $company = Company::create(['name' => 'PT Payroll Loan Cap']);
@@ -512,6 +603,7 @@ class PayrollLoanDeductionTest extends TestCase
             $table->string('ptkp')->nullable();
             $table->date('join_date')->nullable();
             $table->date('resign_date')->nullable();
+            $table->date('last_working_date')->nullable();
             $table->boolean('is_active')->default(true);
             $table->string('role')->default('employee');
             $table->rememberToken();

@@ -121,10 +121,14 @@
                     {{-- Employee List --}}
                     <div class="border border-gray-200 rounded-lg overflow-hidden max-h-[280px] overflow-y-auto" id="employeeList">
                         @foreach($employees as $emp)
-                        @php $empResign = $emp->resign_date ? \Carbon\Carbon::parse($emp->resign_date) : null; @endphp
+                        @php
+                            // Acuan bulan payable karyawan keluar = hari kerja terakhir (fallback tanggal resign).
+                            $empExitRaw = $emp->last_working_date ?: $emp->resign_date;
+                            $empExit = $empExitRaw ? \Carbon\Carbon::parse($empExitRaw) : null;
+                        @endphp
                         <label class="emp-item flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50/50 transition-colors cursor-pointer border-b border-gray-100 last:border-0"
                                data-name="{{ strtolower($emp->full_name) }}" data-code="{{ strtolower($emp->employee_code) }}"
-                               data-active="{{ $emp->is_active ? '1' : '0' }}" data-resign="{{ $empResign?->format('Y-m') ?? '' }}">
+                               data-active="{{ $emp->is_active ? '1' : '0' }}" data-resign="{{ $empExit?->format('Y-m') ?? '' }}">
                             <input type="checkbox" name="employee_ids[]" value="{{ $emp->id }}"
                                    class="emp-checkbox w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
                                    onchange="updateSelectedCount()">
@@ -134,7 +138,7 @@
                                     <div class="text-[12.5px] font-semibold text-gray-800 truncate">
                                         {{ $emp->full_name }}
                                         @unless($emp->is_active)
-                                            <span class="ml-1 inline-flex items-center rounded bg-rose-100 px-1.5 py-0.5 text-[9.5px] font-bold text-rose-700 align-middle">Resign {{ $empResign?->format('d/m/y') }}</span>
+                                            <span class="ml-1 inline-flex items-center rounded bg-rose-100 px-1.5 py-0.5 text-[9.5px] font-bold text-rose-700 align-middle">Kerja s/d {{ $empExit?->format('d/m/y') }}</span>
                                         @endunless
                                     </div>
                                     <div class="text-[10.5px] text-gray-400 truncate">{{ $emp->employee_code }} · {{ $emp->department->name ?? '-' }}</div>

@@ -39,18 +39,20 @@ class PayrollRunController extends Controller
 
         $admin = Employee::find(session('admin_id'));
 
-        // Karyawan untuk picker: yang aktif, DAN yang sudah resign (agar tetap bisa
-        // dipilih untuk payroll bulan mereka resign). Filter per-periode dilakukan di sisi
-        // klien: karyawan resign hanya muncul untuk bulan tanggal resign-nya.
+        // Karyawan untuk picker: yang aktif (punya payroll aktif), DAN yang sudah resign
+        // (payroll-nya sudah nonaktif tapi tetap punya data payroll) agar bisa dipilih untuk
+        // payroll bulan mereka resign. Filter per-periode dilakukan di sisi klien.
         $employees = Employee::where('company_id', $admin->company_id)
             ->where(function ($q) {
-                $q->where('is_active', true)
-                    ->orWhereNotNull('resign_date');
+                $q->where(function ($active) {
+                    $active->where('is_active', true)->whereHas('activePayroll');
+                })->orWhere(function ($resigned) {
+                    $resigned->whereNotNull('resign_date')->whereHas('payroll');
+                });
             })
-            ->whereHas('activePayroll')
             ->with(['department:id,name'])
             ->orderBy('full_name')
-            ->get(['id', 'full_name', 'employee_code', 'department_id', 'is_active', 'resign_date']);
+            ->get(['id', 'full_name', 'employee_code', 'department_id', 'is_active', 'resign_date', 'last_working_date']);
 
         return view('admin.payroll-runs.index', compact('runs', 'employees'));
     }
@@ -387,23 +389,37 @@ class PayrollRunController extends Controller
         $periodStart = $periodDate->copy()->startOfMonth();
         $periodEnd = $periodDate->copy()->endOfMonth();
 
-        // Get active payrolls for selected employees.
-        // Sertakan juga karyawan yang resign di periode ini agar payroll bulan
-        // terakhirnya tetap tergenerate meski is_active sudah false.
-        $query = EmployeePayroll::where('is_active', true)
-            ->whereHas('employee', function ($q) use ($admin, $periodStart, $periodEnd) {
+        // Acuan keluar karyawan = hari kerja terakhir (fallback ke tanggal resign bila kosong).
+        $exitInPeriod = fn ($q) => $q->whereRaw(
+            'COALESCE(last_working_date, resign_date) BETWEEN ? AND ?',
+            [$periodStart->toDateString(), $periodEnd->toDateString()]
+        );
+
+        // Get payrolls for selected employees.
+        // Sertakan juga karyawan yang resign di periode ini agar payroll bulan terakhirnya
+        // tetap tergenerate — meski saat resign EmployeePayroll-nya sudah dinonaktifkan.
+        $query = EmployeePayroll::whereHas('employee', function ($q) use ($admin, $exitInPeriod) {
                 $q->where('company_id', $admin->company_id)
-                    ->where(function ($sub) use ($periodStart, $periodEnd) {
-                        $sub->where('is_active', true)
-                            ->orWhereBetween('resign_date', [$periodStart, $periodEnd]);
+                    ->where(function ($sub) use ($exitInPeriod) {
+                        $sub->where('is_active', true)->orWhere($exitInPeriod);
                     });
+            })
+            ->where(function ($q) use ($exitInPeriod) {
+                // Payroll aktif, ATAU payroll (nonaktif) milik karyawan yang keluar di periode ini.
+                $q->where('is_active', true)
+                    ->orWhereHas('employee', $exitInPeriod);
             });
 
         if (! empty($employeeIds)) {
             $query->whereIn('employee_id', $employeeIds);
         }
 
-        $payrolls = $query->with('employee')->get();
+        // Satu payroll per karyawan: utamakan yang aktif, lalu effective_date terbaru.
+        $payrolls = $query->with('employee')->get()
+            ->sortByDesc('effective_date')
+            ->sortByDesc(fn ($p) => $p->is_active ? 1 : 0)
+            ->unique('employee_id')
+            ->values();
 
         // Collect holiday dates for the period
         $holidayDates = Holiday::where('company_id', $admin->company_id)
@@ -437,12 +453,13 @@ class PayrollRunController extends Controller
                 }
             }
 
-            // Check resign_date mid-month
-            if ($employee->resign_date) {
-                $resignDate = Carbon::parse($employee->resign_date);
-                if ($resignDate->between($periodStart, $periodEnd) && $resignDate->day < $periodEnd->day) {
-                    $workingDays = $resignDate->day;
-                    $proRateReason = ($proRateReason ? $proRateReason.', ' : '').'Resign tgl '.$resignDate->day;
+            // Check keluar mid-month — pakai hari kerja terakhir (fallback tanggal resign).
+            $exitDateRaw = $employee->last_working_date ?: $employee->resign_date;
+            if ($exitDateRaw) {
+                $exitDate = Carbon::parse($exitDateRaw);
+                if ($exitDate->between($periodStart, $periodEnd) && $exitDate->day < $periodEnd->day) {
+                    $workingDays = $exitDate->day;
+                    $proRateReason = ($proRateReason ? $proRateReason.', ' : '').'Kerja s/d tgl '.$exitDate->day;
                 }
             }
 
@@ -705,8 +722,10 @@ class PayrollRunController extends Controller
             $pph21Calc = new Pph21Calculator($periodStart->format('Y-m-d'));
             $isDecember = ($periodDate->month === 12);
 
-            // Deteksi bulan terakhir karyawan (resign di periode ini).
-            $resignDate = $employee->resign_date ? Carbon::parse($employee->resign_date) : null;
+            // Deteksi bulan terakhir karyawan (keluar di periode ini) — pakai hari kerja
+            // terakhir, fallback ke tanggal resign.
+            $exitDateForTax = $employee->last_working_date ?: $employee->resign_date;
+            $resignDate = $exitDateForTax ? Carbon::parse($exitDateForTax) : null;
             $isResignMonth = $resignDate && $resignDate->between($periodStart, $periodEnd);
 
             if ($isDecember) {
