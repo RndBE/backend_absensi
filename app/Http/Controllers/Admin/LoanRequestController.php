@@ -106,7 +106,7 @@ class LoanRequestController extends Controller
             ],
             'amount' => ['required', 'numeric', 'min:1'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'installment_count' => ['required', 'integer', 'min:1', 'max:120'],
+            'installment_count' => ['required', 'integer', 'min:1', 'max:1080'],
             'monthly_installment' => ['nullable', 'numeric', 'min:0'],
             'remaining_amount' => ['nullable', 'numeric', 'min:0'],
             'start_period' => ['nullable', 'date_format:Y-m'],
