@@ -296,6 +296,43 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertTrue($names->contains('JP Karyawan'));
     }
 
+    public function test_update_detail_saves_newly_added_component(): void
+    {
+        $company = Company::create(['name' => 'PT Edit']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-EDIT', 'company_id' => $company->id, 'full_name' => 'Admin',
+            'email' => 'admin-edit@example.test', 'password' => 'secret', 'role' => 'admin', 'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+        $employee = Employee::create([
+            'employee_code' => 'EMP-EDIT', 'company_id' => $company->id, 'full_name' => 'Employee',
+            'email' => 'emp-edit@example.test', 'password' => 'secret', 'role' => 'employee', 'is_active' => true, 'ptkp' => 'TK/0',
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id, 'status' => 'draft']);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id, 'employee_id' => $employee->id,
+            'basic_salary' => 5000000, 'total_earning' => 5100000, 'total_deduction' => 0, 'net_salary' => 5100000,
+            'components' => [
+                ['name' => 'Tunjangan Lama', 'type' => 'earning', 'amount' => 100000, 'category' => 'recurring', 'is_taxable' => 0, 'is_auto' => 0, 'detail' => ''],
+            ],
+        ]);
+
+        // Meniru submit form: komponen lama + 1 komponen BARU.
+        $request = \Illuminate\Http\Request::create('/x', 'PUT', [
+            'components' => [
+                ['name' => 'Tunjangan Lama', 'type' => 'earning', 'amount' => '100000', 'category' => 'recurring', 'is_taxable' => '0', 'is_auto' => '0', 'detail' => ''],
+                ['name' => 'Tunjangan Baru', 'type' => 'earning', 'amount' => '250000', 'category' => 'recurring', 'is_taxable' => '0', 'is_auto' => '0', 'detail' => ''],
+            ],
+        ]);
+
+        (new PayrollRunController)->updateDetail($request, $run->id, $detail->id);
+
+        $names = collect($detail->fresh()->components)->pluck('name');
+        $this->assertTrue($names->contains('Tunjangan Baru'), 'Komponen baru harus tersimpan.');
+        $this->assertSame(5350000.0, (float) $detail->fresh()->total_earning); // 5.000.000 + 100.000 + 250.000
+    }
+
     private function seedBpjsScenario(string $suffix, ?string $bpjsKesehatan, ?string $bpjsKetenagakerjaan): array
     {
         $this->seedBpjsSettings();
