@@ -13,6 +13,7 @@ use App\Models\PayrollRun;
 use App\Models\PayrollRunDetail;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use ReflectionClass;
@@ -281,6 +282,64 @@ class PayrollLoanDeductionTest extends TestCase
         ]);
 
         return [$admin, $employee];
+    }
+
+    public function test_resign_prorate_uses_scheduled_working_days_when_template_exists(): void
+    {
+        $company = Company::create(['name' => 'PT Resign Sched']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-rsched',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Sched',
+            'email' => 'admin-rsched@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        // Template Senin-Jumat.
+        $shiftId = DB::table('shifts')->insertGetId(['company_id' => $company->id, 'name' => 'Pagi', 'start_time' => '08:00:00', 'end_time' => '17:00:00', 'is_off' => false, 'created_at' => now(), 'updated_at' => now()]);
+        $templateId = DB::table('schedule_templates')->insertGetId(['company_id' => $company->id, 'name' => 'Sen-Jum', 'created_at' => now(), 'updated_at' => now()]);
+        foreach ([1, 2, 3, 4, 5] as $dow) {
+            DB::table('schedule_template_days')->insert(['template_id' => $templateId, 'day_of_week' => $dow, 'shift_id' => $shiftId, 'created_at' => now(), 'updated_at' => now()]);
+        }
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-rsched',
+            'company_id' => $company->id,
+            'full_name' => 'Resign Sched',
+            'email' => 'emp-rsched@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => false,
+            'resign_date' => '2026-05-30',
+            'last_working_date' => '2026-06-10',
+            'schedule_template_id' => $templateId,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 6600000,
+            'effective_date' => '2026-01-01',
+            'is_active' => false,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->first();
+
+        $this->assertNotNull($detail);
+        // 8 hari kerja (1-10 Jun, Sen-Jum) dari 22 hari kerja Juni × 6.600.000 = 2.400.000.
+        $this->assertSame(2400000.0, (float) $detail->basic_salary);
     }
 
     public function test_payroll_loan_deduction_is_capped_by_remaining_amount(): void
@@ -750,6 +809,38 @@ class PayrollLoanDeductionTest extends TestCase
             $table->unsignedBigInteger('employee_id');
             $table->unsignedBigInteger('shift_id')->nullable();
             $table->date('date');
+            $table->timestamps();
+        });
+
+        Schema::create('shifts', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id')->default(1);
+            $table->string('name');
+            $table->time('start_time')->nullable();
+            $table->time('end_time')->nullable();
+            $table->boolean('is_off')->default(false);
+            $table->timestamps();
+        });
+
+        Schema::create('schedule_templates', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id')->default(1);
+            $table->string('name');
+            $table->timestamps();
+        });
+
+        Schema::create('schedule_template_days', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('template_id');
+            $table->unsignedTinyInteger('day_of_week');
+            $table->unsignedBigInteger('shift_id');
+            $table->timestamps();
+        });
+
+        Schema::create('work_schedules', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->time('start_time')->nullable();
             $table->timestamps();
         });
 

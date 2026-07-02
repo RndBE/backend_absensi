@@ -20,6 +20,7 @@ use App\Models\ScheduleAssignment;
 use App\Services\BpjsCalculator;
 use App\Services\Pph21Calculator;
 use App\Support\LoanPayrollComponentSync;
+use App\Support\ScheduledWorkingDays;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -440,30 +441,57 @@ class PayrollRunController extends Controller
             $empId = $payroll->employee_id;
             $employee = $payroll->employee;
 
-            // === PRO-RATE: Join / Resign mid-period ===
-            $workingDays = $totalDaysInMonth;
+            // === PRO-RATE: Join / Resign mid-period (berbasis HARI KERJA TERJADWAL) ===
+            // Rasio = hari kerja terjadwal yang dijalani / total hari kerja terjadwal bulan itu.
             $proRateReason = null;
+            $effectiveStart = $periodStart->copy();
+            $effectiveEnd = $periodEnd->copy();
+            $prorated = false;
 
-            // Check join_date mid-month
+            // Join mid-month → mulai dihitung dari tanggal join.
             if ($employee->join_date) {
                 $joinDate = Carbon::parse($employee->join_date);
-                if ($joinDate->between($periodStart, $periodEnd) && $joinDate->day > 1) {
-                    $workingDays = $periodEnd->day - $joinDate->day + 1;
-                    $proRateReason = 'Join tgl '.$joinDate->day;
+                if ($joinDate->between($periodStart, $periodEnd) && $joinDate->gt($periodStart)) {
+                    $effectiveStart = $joinDate->copy();
+                    $proRateReason = 'Join '.$joinDate->format('d/m');
+                    $prorated = true;
                 }
             }
 
-            // Check keluar mid-month — pakai hari kerja terakhir (fallback tanggal resign).
+            // Keluar mid-month — pakai hari kerja terakhir (fallback tanggal resign).
             $exitDateRaw = $employee->last_working_date ?: $employee->resign_date;
             if ($exitDateRaw) {
                 $exitDate = Carbon::parse($exitDateRaw);
-                if ($exitDate->between($periodStart, $periodEnd) && $exitDate->day < $periodEnd->day) {
-                    $workingDays = $exitDate->day;
-                    $proRateReason = ($proRateReason ? $proRateReason.', ' : '').'Kerja s/d tgl '.$exitDate->day;
+                if ($exitDate->between($periodStart, $periodEnd) && $exitDate->lt($periodEnd)) {
+                    $effectiveEnd = $exitDate->copy();
+                    $proRateReason = ($proRateReason ? $proRateReason.', ' : '').'Kerja s/d '.$exitDate->format('d/m');
+                    $prorated = true;
                 }
             }
 
-            $proRateRatio = $workingDays / $totalDaysInMonth;
+            // Pembagi = hari kerja SEBULAN PENUH berbasis pola hari kerja mingguan.
+            // Hari libur nasional dihitung kerja HANYA bila karyawan memang ada shift di
+            // hari libur itu (mis. security). Kalau tidak, libur tidak dihitung.
+            // Untuk assignment-only, pola mingguan + kebiasaan kerja-saat-libur disimpulkan
+            // dari jadwalnya lalu diterapkan sebulan penuh.
+            // Tanpa jadwal sama sekali → 0, fallback ke hari kalender.
+            $scheduledDaysInMonth = ScheduledWorkingDays::monthlyWorkingDays($employee, $periodStart, $periodEnd, $holidayDates);
+            $usesSchedule = $scheduledDaysInMonth > 0;
+            $totalDaysRef = $usesSchedule ? $scheduledDaysInMonth : $totalDaysInMonth;
+
+            if ($prorated) {
+                // Pembilang = hari kerja terjadwal yang dijalani (lompati OFF; libur yang ada
+                // shift-nya tetap dihitung kerja karena override menang atas libur).
+                $workedDays = $usesSchedule
+                    ? ScheduledWorkingDays::count($employee, $effectiveStart, $effectiveEnd, $holidayDates)
+                    : ($effectiveStart->copy()->startOfDay()->diffInDays($effectiveEnd->copy()->startOfDay()) + 1);
+                $proRateRatio = $totalDaysRef > 0 ? min(1, $workedDays / $totalDaysRef) : 1;
+            } else {
+                $workedDays = $totalDaysRef;
+                $proRateRatio = 1;
+            }
+
+            $proRateDayLabel = $usesSchedule ? 'hari kerja' : 'hari';
 
             // === SALARY REVISION MID-PERIOD ===
             $basicSalary = (float) $payroll->basic_salary;
@@ -519,7 +547,7 @@ class PayrollRunController extends Controller
                     'amount' => 0,
                     'is_taxable' => false,
                     'is_auto' => true,
-                    'detail' => "{$workingDays}/{$totalDaysInMonth} hari ({$proRateReason})",
+                    'detail' => "{$workedDays}/{$totalDaysRef} {$proRateDayLabel} ({$proRateReason})",
                 ];
             }
             if ($salaryRevisionNote) {
