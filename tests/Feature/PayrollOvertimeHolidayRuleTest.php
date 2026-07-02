@@ -78,6 +78,58 @@ class PayrollOvertimeHolidayRuleTest extends TestCase
         $this->assertStringContainsString('Hari libur:', $result['detail']);
     }
 
+    public function test_overtime_on_holiday_uses_workday_rate_when_employee_has_working_shift(): void
+    {
+        $company = Company::create(['name' => 'PT Security']);
+        $shift = Shift::create([
+            'company_id' => $company->id,
+            'name' => 'Jaga',
+            'start_time' => '08:00:00',
+            'end_time' => '20:00:00',
+            'color' => '#111827',
+            'is_off' => false,
+        ]);
+        $employee = Employee::create([
+            'employee_code' => 'SEC-1',
+            'company_id' => $company->id,
+            'full_name' => 'Security',
+            'email' => 'sec@test.id',
+            'password' => 'secret',
+            'is_active' => true,
+        ]);
+
+        // Security DIJADWALKAN MASUK (ada shift kerja) di tanggal merah 16 Juni.
+        \App\Models\ScheduleAssignment::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-16',
+            'shift_id' => $shift->id,
+        ]);
+
+        OvertimeRequest::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-16',
+            'overtime_type' => 'holiday', // disubmit sebagai holiday, tapi ada shift kerja
+            'total_duration' => 240, // 4 jam
+            'break_duration' => 0,
+            'reason' => 'Lembur jaga',
+            'status' => 'approved',
+        ]);
+
+        $result = $this->invokePrivate(new PayrollRunController, 'calculateOvertime', [
+            $employee->id,
+            '2026-06-01',
+            '2026-06-30',
+            ['2026-06-16'], // 16 Juni = libur resmi
+            1730000,        // gaji pokok → tarif/jam = 1.730.000/173 = 10.000
+            1,
+        ]);
+
+        // Ada shift kerja di tanggal merah → tarif HARI KERJA BIASA:
+        // 1j×1,5 + 3j×2 = 7,5 × 10.000 = 75.000 (bukan 8×10.000 = 80.000 tarif libur).
+        $this->assertSame(75000.0, $result['total_amount']);
+        $this->assertStringContainsString('Hari kerja:', $result['detail']);
+    }
+
     private function createSixDayEmployeeWithShortSaturday(): Employee
     {
         $company = Company::create(['name' => 'PT Test']);

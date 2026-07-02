@@ -1236,6 +1236,16 @@ class PayrollRunController extends Controller
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
 
+        // Tanggal yang karyawan DIJADWALKAN MASUK (ada shift kerja / override non-off).
+        // Dipakai untuk kasus security dsb: kalau ada shift kerja di tanggal merah,
+        // lemburnya dihitung tarif hari kerja biasa, bukan tarif hari libur.
+        $workingDates = ScheduleAssignment::where('employee_id', $empId)
+            ->whereBetween('date', [$periodStart, $periodEnd])
+            ->whereHas('shift', fn ($q) => $q->where('is_off', false))
+            ->pluck('date')
+            ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
+            ->toArray();
+
         $totalAmount = 0;
         $workdayMins = 0;
         $holidayMins = 0;
@@ -1252,9 +1262,17 @@ class PayrollRunController extends Controller
 
             $dateStr = Carbon::parse($ot->date)->format('Y-m-d');
             $isOfficialHoliday = in_array($dateStr, $holidayDates, true);
-            $isHoliday = $ot->overtime_type === 'holiday'
+
+            // Jika karyawan MEMANG dijadwalkan masuk (ada shift kerja) pada tanggal itu —
+            // mis. security yang tetap bertugas di tanggal merah — lembur dihitung dengan
+            // tarif HARI KERJA BIASA, bukan tarif hari libur.
+            $hasWorkingShift = in_array($dateStr, $workingDates, true);
+
+            $isHoliday = ! $hasWorkingShift && (
+                $ot->overtime_type === 'holiday'
                 || $isOfficialHoliday
-                || in_array($dateStr, $offDates, true);
+                || in_array($dateStr, $offDates, true)
+            );
             $isShortestWorkdayHoliday = $isHoliday
                 && $this->isSixDayOfficialHolidayOnShortestWorkday($employee, $dateStr, $holidayDates, $workDaysPerWeek);
 
