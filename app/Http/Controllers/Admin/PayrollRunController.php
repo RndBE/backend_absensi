@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\Log;
 class PayrollRunController extends Controller
 {
     private const ALPHA_PENALTY_PER_DAY = 100000;
+    private const BPJS_REGISTRATION_CUTOFF_DAY = 20;
 
     public function index()
     {
@@ -524,8 +525,10 @@ class PayrollRunController extends Controller
                     $daysNew = $totalDaysInMonth - $daysOld;
                     $oldSalary = (float) $previousPayroll->basic_salary;
                     $newSalary = (float) $currentPayroll->basic_salary;
-                    $basicSalary = round((($oldSalary * $daysOld) + ($newSalary * $daysNew)) / $totalDaysInMonth, 0);
-                    $salaryRevisionNote = "Revisi gaji tgl {$effectiveDate->day}: Rp ".number_format($oldSalary, 0, ',', '.').' → Rp '.number_format($newSalary, 0, ',', '.');
+                    if ($oldSalary !== $newSalary) {
+                        $basicSalary = round((($oldSalary * $daysOld) + ($newSalary * $daysNew)) / $totalDaysInMonth, 0);
+                        $salaryRevisionNote = "Revisi gaji tgl {$effectiveDate->day}: Rp ".number_format($oldSalary, 0, ',', '.').' → Rp '.number_format($newSalary, 0, ',', '.');
+                    }
                 }
             }
 
@@ -702,7 +705,7 @@ class PayrollRunController extends Controller
             // 6. Auto-calculate: BPJS (tiap program jadi komponen terpisah)
             $bpjsCalc = new BpjsCalculator($periodStart->format('Y-m-d'));
             $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
-            $bpjs = $this->filterBpjsByRegistration($payroll, $bpjs);
+            $bpjs = $this->filterBpjsByRegistration($payroll, $bpjs, $periodStart);
 
             // BPJS Karyawan — masing-masing program sebagai deduction terpisah
             if ($bpjs['kesehatan']['employee'] > 0) {
@@ -973,8 +976,22 @@ class PayrollRunController extends Controller
             || str_contains($name, 'tunjangan pajak');
     }
 
-    private function filterBpjsByRegistration(EmployeePayroll $payroll, array $bpjs): array
+    private function filterBpjsByRegistration(EmployeePayroll $payroll, array $bpjs, Carbon $periodStart): array
     {
+        $joinDate = $payroll->employee?->join_date ? Carbon::parse($payroll->employee->join_date) : null;
+        if (
+            $joinDate
+            && $joinDate->isSameMonth($periodStart)
+            && $joinDate->day > self::BPJS_REGISTRATION_CUTOFF_DAY
+        ) {
+            foreach (['kesehatan', 'jht', 'jkk', 'jkm', 'jp'] as $key) {
+                $bpjs[$key]['company'] = 0;
+                $bpjs[$key]['employee'] = 0;
+            }
+
+            return $this->refreshBpjsTotals($bpjs);
+        }
+
         if (! filled($payroll->bpjs_kesehatan)) {
             $bpjs['kesehatan']['company'] = 0;
             $bpjs['kesehatan']['employee'] = 0;
@@ -987,6 +1004,11 @@ class PayrollRunController extends Controller
             }
         }
 
+        return $this->refreshBpjsTotals($bpjs);
+    }
+
+    private function refreshBpjsTotals(array $bpjs): array
+    {
         $bpjs['company_total'] = collect(['kesehatan', 'jht', 'jkk', 'jkm', 'jp'])
             ->sum(fn (string $key) => (float) ($bpjs[$key]['company'] ?? 0));
         $bpjs['employee_total'] = collect(['kesehatan', 'jht', 'jkk', 'jkm', 'jp'])

@@ -159,6 +159,30 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertNotNull($components->firstWhere('name', 'JP Perusahaan'));
     }
 
+    public function test_employee_joining_after_bpjs_cutoff_skips_bpjs_in_join_month_only(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-cutoff', 'KES-001', 'TK-001');
+        $employee->update(['join_date' => '2026-06-24']);
+
+        $juneRun = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$juneRun, [$employee->id]]);
+        $juneComponents = collect(PayrollRunDetail::where('payroll_run_id', $juneRun->id)->firstOrFail()->components);
+
+        $this->assertNull($juneComponents->firstWhere('name', 'BPJS Kesehatan'));
+        $this->assertNull($juneComponents->firstWhere('name', 'JHT Karyawan'));
+        $this->assertNull($juneComponents->firstWhere('name', 'BPJS Kesehatan Perusahaan'));
+        $this->assertNull($juneComponents->firstWhere('name', 'JHT Perusahaan'));
+
+        $julyRun = PayrollRun::create(['period' => '2026-07', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$julyRun, [$employee->id]]);
+        $julyComponents = collect(PayrollRunDetail::where('payroll_run_id', $julyRun->id)->firstOrFail()->components);
+
+        $this->assertNotNull($julyComponents->firstWhere('name', 'BPJS Kesehatan'));
+        $this->assertNotNull($julyComponents->firstWhere('name', 'JHT Karyawan'));
+        $this->assertNotNull($julyComponents->firstWhere('name', 'BPJS Kesehatan Perusahaan'));
+        $this->assertNotNull($julyComponents->firstWhere('name', 'JHT Perusahaan'));
+    }
+
     public function test_scheduled_installment_overrides_default_for_that_period(): void
     {
         [$employee, $admin] = $this->seedLoanScenario('sched-a');
@@ -343,6 +367,35 @@ class PayrollLoanDeductionTest extends TestCase
 
         // Gaji pokok tetap penuh — record 0 diabaikan, tidak dianggap revisi gaji.
         $this->assertSame(5000000.0, (float) $detail->basic_salary);
+        $this->assertNull(collect($detail->components)->firstWhere('name', 'Revisi Gaji'));
+    }
+
+    public function test_duplicate_same_salary_record_is_not_treated_as_salary_revision(): void
+    {
+        [$employee, $admin] = $this->seedLoanScenario('same-sal');
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'effective_date' => '2026-06-24',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        $run = PayrollRun::create([
+            'period' => '2026-06',
+            'created_by' => $admin->id,
+        ]);
+
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+
         $this->assertNull(collect($detail->components)->firstWhere('name', 'Revisi Gaji'));
     }
 
