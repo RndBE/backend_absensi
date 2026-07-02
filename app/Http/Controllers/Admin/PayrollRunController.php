@@ -107,7 +107,8 @@ class PayrollRunController extends Controller
             'components' => 'required|array',
             'components.*.name' => 'required|string',
             'components.*.type' => 'required|in:earning,deduction,info',
-            'components.*.amount' => 'required|numeric|min:0',
+            // Nilai boleh negatif (mis. refund PPh21 / Tax Allowance karyawan resign).
+            'components.*.amount' => 'required|numeric',
         ]);
 
         $components = $request->components;

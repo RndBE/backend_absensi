@@ -333,6 +333,44 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertSame(5350000.0, (float) $detail->fresh()->total_earning); // 5.000.000 + 100.000 + 250.000
     }
 
+    public function test_update_detail_allows_negative_component_and_still_adds_new_one(): void
+    {
+        $company = Company::create(['name' => 'PT Neg']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-NEG', 'company_id' => $company->id, 'full_name' => 'Admin',
+            'email' => 'admin-neg@example.test', 'password' => 'secret', 'role' => 'admin', 'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+        $employee = Employee::create([
+            'employee_code' => 'EMP-NEG', 'company_id' => $company->id, 'full_name' => 'Supri',
+            'email' => 'supri@example.test', 'password' => 'secret', 'role' => 'employee', 'is_active' => false,
+            'resign_date' => '2026-06-10', 'ptkp' => 'TK/0',
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id, 'status' => 'draft']);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id, 'employee_id' => $employee->id,
+            'basic_salary' => 5000000, 'total_earning' => 4910868, 'total_deduction' => 0, 'net_salary' => 4910868,
+            'components' => [
+                ['name' => 'Tax Allowance', 'type' => 'earning', 'amount' => -89132, 'category' => 'recurring', 'is_taxable' => 0, 'is_auto' => 1, 'detail' => ''],
+            ],
+        ]);
+
+        // Meniru submit: komponen NEGATIF (Tax Allowance -89.132) + 1 komponen baru.
+        $request = \Illuminate\Http\Request::create('/x', 'PUT', [
+            'components' => [
+                ['name' => 'Tax Allowance', 'type' => 'earning', 'amount' => '-89132', 'category' => 'recurring', 'is_taxable' => '0', 'is_auto' => '1', 'detail' => ''],
+                ['name' => 'Tunjangan Baru', 'type' => 'earning', 'amount' => '250000', 'category' => 'recurring', 'is_taxable' => '0', 'is_auto' => '0', 'detail' => ''],
+            ],
+        ]);
+
+        (new PayrollRunController)->updateDetail($request, $run->id, $detail->id);
+
+        $names = collect($detail->fresh()->components)->pluck('name');
+        $this->assertTrue($names->contains('Tunjangan Baru'), 'Komponen baru harus tersimpan meski ada komponen negatif.');
+        $this->assertTrue($names->contains('Tax Allowance'));
+    }
+
     private function seedBpjsScenario(string $suffix, ?string $bpjsKesehatan, ?string $bpjsKetenagakerjaan): array
     {
         $this->seedBpjsSettings();
