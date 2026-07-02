@@ -275,6 +275,27 @@ class PayrollLoanDeductionTest extends TestCase
         return [$employee, $admin];
     }
 
+    public function test_resigned_employee_drops_jht_jkk_jkm_in_resign_month(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-resign', 'KES-001', 'TK-001');
+        // Keluar di bulan periode (Juni).
+        $employee->update(['resign_date' => '2026-06-10', 'last_working_date' => '2026-06-10']);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $names = collect(PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail()->components)->pluck('name');
+
+        // JHT/JKK/JKM dihilangkan di bulan resign.
+        $this->assertFalse($names->contains('JHT Karyawan'));
+        $this->assertFalse($names->contains('JHT Perusahaan'));
+        $this->assertFalse($names->contains('JKK Perusahaan'));
+        $this->assertFalse($names->contains('JKM Perusahaan'));
+        // BPJS Kesehatan & JP tetap ada.
+        $this->assertTrue($names->contains('BPJS Kesehatan'));
+        $this->assertTrue($names->contains('JP Karyawan'));
+    }
+
     private function seedBpjsScenario(string $suffix, ?string $bpjsKesehatan, ?string $bpjsKetenagakerjaan): array
     {
         $this->seedBpjsSettings();

@@ -286,7 +286,7 @@ class PayrollRunController extends Controller
             // Calculate fresh BPJS
             $bpjsCalc = new BpjsCalculator($periodStart->format('Y-m-d'));
             $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
-            $bpjs = $this->filterBpjsByRegistration($payroll, $bpjs);
+            $bpjs = $this->filterBpjsByRegistration($payroll, $bpjs, $periodStart);
 
             // ── BPJS Karyawan: tiap program jadi baris terpisah ──
             if ($bpjs['kesehatan']['employee'] > 0) {
@@ -978,6 +978,16 @@ class PayrollRunController extends Controller
 
     private function filterBpjsByRegistration(EmployeePayroll $payroll, array $bpjs, Carbon $periodStart): array
     {
+        // Karyawan yang KELUAR (resign) di bulan periode ini: hilangkan JHT/JKK/JKM di
+        // bulan terakhirnya. BPJS Kesehatan & JP tetap.
+        $exitRaw = $payroll->employee?->last_working_date ?: $payroll->employee?->resign_date;
+        if ($exitRaw && Carbon::parse($exitRaw)->isSameMonth($periodStart)) {
+            foreach (['jht', 'jkk', 'jkm'] as $key) {
+                $bpjs[$key]['company'] = 0;
+                $bpjs[$key]['employee'] = 0;
+            }
+        }
+
         $joinDate = $payroll->employee?->join_date ? Carbon::parse($payroll->employee->join_date) : null;
         if (
             $joinDate
