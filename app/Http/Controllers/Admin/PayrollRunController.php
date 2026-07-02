@@ -764,6 +764,12 @@ class PayrollRunController extends Controller
             $resignDate = $exitDateForTax ? Carbon::parse($exitDateForTax) : null;
             $isResignMonth = $resignDate && $resignDate->between($periodStart, $periodEnd);
 
+            // Bruto dasar PPh 21: gaji pokok + earning taxable + premi pemberi
+            // kerja yang objek pajak (JKK, JKM, BPJS Kesehatan 4%). Tidak sama
+            // dengan total_earning (premi pemberi kerja bukan penghasilan tunai,
+            // tapi tetap objek PPh; earning non-taxable dikecualikan dari pajak).
+            $brutoTaxable = Pph21Calculator::taxableBrutoFromComponents($proratedBasic, $components);
+
             if ($isDecember) {
                 // ── Desember: Penghitungan Kembali berdasarkan penghasilan sebenarnya ──
                 // Ambil akumulasi bruto & PPh21 Jan-Nov dari payroll run detail tahun ini
@@ -777,9 +783,11 @@ class PayrollRunController extends Controller
                 $brutoJanToNov = 0;
                 $taxJanToNov = 0;
                 foreach ($prevDetails as $pd) {
-                    $brutoJanToNov += (float) $pd->total_earning;
-                    // Sum PPh21 deduction components
                     $comps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
+                    // Bruto pajak Jan-Nov = dasar PPh (termasuk premi pemberi kerja
+                    // yang objek pajak), bukan total_earning tunai.
+                    $brutoJanToNov += Pph21Calculator::taxableBrutoFromComponents((float) $pd->basic_salary, $comps);
+                    // Sum PPh21 deduction components
                     foreach ($comps as $c) {
                         if (str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction') {
                             $taxJanToNov += (float) ($c['amount'] ?? 0);
@@ -788,7 +796,7 @@ class PayrollRunController extends Controller
                 }
 
                 $tax = $pph21Calc->calculateDecember(
-                    brutoDecember      : $totalEarning,
+                    brutoDecember      : $brutoTaxable,
                     brutoJanToNov      : $brutoJanToNov,
                     bpjsEmployeeMonthly: $bpjs['employee_total'],
                     ptkpStatus         : $ptkpStatus,
@@ -840,7 +848,7 @@ class PayrollRunController extends Controller
                     .'Pajak periode: Rp '.number_format($tax['tax_for_period'], 0, ',', '.');
             } else {
                 // ── Jan-Nov: annualized × 12 (metode normal) ──
-                $tax = $pph21Calc->calculateMonthly($totalEarning, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
+                $tax = $pph21Calc->calculateMonthly($brutoTaxable, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
                 $detailNote = 'Jan-Nov - TER bulanan PP 58/2023 | '
                     ."Metode: {$taxMethod}, PTKP: {$ptkpStatus}, "
                     .'Kategori TER: '.($tax['ter_category'] ?? '-').', '

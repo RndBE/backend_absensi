@@ -180,6 +180,57 @@ class Pph21Calculator
         return $categories[$ptkpStatus] ?? 'A';
     }
 
+    /**
+     * Premi BPJS yang dibayar pemberi kerja dan merupakan objek PPh 21
+     * (kenikmatan/natura per UU HPP & PP 55/2022): JKK, JKM, dan BPJS
+     * Kesehatan (4%). JHT & JP pemberi kerja DIKECUALIKAN karena ditangguhkan
+     * (dipajaki saat pencairan manfaat).
+     */
+    public static function taxableEmployerBpjs(array $bpjs): float
+    {
+        return (float) ($bpjs['kesehatan']['company'] ?? 0)
+            + (float) ($bpjs['jkk']['company'] ?? 0)
+            + (float) ($bpjs['jkm']['company'] ?? 0);
+    }
+
+    /**
+     * Nama komponen premi pemberi kerja yang menjadi objek pajak (baris info).
+     */
+    public static function isTaxableEmployerPremi(string $name): bool
+    {
+        foreach (['BPJS Kesehatan Perusahaan', 'JKK Perusahaan', 'JKM Perusahaan'] as $taxable) {
+            if (str_contains($name, $taxable)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Hitung penghasilan bruto yang menjadi dasar PPh 21 dari daftar komponen
+     * payslip: gaji pokok + seluruh earning taxable + premi pemberi kerja yang
+     * objek pajak (JKK, JKM, BPJS Kesehatan 4%). Potongan karyawan, earning
+     * non-taxable, serta JHT/JP pemberi kerja tidak dihitung.
+     */
+    public static function taxableBrutoFromComponents(float $basic, array $components): float
+    {
+        $bruto = $basic;
+
+        foreach ($components as $c) {
+            $type = $c['type'] ?? '';
+            $amount = (float) ($c['amount'] ?? 0);
+
+            if ($type === 'earning' && ! empty($c['is_taxable'])) {
+                $bruto += $amount;
+            } elseif ($type === 'info' && self::isTaxableEmployerPremi($c['name'] ?? '')) {
+                $bruto += $amount;
+            }
+        }
+
+        return $bruto;
+    }
+
     public function lookupTerMonthlyRate(float $brutoMonthly, string $category): float
     {
         $rates = $this->terMonthly['rates'][$category] ?? $this->terMonthly['rates']['A'] ?? [];
