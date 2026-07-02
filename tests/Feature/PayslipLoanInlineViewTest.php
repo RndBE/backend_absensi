@@ -19,7 +19,10 @@ class PayslipLoanInlineViewTest extends TestCase
 
     public function test_pdf_payslip_renders_loan_details_inside_deduction_rows(): void
     {
-        $source = file_get_contents(resource_path('views/admin/payslips/pdf.blade.php'));
+        // pdf.blade.php kini hanya @include partial; konten nyata ada di _document-head + _content.
+        $source = file_get_contents(resource_path('views/admin/payslips/pdf.blade.php'))
+            .file_get_contents(resource_path('views/admin/payslips/_document-head.blade.php'))
+            .file_get_contents(resource_path('views/admin/payslips/_content.blade.php'));
 
         $this->assertStringContainsString('PayslipLoanSummary::detailLinesForComponent', $source);
         $this->assertStringContainsString('main-tbl', $source);

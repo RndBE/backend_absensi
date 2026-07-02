@@ -371,6 +371,24 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertTrue($names->contains('Tax Allowance'));
     }
 
+    public function test_apply_eligibility_zeros_bpjs_for_join_after_cutoff(): void
+    {
+        [$employee] = $this->seedBpjsScenario('elig-join', 'KES-1', 'TK-1');
+        $employee->update(['join_date' => '2026-06-24']); // setelah cutoff (tgl 20)
+        $payroll = EmployeePayroll::with('employee')->where('employee_id', $employee->id)->first();
+
+        $bpjs = (new \App\Services\BpjsCalculator('2026-06-01'))->calculate(5000000);
+        $this->assertGreaterThan(0, (float) $bpjs['kesehatan']['company']); // awalnya ada nilai
+
+        $out = \App\Support\PayrollBpjs::applyEligibility($bpjs, $payroll, \Illuminate\Support\Carbon::parse('2026-06-01'));
+
+        // Karyawan baru join setelah cutoff → semua BPJS (benefit & potongan) jadi 0.
+        foreach (['kesehatan', 'jht', 'jkk', 'jkm', 'jp'] as $k) {
+            $this->assertSame(0.0, (float) $out[$k]['company'], "$k company harus 0");
+            $this->assertSame(0.0, (float) $out[$k]['employee'], "$k employee harus 0");
+        }
+    }
+
     private function seedBpjsScenario(string $suffix, ?string $bpjsKesehatan, ?string $bpjsKetenagakerjaan): array
     {
         $this->seedBpjsSettings();

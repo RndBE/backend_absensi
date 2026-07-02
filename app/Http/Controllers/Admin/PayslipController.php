@@ -302,7 +302,7 @@ class PayslipController extends Controller
         $periodDate = Carbon::parse($detail->payrollRun->period . '-01');
         $calc       = new BpjsCalculator($periodDate->format('Y-m-d'));
         $bpjs       = $calc->calculate((float) $payroll->basic_salary);
-        $bpjs       = \App\Support\PayrollBpjs::dropKetenagakerjaanForResign($bpjs, $detail->employee, $periodDate);
+        $bpjs       = \App\Support\PayrollBpjs::applyEligibility($bpjs, $payroll, $periodDate);
         // Karyawan resign: JKK/JKM/JHT tetap DITAMPILKAN sebagai Rp 0 (bukan disembunyikan).
         $resigned   = \App\Support\PayrollBpjs::isResignedInMonth($detail->employee, $periodDate);
 

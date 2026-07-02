@@ -979,49 +979,9 @@ class PayrollRunController extends Controller
 
     private function filterBpjsByRegistration(EmployeePayroll $payroll, array $bpjs, Carbon $periodStart): array
     {
-        // Karyawan yang KELUAR (resign) di bulan periode ini: hilangkan JHT/JKK/JKM di
-        // bulan terakhirnya. BPJS Kesehatan & JP tetap. (Helper yang sama dipakai di
-        // tampilan benefit slip agar konsisten.)
-        $bpjs = \App\Support\PayrollBpjs::dropKetenagakerjaanForResign($bpjs, $payroll->employee, $periodStart);
-
-        $joinDate = $payroll->employee?->join_date ? Carbon::parse($payroll->employee->join_date) : null;
-        if (
-            $joinDate
-            && $joinDate->isSameMonth($periodStart)
-            && $joinDate->day > self::BPJS_REGISTRATION_CUTOFF_DAY
-        ) {
-            foreach (['kesehatan', 'jht', 'jkk', 'jkm', 'jp'] as $key) {
-                $bpjs[$key]['company'] = 0;
-                $bpjs[$key]['employee'] = 0;
-            }
-
-            return $this->refreshBpjsTotals($bpjs);
-        }
-
-        if (! filled($payroll->bpjs_kesehatan)) {
-            $bpjs['kesehatan']['company'] = 0;
-            $bpjs['kesehatan']['employee'] = 0;
-        }
-
-        if (! filled($payroll->bpjs_ketenagakerjaan)) {
-            foreach (['jht', 'jkk', 'jkm', 'jp'] as $key) {
-                $bpjs[$key]['company'] = 0;
-                $bpjs[$key]['employee'] = 0;
-            }
-        }
-
-        return $this->refreshBpjsTotals($bpjs);
-    }
-
-    private function refreshBpjsTotals(array $bpjs): array
-    {
-        $bpjs['company_total'] = collect(['kesehatan', 'jht', 'jkk', 'jkm', 'jp'])
-            ->sum(fn (string $key) => (float) ($bpjs[$key]['company'] ?? 0));
-        $bpjs['employee_total'] = collect(['kesehatan', 'jht', 'jkk', 'jkm', 'jp'])
-            ->sum(fn (string $key) => (float) ($bpjs[$key]['employee'] ?? 0));
-        $bpjs['grand_total'] = $bpjs['company_total'] + $bpjs['employee_total'];
-
-        return $bpjs;
+        // Semua aturan kelayakan BPJS (join setelah cutoff, resign, nomor registrasi)
+        // dipusatkan di helper agar tampilan benefit slip konsisten dengan komponen payroll.
+        return \App\Support\PayrollBpjs::applyEligibility($bpjs, $payroll, $periodStart);
     }
 
     private function loanDeductionComponents(int $employeeId, string $period): array
