@@ -130,6 +130,45 @@ class PayrollOvertimeHolidayRuleTest extends TestCase
         $this->assertStringContainsString('Hari kerja:', $result['detail']);
     }
 
+    public function test_overtime_typed_workday_on_official_holiday_uses_workday_rate(): void
+    {
+        // Kasus security: 1 Juni (libur nasional) tetap bertugas, lembur diajukan 'workday'.
+        // Payroll harus mengikuti tipe 'workday' → tarif hari kerja, walau tanggal masuk
+        // daftar libur nasional dan TANPA perlu ScheduleAssignment eksplisit.
+        $company = Company::create(['name' => 'PT Security']);
+        $employee = Employee::create([
+            'employee_code' => 'SEC-WD',
+            'company_id' => $company->id,
+            'full_name' => 'Security Workday',
+            'email' => 'sec-wd@test.id',
+            'password' => 'secret',
+            'is_active' => true,
+        ]);
+
+        OvertimeRequest::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-01',
+            'overtime_type' => 'workday', // di laporan sudah bertipe kerja
+            'total_duration' => 240,      // 4 jam
+            'break_duration' => 0,
+            'reason' => 'Lembur jaga tanggal merah',
+            'status' => 'approved',
+        ]);
+
+        $result = $this->invokePrivate(new PayrollRunController, 'calculateOvertime', [
+            $employee->id,
+            '2026-06-01',
+            '2026-06-30',
+            ['2026-06-01'], // 1 Juni = libur nasional
+            1730000,        // tarif/jam = 10.000
+            1,
+        ]);
+
+        // Tarif HARI KERJA: 1j×1,5 + 3j×2 = 7,5 × 10.000 = 75.000 (bukan 8×10.000 tarif libur).
+        $this->assertSame(75000.0, $result['total_amount']);
+        $this->assertStringContainsString('Hari kerja:', $result['detail']);
+    }
+
     private function createSixDayEmployeeWithShortSaturday(): Employee
     {
         $company = Company::create(['name' => 'PT Test']);

@@ -1245,16 +1245,9 @@ class PayrollRunController extends Controller
         $employee = Employee::with(['workSchedule', 'scheduleTemplate.days.shift'])->find($empId);
         $workDaysPerWeek = $employee?->workSchedule?->work_days ?? 5;
 
-        $offDates = ScheduleAssignment::where('employee_id', $empId)
-            ->whereBetween('date', [$periodStart, $periodEnd])
-            ->whereHas('shift', fn ($q) => $q->where('is_off', true))
-            ->pluck('date')
-            ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
-            ->toArray();
-
         // Tanggal yang karyawan DIJADWALKAN MASUK (ada shift kerja / override non-off).
-        // Dipakai untuk kasus security dsb: kalau ada shift kerja di tanggal merah,
-        // lemburnya dihitung tarif hari kerja biasa, bukan tarif hari libur.
+        // Dipakai untuk kasus security dsb: kalau lembur ter-tag 'holiday' PADAHAL ada
+        // shift kerja di tanggal itu, lemburnya tetap dihitung tarif hari kerja biasa.
         $workingDates = ScheduleAssignment::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->whereHas('shift', fn ($q) => $q->where('is_off', false))
@@ -1277,18 +1270,17 @@ class PayrollRunController extends Controller
             }
 
             $dateStr = Carbon::parse($ot->date)->format('Y-m-d');
-            $isOfficialHoliday = in_array($dateStr, $holidayDates, true);
 
-            // Jika karyawan MEMANG dijadwalkan masuk (ada shift kerja) pada tanggal itu —
-            // mis. security yang tetap bertugas di tanggal merah — lembur dihitung dengan
-            // tarif HARI KERJA BIASA, bukan tarif hari libur.
+            // Klasifikasi hari kerja vs libur MENGIKUTI overtime_type yang sudah ditetapkan
+            // & divalidasi saat pengajuan (karyawan/approver memilih 'workday'/'holiday'),
+            // konsisten dengan seluruh aplikasi (laporan lembur, dashboard, rekap absensi).
+            // Security yang bertugas di tanggal merah diajukan sebagai 'workday' → tarif hari
+            // kerja, walaupun tanggalnya libur nasional. Tabel Holiday TIDAK lagi menimpa tipe ini.
+            //
+            // Pengaman satu arah: kalau lembur ter-tag 'holiday' PADAHAL karyawan memang
+            // dijadwalkan masuk (ada shift kerja) di tanggal itu, tetap dihitung tarif HARI KERJA.
             $hasWorkingShift = in_array($dateStr, $workingDates, true);
-
-            $isHoliday = ! $hasWorkingShift && (
-                $ot->overtime_type === 'holiday'
-                || $isOfficialHoliday
-                || in_array($dateStr, $offDates, true)
-            );
+            $isHoliday = ! $hasWorkingShift && $ot->overtime_type === 'holiday';
             $isShortestWorkdayHoliday = $isHoliday
                 && $this->isSixDayOfficialHolidayOnShortestWorkday($employee, $dateStr, $holidayDates, $workDaysPerWeek);
 
