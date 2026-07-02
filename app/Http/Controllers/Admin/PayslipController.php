@@ -237,7 +237,7 @@ class PayslipController extends Controller
         $admin = Employee::find(session('admin_id'));
         $run = PayrollRun::findOrFail($runId);
 
-        // Urutan payslip: berdasarkan abjad nama (default) atau tanggal masuk karyawan.
+        // Urutan payslip: berdasarkan abjad nama (default) atau level lalu tanggal masuk karyawan.
         $sort = $request->query('sort') === 'join_date' ? 'join_date' : 'name';
 
         $details = PayrollRunDetail::where('payroll_run_id', $run->id)
@@ -246,8 +246,13 @@ class PayslipController extends Controller
             ->get()
             ->sortBy(function ($d) use ($sort) {
                 if ($sort === 'join_date') {
-                    // Yang belum ada tanggal masuk ditaruh paling akhir.
-                    return $d->employee->join_date?->format('Y-m-d') ?? '9999-12-31';
+                    // Level/tanggal kosong ditaruh paling akhir.
+                    return sprintf(
+                        '%06d|%s|%s',
+                        $d->employee->job_level ?? 999999,
+                        $d->employee->join_date?->format('Y-m-d') ?? '9999-12-31',
+                        strtolower($d->employee->full_name ?? '')
+                    );
                 }
                 return strtolower($d->employee->full_name ?? '');
             })

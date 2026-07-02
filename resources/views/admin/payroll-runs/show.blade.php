@@ -165,7 +165,7 @@
                 <label class="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Urutkan berdasarkan</label>
                 <select name="sort" class="w-full text-[13px]">
                     <option value="name">Abjad Nama (A–Z)</option>
-                    <option value="join_date">Tanggal Masuk (paling lama bergabung)</option>
+                    <option value="join_date">Level + Tanggal Masuk (paling lama bergabung)</option>
                 </select>
                 <p class="mt-2.5 flex items-start gap-1.5 text-[11px] text-gray-400">
                     <span class="material-symbols-outlined text-[14px] mt-px">info</span>
