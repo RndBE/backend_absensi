@@ -392,6 +392,58 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertSame(2000000.0, (float) $detail->basic_salary);
     }
 
+    public function test_resign_month_refunds_pph_already_withheld_when_progressive_tax_is_lower(): void
+    {
+        [$admin, $employee] = $this->seedResignedEmployee('pph-refund', '2026-06-15');
+
+        $previousRun = PayrollRun::create([
+            'period' => '2026-05',
+            'status' => 'published',
+            'created_by' => $admin->id,
+        ]);
+        PayrollRunDetail::create([
+            'payroll_run_id' => $previousRun->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 6_000_000,
+            'total_earning' => 6_150_000,
+            'total_deduction' => 150_000,
+            'net_salary' => 6_000_000,
+            'components' => [
+                [
+                    'name' => 'Tunjangan Pajak (Gross Up)',
+                    'type' => 'earning',
+                    'category' => 'recurring',
+                    'amount' => 150_000,
+                    'is_taxable' => true,
+                    'is_auto' => true,
+                ],
+                [
+                    'name' => 'PPh 21',
+                    'type' => 'deduction',
+                    'category' => 'recurring',
+                    'amount' => 150_000,
+                    'is_taxable' => false,
+                    'is_auto' => true,
+                ],
+            ],
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+        $refund = collect($detail->components)->firstWhere('name', 'Pengembalian PPh 21');
+
+        $this->assertNotNull($refund);
+        $this->assertSame('earning', $refund['type']);
+        $this->assertFalse((bool) $refund['is_taxable']);
+        $this->assertSame(150_000.0, (float) $refund['amount']);
+        $this->assertStringContainsString('PPh21 sudah dipotong', $refund['detail']);
+        $this->assertGreaterThan((float) $detail->basic_salary, (float) $detail->net_salary);
+    }
+
     /**
      * Karyawan yang sudah resign: is_active=false + resign_date, dan EmployeePayroll
      * sudah dinonaktifkan (meniru proses resign). Kembalikan [admin, employee].

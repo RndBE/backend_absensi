@@ -509,6 +509,29 @@ class EmployeeController extends Controller
             $bpjsCalc = new BpjsCalculator(now()->format('Y-m-d'));
             $bpjs = $bpjsCalc->calculate((float) $payroll->basic_salary);
 
+            $taxAlreadyPaid = DB::table('payroll_run_details as details')
+                ->join('payroll_runs as runs', 'runs.id', '=', 'details.payroll_run_id')
+                ->where('details.employee_id', $employee->id)
+                ->where('runs.period', 'like', now()->year.'-%')
+                ->where('runs.period', '<', now()->format('Y-m'))
+                ->where('runs.status', '!=', 'draft')
+                ->get('details.components')
+                ->sum(function ($detail) {
+                    $components = json_decode($detail->components ?? '[]', true) ?: [];
+
+                    return collect($components)->sum(function ($component) {
+                        if (! str_contains($component['name'] ?? '', 'PPh')) {
+                            return 0;
+                        }
+
+                        if (($component['type'] ?? '') !== 'deduction') {
+                            return 0;
+                        }
+
+                        return (float) ($component['amount'] ?? 0);
+                    });
+                });
+
             $pph21Calc = new Pph21Calculator(now()->format('Y-m-d'));
             $pph21Preview = $pph21Calc->calculateFinalMonth(
                 avgBrutoMonthly : (float) $payroll->basic_salary,
@@ -516,7 +539,7 @@ class EmployeeController extends Controller
                 taxMethod       : $payroll->tax_method ?? 'gross',
                 bpjsEmployee    : $bpjs['employee_total'],
                 monthsWorked    : $monthsWorked,
-                taxAlreadyPaid  : 0  // ideally summed from payroll_run_details this year
+                taxAlreadyPaid  : $taxAlreadyPaid
             );
         }
 

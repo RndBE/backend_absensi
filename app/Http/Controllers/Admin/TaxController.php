@@ -190,6 +190,7 @@ class TaxController extends Controller
 
             $tax = 0;
             $bpjs = 0;
+            $taxRefund = 0;
             $taxComponents = [];
             $bpjsComponents = [];
             foreach ($comps as $comp) {
@@ -201,6 +202,14 @@ class TaxController extends Controller
                         'amount' => $amount,
                     ];
                 }
+                if ($this->isPph21Refund($comp)) {
+                    $tax -= $amount;
+                    $taxRefund += $amount;
+                    $taxComponents[] = [
+                        'name' => $comp['name'] ?? 'Pengembalian PPh 21',
+                        'amount' => -$amount,
+                    ];
+                }
                 if ($this->isEmployeeBpjsDeduction($comp)) {
                     $bpjs += $amount;
                     $bpjsComponents[] = [
@@ -210,11 +219,12 @@ class TaxController extends Controller
                 }
             }
 
-            $grossAnnual += (float) $detail->total_earning;
+            $gross = (float) $detail->total_earning - $taxRefund;
+            $grossAnnual += $gross;
             $taxAnnual += $tax;
             $bpjsAnnual += $bpjs;
             $monthlyDetails[$period] = [
-                'gross' => (float) $detail->total_earning,
+                'gross' => $gross,
                 'tax' => $tax,
                 'bpjs' => $bpjs,
                 'net' => (float) $detail->net_salary,
@@ -445,6 +455,15 @@ class TaxController extends Controller
     {
         return ($component['type'] ?? null) === 'deduction'
             && str_contains(strtolower($component['name'] ?? ''), 'pph 21');
+    }
+
+    private function isPph21Refund(array $component): bool
+    {
+        $name = strtolower($component['name'] ?? '');
+
+        return ($component['type'] ?? null) === 'earning'
+            && str_contains($name, 'pengembalian')
+            && str_contains($name, 'pph 21');
     }
 
     private function isEmployeeBpjsDeduction(array $component): bool

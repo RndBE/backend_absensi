@@ -62,6 +62,25 @@ class Pph21CalculatorTerTest extends TestCase
         $this->assertSame($result['pph21_deduction'], $result['tunjangan_pajak']);
     }
 
+    public function test_final_month_exposes_refund_when_prior_pph_exceeds_progressive_tax(): void
+    {
+        $this->seedTaxSettings();
+
+        $result = (new Pph21Calculator('2024-06-01'))
+            ->calculateFinalMonth(
+                avgBrutoMonthly: 2_000_000,
+                ptkpStatus: 'TK/0',
+                taxMethod: 'gross_up',
+                bpjsEmployee: 0,
+                monthsWorked: 6,
+                taxAlreadyPaid: 150_000,
+            );
+
+        $this->assertEquals(0.0, $result['tax_for_period']);
+        $this->assertEquals(0.0, $result['pph21_deduction']);
+        $this->assertEquals(150_000.0, $result['pph21_refund']);
+    }
+
     private function seedTaxSettings(): void
     {
         TaxSetting::create([

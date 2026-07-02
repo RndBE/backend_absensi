@@ -215,6 +215,7 @@
                         'PTKP (' . $pph21Preview['ptkp_status'] . ')' => 'Rp ' . number_format($pph21Preview['ptkp_annual'], 0, ',', '.'),
                         'PKP'                  => 'Rp ' . number_format($pph21Preview['pkp'], 0, ',', '.'),
                         'Pajak terhutang'      => 'Rp ' . number_format($pph21Preview['tax_for_period'], 0, ',', '.'),
+                        'PPh sudah dipotong'   => 'Rp ' . number_format($pph21Preview['tax_already_paid'] ?? 0, 0, ',', '.'),
                     ];
                 @endphp
                 @foreach($pphRows as $label => $val)
@@ -224,14 +225,16 @@
                 </div>
                 @endforeach
                 <div class="pt-2 mt-1 border-t border-amber-200 flex justify-between gap-2">
-                    <span class="text-[12px] font-bold text-amber-800">PPh 21 Bulan Terakhir</span>
+                    <span class="text-[12px] font-bold text-amber-800">
+                        {{ ($pph21Preview['pph21_refund'] ?? 0) > 0 ? 'Pengembalian PPh 21' : 'PPh 21 Bulan Terakhir' }}
+                    </span>
                     <span class="text-[13px] font-bold text-amber-700">
-                        Rp {{ number_format($pph21Preview['tax_final_month'], 0, ',', '.') }}
+                        Rp {{ number_format(($pph21Preview['pph21_refund'] ?? 0) > 0 ? $pph21Preview['pph21_refund'] : $pph21Preview['tax_final_month'], 0, ',', '.') }}
                     </span>
                 </div>
                 <p class="text-[10px] text-amber-500 leading-relaxed">
                     * Dihitung berdasarkan {{ $monthsWorked }} bulan aktual (bukan disetahunkan × 12),
-                    sesuai PMK-168/PMK.03/2023. Nominal final mungkin berbeda jika ada pajak yang sudah dibayar bulan sebelumnya.
+                    sesuai PMK-168/PMK.03/2023. Jika PPh yang sudah dipotong lebih besar dari pajak terutang final, selisihnya dikembalikan di payroll bulan terakhir.
                 </p>
             </div>
         </div>

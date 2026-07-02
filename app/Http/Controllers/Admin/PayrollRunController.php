@@ -821,8 +821,8 @@ class PayrollRunController extends Controller
 
                 // Akumulasi PPh21 yang sudah dipotong bulan-bulan sebelumnya tahun ini
                 $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year, $periodDate) {
-                    $q->whereYear('period', $year)
-                        ->whereMonth('period', '<', $periodDate->month)
+                    $q->where('period', 'like', $year.'-%')
+                        ->where('period', '<', $periodDate->format('Y-m'))
                         ->where('status', '!=', 'draft');
                 })->where('employee_id', $empId)->get();
 
@@ -889,6 +889,22 @@ class PayrollRunController extends Controller
                 if (! $isPph21Dtp) {
                     $totalDeduction += $tax['pph21_deduction'];
                 }
+            }
+
+            if (($tax['pph21_refund'] ?? 0) > 0) {
+                $components[] = [
+                    'id' => null,
+                    'name' => 'Pengembalian PPh 21',
+                    'type' => 'earning',
+                    'category' => 'one-time',
+                    'amount' => $tax['pph21_refund'],
+                    'is_taxable' => false,
+                    'is_auto' => true,
+                    'detail' => 'PPh21 sudah dipotong: Rp '.number_format((float) ($tax['tax_already_paid'] ?? 0), 0, ',', '.')
+                        .' | Pajak periode final: Rp '.number_format((float) ($tax['tax_for_period'] ?? 0), 0, ',', '.')
+                        .' | Dikembalikan di payroll bulan terakhir.',
+                ];
+                $totalEarning += $tax['pph21_refund'];
             }
 
             PayrollRunDetail::create([

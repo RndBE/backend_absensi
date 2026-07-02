@@ -375,8 +375,11 @@ class Pph21Calculator
         // Pajak setahun (atas M bulan)
         $taxForPeriod = $this->calculateProgressiveTax($pkp);
 
-        // PPh 21 bulan terakhir = selisih dari yang belum dibayar
-        $taxFinalMonth = max(round($taxForPeriod - $taxAlreadyPaid, 0), 0);
+        // PPh 21 bulan terakhir = selisih dari yang belum dibayar.
+        // Jika sudah lebih dipotong, selisihnya dikembalikan di payroll final.
+        $taxDelta = round($taxForPeriod - $taxAlreadyPaid, 0);
+        $taxFinalMonth = max($taxDelta, 0);
+        $taxRefund = max(-$taxDelta, 0);
 
         return [
             'avg_bruto_monthly'   => $avgBrutoMonthly,
@@ -391,6 +394,7 @@ class Pph21Calculator
             'tax_for_period'      => round($taxForPeriod, 0),     // pajak atas M bulan
             'tax_already_paid'    => round($taxAlreadyPaid, 0),
             'tax_final_month'     => $taxFinalMonth,              // yang harus dipotong bulan terakhir
+            'pph21_refund'        => $taxRefund,                  // kelebihan potong yang dikembalikan
             'tax_method'          => $taxMethod,
             // Compat dengan caller yang memakai pph21_deduction / tunjangan_pajak
             'pph21_deduction'     => ($taxMethod === 'nett') ? 0 : $taxFinalMonth,
