@@ -317,6 +317,9 @@
                             @foreach($components as $index => $component)
                             @php
                                 $isAutoComponent = !empty($component['is_auto']);
+                                // Lembur (auto) boleh diedit NOMINAL-nya; komponen auto lain tetap terkunci.
+                                $isEditableAuto = $isAutoComponent && ($component['name'] ?? '') === 'Lembur';
+                                $amountEditable = ! $isAutoComponent || $isEditableAuto;
                             @endphp
                             <tr data-component-row>
                                 <td class="border-t border-gray-100 px-2 py-1">
@@ -340,8 +343,8 @@
                                     @endif
                                 </td>
                                 <td class="border-t border-gray-100 px-2 py-1">
-                                    <input type="number" min="0" step="1" name="components[{{ $index }}][amount]" value="{{ $component['amount'] ?? 0 }}" required @disabled($isAutoComponent) class="h-8 w-full rounded-md border border-gray-300 px-2 text-right text-[11px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500">
-                                    @if($isAutoComponent)
+                                    <input type="number" min="0" step="1" name="components[{{ $index }}][amount]" value="{{ $component['amount'] ?? 0 }}" required @disabled(! $amountEditable) class="h-8 w-full rounded-md border border-gray-300 px-2 text-right text-[11px] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500">
+                                    @if(! $amountEditable)
                                         <input type="hidden" name="components[{{ $index }}][amount]" value="{{ $component['amount'] ?? 0 }}">
                                     @endif
                                 </td>
@@ -350,8 +353,10 @@
                                     <button type="button" onclick="this.closest('[data-component-row]').remove()" class="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer">
                                         <span class="material-symbols-outlined text-[15px]">delete</span>
                                     </button>
+                                    @elseif($isEditableAuto)
+                                        <span class="material-symbols-outlined text-[15px] text-indigo-400" title="Nominal bisa diedit, tidak bisa dihapus">edit</span>
                                     @else
-                                        <span class="material-symbols-outlined text-[15px] text-gray-300" title="Tidak bisa dihapus">lock</span>
+                                        <span class="material-symbols-outlined text-[15px] text-gray-300" title="Tidak bisa diubah">lock</span>
                                     @endunless
                                 </td>
                             </tr>

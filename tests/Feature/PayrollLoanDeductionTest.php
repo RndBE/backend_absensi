@@ -193,6 +193,34 @@ class PayrollLoanDeductionTest extends TestCase
         return [$employee, $admin];
     }
 
+    public function test_zero_salary_record_is_ignored_and_not_treated_as_salary_revision(): void
+    {
+        [$employee, $admin] = $this->seedLoanScenario('zero-sal'); // sudah punya gaji 5.000.000 aktif
+
+        // Record gaji Rp 0 effective tengah bulan (data placeholder/rusak).
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 0,
+            'effective_date' => '2026-06-24',
+            'is_active' => false,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+
+        // Gaji pokok tetap penuh — record 0 diabaikan, tidak dianggap revisi gaji.
+        $this->assertSame(5000000.0, (float) $detail->basic_salary);
+        $this->assertNull(collect($detail->components)->firstWhere('name', 'Revisi Gaji'));
+    }
+
     public function test_resigned_employee_with_deactivated_payroll_is_generated_for_resign_month(): void
     {
         [$admin, $employee] = $this->seedResignedEmployee('res-a', '2026-07-15');

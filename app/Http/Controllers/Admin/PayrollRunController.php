@@ -497,12 +497,20 @@ class PayrollRunController extends Controller
             $basicSalary = (float) $payroll->basic_salary;
             $salaryRevisionNote = null;
 
-            // Check if there are multiple payroll records with different effective dates
+            // Ambil 2 record gaji terbaru yang VALID (basic_salary > 0). Record gaji 0
+            // (placeholder/invalid, mis. terbentuk saat karyawan baru dibuat) diabaikan
+            // agar tidak salah dianggap "revisi gaji" dan mencampur nilai jadi lebih kecil.
             $allPayrolls = EmployeePayroll::where('employee_id', $empId)
                 ->where('effective_date', '<=', $periodEnd)
+                ->where('basic_salary', '>', 0)
                 ->orderBy('effective_date', 'desc')
                 ->take(2)
                 ->get();
+
+            // Kalau gaji utama 0 (record aktif ternyata placeholder), pakai gaji valid terbaru.
+            if ($basicSalary <= 0 && $allPayrolls->isNotEmpty()) {
+                $basicSalary = (float) $allPayrolls[0]->basic_salary;
+            }
 
             if ($allPayrolls->count() > 1) {
                 $currentPayroll = $allPayrolls[0];
