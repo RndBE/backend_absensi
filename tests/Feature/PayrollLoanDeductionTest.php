@@ -101,6 +101,64 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertGreaterThanOrEqual(500000, (float) $detail->total_deduction);
     }
 
+    public function test_payroll_run_skips_all_auto_bpjs_when_bpjs_numbers_are_empty(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-empty', null, null);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $componentNames = collect(PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail()->components)
+            ->pluck('name');
+
+        $this->assertFalse($componentNames->contains('BPJS Kesehatan'));
+        $this->assertFalse($componentNames->contains('BPJS Kesehatan Perusahaan'));
+        $this->assertFalse($componentNames->contains('JHT Karyawan'));
+        $this->assertFalse($componentNames->contains('JHT Perusahaan'));
+        $this->assertFalse($componentNames->contains('JKK Perusahaan'));
+        $this->assertFalse($componentNames->contains('JKM Perusahaan'));
+        $this->assertFalse($componentNames->contains('JP Karyawan'));
+        $this->assertFalse($componentNames->contains('JP Perusahaan'));
+    }
+
+    public function test_payroll_run_calculates_only_health_bpjs_when_health_number_is_filled(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-health', 'KES-001', null);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $components = collect(PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail()->components);
+
+        $this->assertNotNull($components->firstWhere('name', 'BPJS Kesehatan'));
+        $this->assertNotNull($components->firstWhere('name', 'BPJS Kesehatan Perusahaan'));
+        $this->assertNull($components->firstWhere('name', 'JHT Karyawan'));
+        $this->assertNull($components->firstWhere('name', 'JHT Perusahaan'));
+        $this->assertNull($components->firstWhere('name', 'JKK Perusahaan'));
+        $this->assertNull($components->firstWhere('name', 'JKM Perusahaan'));
+        $this->assertNull($components->firstWhere('name', 'JP Karyawan'));
+        $this->assertNull($components->firstWhere('name', 'JP Perusahaan'));
+    }
+
+    public function test_payroll_run_calculates_only_employment_bpjs_when_employment_number_is_filled(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-tk', null, 'TK-001');
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $components = collect(PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail()->components);
+
+        $this->assertNull($components->firstWhere('name', 'BPJS Kesehatan'));
+        $this->assertNull($components->firstWhere('name', 'BPJS Kesehatan Perusahaan'));
+        $this->assertNotNull($components->firstWhere('name', 'JHT Karyawan'));
+        $this->assertNotNull($components->firstWhere('name', 'JHT Perusahaan'));
+        $this->assertNotNull($components->firstWhere('name', 'JKK Perusahaan'));
+        $this->assertNotNull($components->firstWhere('name', 'JKM Perusahaan'));
+        $this->assertNotNull($components->firstWhere('name', 'JP Karyawan'));
+        $this->assertNotNull($components->firstWhere('name', 'JP Perusahaan'));
+    }
+
     public function test_scheduled_installment_overrides_default_for_that_period(): void
     {
         [$employee, $admin] = $this->seedLoanScenario('sched-a');
@@ -191,6 +249,73 @@ class PayrollLoanDeductionTest extends TestCase
         ]);
 
         return [$employee, $admin];
+    }
+
+    private function seedBpjsScenario(string $suffix, ?string $bpjsKesehatan, ?string $bpjsKetenagakerjaan): array
+    {
+        $this->seedBpjsSettings();
+
+        $company = Company::create(['name' => 'PT '.$suffix]);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-'.$suffix,
+            'company_id' => $company->id,
+            'full_name' => 'Admin '.$suffix,
+            'email' => 'admin-'.$suffix.'@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-'.$suffix,
+            'company_id' => $company->id,
+            'full_name' => 'Employee '.$suffix,
+            'email' => 'employee-'.$suffix.'@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+            'bpjs_kesehatan' => $bpjsKesehatan,
+            'bpjs_ketenagakerjaan' => $bpjsKetenagakerjaan,
+        ]);
+
+        return [$employee, $admin];
+    }
+
+    private function seedBpjsSettings(): void
+    {
+        $settings = [
+            ['key' => 'kes_rate', 'value' => ['company' => 4, 'employee' => 1]],
+            ['key' => 'kes_cap', 'value' => ['salary_cap' => 12000000]],
+            ['key' => 'jht_rate', 'value' => ['company' => 3.7, 'employee' => 2]],
+            ['key' => 'jkk_rate', 'value' => ['company' => 0.24, 'employee' => 0]],
+            ['key' => 'jkm_rate', 'value' => ['company' => 0.3, 'employee' => 0]],
+            ['key' => 'jp_rate', 'value' => ['company' => 2, 'employee' => 1]],
+            ['key' => 'jp_cap', 'value' => ['salary_cap' => 10042300]],
+        ];
+
+        foreach ($settings as $setting) {
+            DB::table('bpjs_settings')->insert([
+                'key' => $setting['key'],
+                'value' => json_encode($setting['value']),
+                'effective_date' => '2026-01-01',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     public function test_zero_salary_record_is_ignored_and_not_treated_as_salary_revision(): void
@@ -704,6 +829,8 @@ class PayrollLoanDeductionTest extends TestCase
             $table->string('payment_schedule')->default('monthly');
             $table->string('payment_method')->default('transfer');
             $table->string('ptkp_status')->nullable();
+            $table->string('bpjs_kesehatan')->nullable();
+            $table->string('bpjs_ketenagakerjaan')->nullable();
             $table->date('effective_date');
             $table->boolean('is_active')->default(true);
             $table->boolean('is_exempt_penalty')->default(false);
