@@ -389,6 +389,22 @@ class PayrollLoanDeductionTest extends TestCase
         }
     }
 
+    public function test_apply_eligibility_treats_dash_ketenagakerjaan_as_unregistered(): void
+    {
+        // Simulasi bulan setelah join (mis. Juli): Kesehatan sudah bernomor, TK masih "-".
+        [$employee] = $this->seedBpjsScenario('dash-tk', '0001525988158', '-');
+        $payroll = EmployeePayroll::with('employee')->where('employee_id', $employee->id)->first();
+
+        $bpjs = (new \App\Services\BpjsCalculator('2026-07-01'))->calculate(5000000);
+        $out = \App\Support\PayrollBpjs::applyEligibility($bpjs, $payroll, \Illuminate\Support\Carbon::parse('2026-07-01'));
+
+        // Kesehatan (nomor asli) jalan; Ketenagakerjaan ("-") dianggap belum terdaftar → 0.
+        $this->assertGreaterThan(0, (float) $out['kesehatan']['company']);
+        foreach (['jht', 'jkk', 'jkm', 'jp'] as $k) {
+            $this->assertSame(0.0, (float) $out[$k]['company'], "$k harus 0 karena TK '-'");
+        }
+    }
+
     public function test_benefit_items_hidden_when_all_bpjs_zero_and_not_resign(): void
     {
         // Karyawan baru join setelah cutoff: applyEligibility menol-kan semua iuran.

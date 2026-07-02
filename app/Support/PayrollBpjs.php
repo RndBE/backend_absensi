@@ -49,11 +49,11 @@ class PayrollBpjs
         // Resign di bulan ini → JHT/JKK/JKM 0 (Kesehatan & JP tetap).
         $bpjs = self::dropKetenagakerjaanForResign($bpjs, $employee, $periodStart);
 
-        // Tanpa nomor registrasi → program terkait 0.
-        if (! filled($payroll->bpjs_kesehatan)) {
+        // Tanpa nomor registrasi (termasuk placeholder "-") → program terkait 0.
+        if (! self::hasRegistrationNumber($payroll->bpjs_kesehatan)) {
             $bpjs = self::zero($bpjs, ['kesehatan']);
         }
-        if (! filled($payroll->bpjs_ketenagakerjaan)) {
+        if (! self::hasRegistrationNumber($payroll->bpjs_ketenagakerjaan)) {
             $bpjs = self::zero($bpjs, ['jht', 'jkk', 'jkm', 'jp']);
         }
 
@@ -99,6 +99,15 @@ class PayrollBpjs
         }
 
         return $items;
+    }
+
+    /**
+     * Nomor registrasi BPJS dianggap ADA hanya jika ada karakter selain spasi/tanda hubung.
+     * Placeholder seperti "-", "--", atau kosong berarti belum terdaftar → program di-nol-kan.
+     */
+    public static function hasRegistrationNumber(mixed $value): bool
+    {
+        return trim((string) $value, " \t\n\r\0\x0B-") !== '';
     }
 
     private static function zero(array $bpjs, array $keys): array
