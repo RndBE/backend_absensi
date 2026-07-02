@@ -60,6 +60,47 @@ class PayrollBpjs
         return self::refreshTotals($bpjs);
     }
 
+    /**
+     * Rakit baris benefit BPJS (ditanggung perusahaan) dari hasil applyEligibility.
+     * Baris rate/basis hanya muncul bila iuran terkait aktif bulan ini; khusus resign,
+     * JHT/JKK/JKM tetap ditampilkan sebagai Rp 0. Dipakai bersama oleh semua buildBpjsData
+     * (Admin/Employee/Api/Job) agar tampilan benefit konsisten.
+     */
+    public static function benefitItems(array $bpjs, bool $resigned = false): array
+    {
+        $company = fn (string $k) => (float) ($bpjs[$k]['company'] ?? 0);
+        $items = [];
+
+        // Rate/basis Kesehatan hanya tampil bila iuran Kesehatan memang aktif.
+        if ($company('kesehatan') > 0) {
+            $items[] = ['label' => 'Rate BPJS Kesehatan', 'amount' => $bpjs['kesehatan']['basis'], 'is_basis' => true];
+        }
+
+        // Rate/basis Ketenagakerjaan tampil bila ada iuran, atau saat resign (baris Rp 0).
+        $tkHasContrib = ($company('jht') + $company('jkk') + $company('jkm') + $company('jp') > 0) || $resigned;
+        if ($tkHasContrib) {
+            $items[] = ['label' => 'Rate BPJS Ketenagakerjaan', 'amount' => $bpjs['jht']['basis'], 'is_basis' => true];
+        }
+
+        if ($company('jkk') > 0 || $resigned) {
+            $items[] = ['label' => 'JKK (Jaminan Kecelakaan Kerja)', 'amount' => $bpjs['jkk']['company'], 'is_basis' => false];
+        }
+        if ($company('jkm') > 0 || $resigned) {
+            $items[] = ['label' => 'JKM (Jaminan Kematian)', 'amount' => $bpjs['jkm']['company'], 'is_basis' => false];
+        }
+        if ($company('jht') > 0 || $resigned) {
+            $items[] = ['label' => 'JHT Perusahaan (Jaminan Hari Tua)', 'amount' => $bpjs['jht']['company'], 'is_basis' => false];
+        }
+        if ($company('jp') > 0) {
+            $items[] = ['label' => 'JP Perusahaan (Jaminan Pensiun)', 'amount' => $bpjs['jp']['company'], 'is_basis' => false];
+        }
+        if ($company('kesehatan') > 0) {
+            $items[] = ['label' => 'BPJS Kesehatan Perusahaan', 'amount' => $bpjs['kesehatan']['company'], 'is_basis' => false];
+        }
+
+        return $items;
+    }
+
     private static function zero(array $bpjs, array $keys): array
     {
         foreach ($keys as $key) {

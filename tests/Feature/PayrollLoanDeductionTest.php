@@ -389,6 +389,50 @@ class PayrollLoanDeductionTest extends TestCase
         }
     }
 
+    public function test_benefit_items_hidden_when_all_bpjs_zero_and_not_resign(): void
+    {
+        // Karyawan baru join setelah cutoff: applyEligibility menol-kan semua iuran.
+        $bpjs = $this->bpjsArray(['kesehatan' => 0, 'jht' => 0, 'jkk' => 0, 'jkm' => 0, 'jp' => 0]);
+
+        $items = \App\Support\PayrollBpjs::benefitItems($bpjs, false);
+
+        // Tidak ada baris apa pun — termasuk "Rate BPJS Kesehatan" yang dulu selalu muncul.
+        $this->assertSame([], $items);
+    }
+
+    public function test_benefit_items_show_rate_only_when_health_active(): void
+    {
+        $bpjs = $this->bpjsArray(['kesehatan' => 100000, 'jht' => 92500, 'jkk' => 6000, 'jkm' => 7500, 'jp' => 50000]);
+
+        $labels = array_column(\App\Support\PayrollBpjs::benefitItems($bpjs, false), 'label');
+
+        $this->assertContains('Rate BPJS Kesehatan', $labels);
+        $this->assertContains('BPJS Kesehatan Perusahaan', $labels);
+    }
+
+    public function test_benefit_items_show_zero_ketenagakerjaan_rows_for_resign(): void
+    {
+        // Resign: JHT/JKK/JKM di-nol-kan tapi tetap TAMPIL sebagai Rp 0.
+        $bpjs = $this->bpjsArray(['kesehatan' => 100000, 'jht' => 0, 'jkk' => 0, 'jkm' => 0, 'jp' => 50000]);
+
+        $labels = array_column(\App\Support\PayrollBpjs::benefitItems($bpjs, true), 'label');
+
+        $this->assertContains('Rate BPJS Ketenagakerjaan', $labels);
+        $this->assertContains('JKK (Jaminan Kecelakaan Kerja)', $labels);
+        $this->assertContains('JHT Perusahaan (Jaminan Hari Tua)', $labels);
+    }
+
+    /** Bangun struktur hasil BpjsCalculator dengan iuran company tertentu (basis tetap terisi). */
+    private function bpjsArray(array $company): array
+    {
+        $bpjs = [];
+        foreach ($company as $key => $amount) {
+            $bpjs[$key] = ['company' => $amount, 'employee' => 0, 'basis' => 2624387];
+        }
+
+        return $bpjs;
+    }
+
     private function seedBpjsScenario(string $suffix, ?string $bpjsKesehatan, ?string $bpjsKetenagakerjaan): array
     {
         $this->seedBpjsSettings();
