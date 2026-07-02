@@ -434,14 +434,60 @@ class PayrollLoanDeductionTest extends TestCase
         $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
             ->where('employee_id', $employee->id)
             ->firstOrFail();
-        $refund = collect($detail->components)->firstWhere('name', 'Pengembalian PPh 21');
+        $components = collect($detail->components);
+        $taxAllowance = $components->firstWhere('name', 'Tax Allowance');
+        $pph21 = $components->firstWhere('name', 'PPh 21');
 
-        $this->assertNotNull($refund);
-        $this->assertSame('earning', $refund['type']);
-        $this->assertFalse((bool) $refund['is_taxable']);
-        $this->assertSame(150_000.0, (float) $refund['amount']);
-        $this->assertStringContainsString('PPh21 sudah dipotong', $refund['detail']);
-        $this->assertGreaterThan((float) $detail->basic_salary, (float) $detail->net_salary);
+        $this->assertNotNull($taxAllowance);
+        $this->assertSame('earning', $taxAllowance['type']);
+        $this->assertTrue((bool) $taxAllowance['is_taxable']);
+        $this->assertSame(-150_000.0, (float) $taxAllowance['amount']);
+
+        $this->assertNotNull($pph21);
+        $this->assertSame('deduction', $pph21['type']);
+        $this->assertSame(-150_000.0, (float) $pph21['amount']);
+        $this->assertStringContainsString('PPh21 sudah dipotong', $pph21['detail']);
+        $this->assertSame(0.0, (float) $detail->net_salary - ((float) $detail->total_earning - (float) $detail->total_deduction));
+    }
+
+    public function test_resign_month_reads_legacy_tax_allowance_as_prior_pph_when_no_pph_deduction_exists(): void
+    {
+        [$admin, $employee] = $this->seedResignedEmployee('legacy-tax-allowance', '2026-06-15');
+
+        $previousRun = PayrollRun::create([
+            'period' => '2026-03',
+            'status' => 'published',
+            'created_by' => $admin->id,
+        ]);
+        PayrollRunDetail::create([
+            'payroll_run_id' => $previousRun->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 6_000_000,
+            'total_earning' => 6_089_132,
+            'total_deduction' => 0,
+            'net_salary' => 6_089_132,
+            'components' => [
+                [
+                    'name' => 'Tax Allowance',
+                    'type' => 'earning',
+                    'category' => 'recurring',
+                    'amount' => 89_132,
+                    'is_taxable' => true,
+                    'is_auto' => false,
+                ],
+            ],
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+        $components = collect($detail->components);
+
+        $this->assertSame(-89_132.0, (float) $components->firstWhere('name', 'Tax Allowance')['amount']);
+        $this->assertSame(-89_132.0, (float) $components->firstWhere('name', 'PPh 21')['amount']);
     }
 
     /**

@@ -826,15 +826,7 @@ class PayrollRunController extends Controller
                         ->where('status', '!=', 'draft');
                 })->where('employee_id', $empId)->get();
 
-                $taxAlreadyPaid = 0;
-                foreach ($prevDetails as $pd) {
-                    $comps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
-                    foreach ($comps as $c) {
-                        if (str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction') {
-                            $taxAlreadyPaid += (float) ($c['amount'] ?? 0);
-                        }
-                    }
-                }
+                $taxAlreadyPaid = $this->sumPriorPph21Paid($prevDetails);
 
                 $tax = $pph21Calc->calculateFinalMonth(
                     avgBrutoMonthly: (float) $payroll->basic_salary,
@@ -892,19 +884,32 @@ class PayrollRunController extends Controller
             }
 
             if (($tax['pph21_refund'] ?? 0) > 0) {
+                $refund = (float) $tax['pph21_refund'];
                 $components[] = [
                     'id' => null,
-                    'name' => 'Pengembalian PPh 21',
+                    'name' => 'Tax Allowance',
                     'type' => 'earning',
                     'category' => 'one-time',
-                    'amount' => $tax['pph21_refund'],
+                    'amount' => -$refund,
+                    'is_taxable' => true,
+                    'is_auto' => true,
+                    'detail' => 'Reversal tax allowance bulan sebelumnya.',
+                ];
+                $totalEarning -= $refund;
+
+                $components[] = [
+                    'id' => null,
+                    'name' => 'PPh 21',
+                    'type' => 'deduction',
+                    'category' => 'one-time',
+                    'amount' => -$refund,
                     'is_taxable' => false,
                     'is_auto' => true,
                     'detail' => 'PPh21 sudah dipotong: Rp '.number_format((float) ($tax['tax_already_paid'] ?? 0), 0, ',', '.')
                         .' | Pajak periode final: Rp '.number_format((float) ($tax['tax_for_period'] ?? 0), 0, ',', '.')
                         .' | Dikembalikan di payroll bulan terakhir.',
                 ];
-                $totalEarning += $tax['pph21_refund'];
+                $totalDeduction -= $refund;
             }
 
             PayrollRunDetail::create([
@@ -919,6 +924,53 @@ class PayrollRunController extends Controller
         }
 
         $this->recalculateRunTotals($run);
+    }
+
+    private function sumPriorPph21Paid(Collection $details): float
+    {
+        return $details->sum(function (PayrollRunDetail $detail) {
+            $components = is_array($detail->components)
+                ? $detail->components
+                : json_decode($detail->components, true) ?? [];
+
+            return $this->pph21PaidFromComponents($components);
+        });
+    }
+
+    private function pph21PaidFromComponents(array $components): float
+    {
+        $pphDeduction = collect($components)
+            ->filter(fn (array $component) => $this->isPph21DeductionComponent($component))
+            ->sum(fn (array $component) => (float) ($component['amount'] ?? 0));
+
+        if ($pphDeduction != 0) {
+            return (float) $pphDeduction;
+        }
+
+        return (float) collect($components)
+            ->filter(fn (array $component) => $this->isLegacyTaxAllowanceComponent($component))
+            ->sum(fn (array $component) => max((float) ($component['amount'] ?? 0), 0));
+    }
+
+    private function isPph21DeductionComponent(array $component): bool
+    {
+        $name = strtolower($component['name'] ?? '');
+
+        return ($component['type'] ?? '') === 'deduction'
+            && str_contains($name, 'pph')
+            && str_contains($name, '21');
+    }
+
+    private function isLegacyTaxAllowanceComponent(array $component): bool
+    {
+        if (($component['type'] ?? '') !== 'earning') {
+            return false;
+        }
+
+        $name = strtolower($component['name'] ?? '');
+
+        return str_contains($name, 'tax allowance')
+            || str_contains($name, 'tunjangan pajak');
     }
 
     private function filterBpjsByRegistration(EmployeePayroll $payroll, array $bpjs): array

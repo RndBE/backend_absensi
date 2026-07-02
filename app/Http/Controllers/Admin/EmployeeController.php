@@ -517,19 +517,7 @@ class EmployeeController extends Controller
                 ->where('runs.status', '!=', 'draft')
                 ->get('details.components')
                 ->sum(function ($detail) {
-                    $components = json_decode($detail->components ?? '[]', true) ?: [];
-
-                    return collect($components)->sum(function ($component) {
-                        if (! str_contains($component['name'] ?? '', 'PPh')) {
-                            return 0;
-                        }
-
-                        if (($component['type'] ?? '') !== 'deduction') {
-                            return 0;
-                        }
-
-                        return (float) ($component['amount'] ?? 0);
-                    });
+                    return $this->pph21PaidFromComponents(json_decode($detail->components ?? '[]', true) ?: []);
                 });
 
             $pph21Calc = new Pph21Calculator(now()->format('Y-m-d'));
@@ -544,6 +532,36 @@ class EmployeeController extends Controller
         }
 
         return view('admin.employees.resign', compact('employee', 'monthsWorked', 'pph21Preview'));
+    }
+
+    private function pph21PaidFromComponents(array $components): float
+    {
+        $pphDeduction = collect($components)
+            ->filter(function (array $component) {
+                $name = strtolower($component['name'] ?? '');
+
+                return ($component['type'] ?? '') === 'deduction'
+                    && str_contains($name, 'pph')
+                    && str_contains($name, '21');
+            })
+            ->sum(fn (array $component) => (float) ($component['amount'] ?? 0));
+
+        if ($pphDeduction != 0) {
+            return (float) $pphDeduction;
+        }
+
+        return (float) collect($components)
+            ->filter(function (array $component) {
+                if (($component['type'] ?? '') !== 'earning') {
+                    return false;
+                }
+
+                $name = strtolower($component['name'] ?? '');
+
+                return str_contains($name, 'tax allowance')
+                    || str_contains($name, 'tunjangan pajak');
+            })
+            ->sum(fn (array $component) => max((float) ($component['amount'] ?? 0), 0));
     }
 
     public function processResign(Request $request, $id)
