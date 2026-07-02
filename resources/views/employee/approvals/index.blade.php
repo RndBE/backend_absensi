@@ -143,6 +143,16 @@
                         <span class="material-symbols-outlined text-[16px]">print</span>
                         Cetak
                     </a>
+                    @elseif($type === 'travel_report')
+                    <a href="{{ route('employee.approvals.travel_report.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
+                        <span class="material-symbols-outlined text-[16px]">print</span>
+                        Lihat/Cetak
+                    </a>
+                    @elseif($type === 'lpj')
+                    <a href="{{ route('employee.approvals.lpj.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
+                        <span class="material-symbols-outlined text-[16px]">print</span>
+                        Lihat/Cetak
+                    </a>
                     @endif
                 </div>
 

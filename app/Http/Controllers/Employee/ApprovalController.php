@@ -75,6 +75,54 @@ class ApprovalController extends Controller
         ]);
     }
 
+    public function printTravelReport(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $report = TravelReport::with([
+            'employee:id,full_name,photo,signature,department_id,position,job_level',
+            'employee.department:id,name',
+            'budgetRequest:id,title',
+            'activities.documents',
+            'documents',
+            'approvalLogs.approver:id,full_name,signature',
+        ])->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'travel_report', $report)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Anda bukan approver untuk step pengajuan ini.');
+        }
+
+        return view('admin.travel-reports.print', [
+            'report' => $report,
+            'backUrl' => route('employee.approvals.index'),
+        ]);
+    }
+
+    public function printLpj(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $lpj = Lpj::with([
+            'employee:id,full_name,photo,department_id,position,job_level',
+            'employee.department:id,name',
+            'budgetRequest:id,title,total_amount,surat_tugas_no,surat_tugas_date',
+            'travelReport:id,destination_city,departure_date,return_date',
+            'items.budgetRequestItem',
+            'approvalLogs.approver:id,full_name,photo',
+        ])->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'lpj', $lpj)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Anda bukan approver untuk step pengajuan ini.');
+        }
+
+        return view('lpj.print', [
+            'lpj' => $lpj,
+            'backUrl' => route('employee.approvals.index'),
+        ]);
+    }
+
     public function approve(Request $request, string $type, int $id)
     {
         $validated = $request->validate([

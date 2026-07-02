@@ -61,7 +61,7 @@
 </head>
 <body>
     <button class="print-btn no-print" onclick="window.print()">🖨️ Cetak Laporan</button>
-    <a href="{{ route('admin.travel-reports.show', $report) }}" class="back-btn no-print">← Kembali</a>
+    <a href="{{ $backUrl ?? route('admin.travel-reports.show', $report) }}" class="back-btn no-print">← Kembali</a>
 
     @php
         $allResults = [];
