@@ -76,7 +76,7 @@ class PayslipBenefits
             return;
         }
 
-        $key = self::normalizeLabel($label);
+        $key = self::itemKey($label, $isBasis);
         if (isset($seen[$key])) {
             return;
         }
@@ -256,5 +256,36 @@ class PayslipBenefits
         $label = preg_replace('/[^a-z0-9]+/', '_', $label);
 
         return trim((string) $label, '_');
+    }
+
+    private static function itemKey(string $label, bool $isBasis): string
+    {
+        $normalized = self::normalizeLabel($label);
+
+        if ($isBasis) {
+            return $normalized;
+        }
+
+        if (str_contains($normalized, 'bpjs_kesehatan') && str_contains($normalized, 'perusahaan')) {
+            return 'bpjs_kesehatan_perusahaan';
+        }
+
+        if (str_contains($normalized, 'jkk')) {
+            return 'bpjs_jkk_perusahaan';
+        }
+
+        if (str_contains($normalized, 'jkm')) {
+            return 'bpjs_jkm_perusahaan';
+        }
+
+        if (str_contains($normalized, 'jht') && (str_contains($normalized, 'perusahaan') || str_contains($normalized, 'jaminan_hari_tua'))) {
+            return 'bpjs_jht_perusahaan';
+        }
+
+        if (preg_match('/(^|_)jp(_|$)/', $normalized) && str_contains($normalized, 'perusahaan')) {
+            return 'bpjs_jp_perusahaan';
+        }
+
+        return $normalized;
     }
 }

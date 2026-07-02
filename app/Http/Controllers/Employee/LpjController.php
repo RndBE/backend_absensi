@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\Lpj;
 use App\Models\Notification;
+use App\Models\TravelReport;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,9 +34,12 @@ class LpjController extends Controller
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
 
-        $availableRequests = BudgetRequest::where('employee_id', $employee->id)
+        $availableRequests = BudgetRequest::where(function ($query) use ($employee) {
+                $query->where('employee_id', $employee->id)
+                    ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+            })
             ->whereIn('status', ['approved', 'paid'])
-            ->whereDoesntHave('lpj')
+            ->whereDoesntHave('lpj', fn ($q) => $q->where('employee_id', $employee->id))
             ->with(['items', 'travelReport:id,budget_request_id,destination_city'])
             ->latest()
             ->get();
@@ -43,7 +47,12 @@ class LpjController extends Controller
         $selectedRequest = null;
         if ($request->filled('budget_request_id')) {
             $selectedRequest = BudgetRequest::with(['items', 'travelReport'])
-                ->where('employee_id', $employee->id)
+                ->where(function ($query) use ($employee) {
+                    $query->where('employee_id', $employee->id)
+                        ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+                })
+                ->whereIn('status', ['approved', 'paid'])
+                ->whereDoesntHave('lpj', fn ($q) => $q->where('employee_id', $employee->id))
                 ->find($request->budget_request_id);
         }
 
@@ -70,11 +79,14 @@ class LpjController extends Controller
             'items.*.realisasi.required'=> 'Jumlah realisasi tiap baris wajib diisi.',
         ]);
 
-        $budgetRequest = BudgetRequest::where('employee_id', $employee->id)
+        $budgetRequest = BudgetRequest::where(function ($query) use ($employee) {
+                $query->where('employee_id', $employee->id)
+                    ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+            })
             ->whereIn('status', ['approved', 'paid'])
             ->findOrFail($request->budget_request_id);
 
-        if ($budgetRequest->lpj()->exists()) {
+        if ($budgetRequest->lpj()->where('employee_id', $employee->id)->exists()) {
             return back()->with('error', 'LPJ untuk anggaran ini sudah dibuat.');
         }
 
@@ -82,7 +94,9 @@ class LpjController extends Controller
         try {
             $lpj = Lpj::create([
                 'budget_request_id' => $budgetRequest->id,
-                'travel_report_id'  => $budgetRequest->travelReport?->id,
+                'travel_report_id'  => TravelReport::where('budget_request_id', $budgetRequest->id)
+                    ->where('employee_id', $employee->id)
+                    ->value('id'),
                 'employee_id'       => $employee->id,
                 'nomor_lpj'         => $request->nomor_lpj,
                 'total_anggaran'    => $budgetRequest->total_amount, // PEMASUKAN dari anggaran

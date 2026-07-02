@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BudgetRequest;
+use App\Models\Lpj;
 use App\Models\Notification;
 use App\Models\Setting;
 use App\Models\TravelReport;
@@ -46,8 +47,7 @@ class LpjReminderService
             ->whereNotNull('return_date')
             ->whereDate('return_date', $targetReturnDate)
             ->whereHas('budgetRequest', fn ($q) => $q
-                ->whereIn('status', ['approved', 'paid'])
-                ->whereDoesntHave('lpj'))
+                ->whereIn('status', ['approved', 'paid']))
             ->get();
 
         $sent = 0;
@@ -58,6 +58,14 @@ class LpjReminderService
             $employee = $report->employee;
 
             if (! $budget || ! $employee) {
+                $skipped++;
+                continue;
+            }
+
+            $lpjExists = Lpj::where('budget_request_id', $budget->id)
+                ->where('employee_id', $employee->id)
+                ->exists();
+            if ($lpjExists) {
                 $skipped++;
                 continue;
             }

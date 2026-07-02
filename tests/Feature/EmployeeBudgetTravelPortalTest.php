@@ -822,6 +822,111 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         ]);
     }
 
+    public function test_tagged_participant_can_select_budget_request_for_lpj(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'EMP002',
+            'email' => 'participant@example.test',
+            'full_name' => 'Tagged Participant',
+        ]);
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budgetId,
+            'employee_id' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('budget_request_items')->insert([
+            'budget_request_id' => $budgetId,
+            'type' => 'meal',
+            'description' => 'Uang makan tim',
+            'amount' => 50000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/lpj/create')
+            ->assertOk()
+            ->assertSee('Perjalanan Batam')
+            ->assertSee('Rp 225.000');
+    }
+
+    public function test_tagged_participant_can_create_own_lpj_after_owner_lpj_exists(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'EMP002',
+            'email' => 'participant@example.test',
+            'full_name' => 'Tagged Participant',
+        ]);
+        $this->seedApprover(2, 'lpj', 1);
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budgetId,
+            'employee_id' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('travel_reports')->insert([
+            'employee_id' => 2,
+            'budget_request_id' => $budgetId,
+            'destination_city' => 'Batam',
+            'departure_date' => '2026-06-20',
+            'return_date' => '2026-06-21',
+            'purpose' => 'Kunjungan klien',
+            'conclusion' => 'Selesai',
+            'status' => 'approved',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('lpjs')->insert([
+            'employee_id' => 1,
+            'budget_request_id' => $budgetId,
+            'nomor_lpj' => 'LPJ-PIC',
+            'total_anggaran' => 225000,
+            'total_realisasi' => 100000,
+            'sisa' => 125000,
+            'status' => 'pending',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->post('/employee/lpj', [
+                'budget_request_id' => $budgetId,
+                'nomor_lpj' => 'LPJ-PESERTA',
+                'items' => [
+                    [
+                        'kategori' => 'meal',
+                        'uraian' => 'Uang makan peserta',
+                        'satuan' => 'Makan',
+                        'volume' => 1,
+                        'realisasi' => 75000,
+                    ],
+                ],
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('lpjs', [
+            'employee_id' => 2,
+            'budget_request_id' => $budgetId,
+            'nomor_lpj' => 'LPJ-PESERTA',
+            'total_anggaran' => 225000,
+            'total_realisasi' => 75000,
+        ]);
+    }
+
     public function test_employee_approver_can_approve_budget_and_lhp_from_web_portal(): void
     {
         $this->seedEmployee();

@@ -384,6 +384,33 @@ class PayrollPayslipEmailPublishTest extends TestCase
         $this->assertContains('JHT Perusahaan: 3.7% x Rp 2.624.387', $notes);
     }
 
+    public function test_payslip_benefits_does_not_duplicate_bpjs_company_components(): void
+    {
+        $benefits = \App\Support\PayslipBenefits::from([
+            'items' => [
+                ['label' => 'Rate BPJS Ketenagakerjaan', 'amount' => 2624387, 'is_basis' => true],
+                ['label' => 'JKK (Jaminan Kecelakaan Kerja)', 'amount' => 6299, 'is_basis' => false],
+                ['label' => 'JKM (Jaminan Kematian)', 'amount' => 7873, 'is_basis' => false],
+                ['label' => 'JHT Perusahaan (Jaminan Hari Tua)', 'amount' => 97102, 'is_basis' => false],
+            ],
+        ], [
+            ['name' => 'Rate BPJS Ketenagakerjaan', 'type' => 'info', 'amount' => 2624387],
+            ['name' => 'JKK Perusahaan', 'type' => 'info', 'amount' => 6299, 'detail' => '0.24% x Rp 2.624.387'],
+            ['name' => 'JKM Perusahaan', 'type' => 'info', 'amount' => 7873, 'detail' => '0.3% x Rp 2.624.387'],
+            ['name' => 'JHT Perusahaan', 'type' => 'info', 'amount' => 97102, 'detail' => '3.7% x Rp 2.624.387'],
+        ]);
+
+        $labels = collect($benefits['items'])->pluck('label')->all();
+
+        $this->assertSame([
+            'Rate BPJS Ketenagakerjaan',
+            'JKK (Jaminan Kecelakaan Kerja)',
+            'JKM (Jaminan Kematian)',
+            'JHT Perusahaan (Jaminan Hari Tua)',
+        ], $labels);
+        $this->assertSame(2735661.0, $benefits['total']);
+    }
+
     public function test_payslip_pdf_uses_legacy_layout_with_indonesian_income_and_expense_labels(): void
     {
         $company = Company::create(['name' => 'PT Payroll Email']);

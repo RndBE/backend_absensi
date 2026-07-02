@@ -127,6 +127,29 @@ class LpjReminderTest extends TestCase
         $this->assertSame(0, Notification::count());
     }
 
+    public function test_owner_lpj_does_not_block_participant_lpj_reminder(): void
+    {
+        $owner = $this->seedTrip('2026-06-19');
+        $participantId = DB::table('employees')->insertGetId([
+            'full_name' => 'Peserta', 'email' => 'peserta'.uniqid().'@test.id', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('travel_reports')->insert([
+            'budget_request_id' => $owner['budget_id'], 'employee_id' => $participantId, 'return_date' => '2026-06-19', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('lpjs')->insert([
+            'budget_request_id' => $owner['budget_id'], 'employee_id' => $owner['employee_id'], 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $result = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(1, $result['sent']);
+        $this->assertDatabaseHas('notifications', [
+            'employee_id' => $participantId,
+            'type' => 'lpj_reminder',
+            'reference_id' => $owner['budget_id'],
+        ]);
+    }
+
     public function test_does_not_send_when_budget_not_approved(): void
     {
         $this->seedTrip('2026-06-19', 'pending');
