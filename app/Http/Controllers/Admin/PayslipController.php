@@ -302,6 +302,9 @@ class PayslipController extends Controller
         $periodDate = Carbon::parse($detail->payrollRun->period . '-01');
         $calc       = new BpjsCalculator($periodDate->format('Y-m-d'));
         $bpjs       = $calc->calculate((float) $payroll->basic_salary);
+        $bpjs       = \App\Support\PayrollBpjs::dropKetenagakerjaanForResign($bpjs, $detail->employee, $periodDate);
+        // Karyawan resign: JKK/JKM/JHT tetap DITAMPILKAN sebagai Rp 0 (bukan disembunyikan).
+        $resigned   = \App\Support\PayrollBpjs::isResignedInMonth($detail->employee, $periodDate);
 
         $items = [];
 
@@ -312,8 +315,8 @@ class PayslipController extends Controller
             'is_basis' => true,
         ];
 
-        // Only show ketenagakerjaan basis if any program has contribution
-        $tkHasContrib = $bpjs['jht']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'] + $bpjs['jp']['company'] > 0;
+        // Only show ketenagakerjaan basis if any program has contribution (atau saat resign)
+        $tkHasContrib = ($bpjs['jht']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'] + $bpjs['jp']['company'] > 0) || $resigned;
         if ($tkHasContrib) {
             $items[] = [
                 'label'    => 'Rate BPJS Ketenagakerjaan',
@@ -322,14 +325,14 @@ class PayslipController extends Controller
             ];
         }
 
-        // Company contributions — only if non-zero
-        if ($bpjs['jkk']['company'] > 0) {
+        // Company contributions — tampil bila > 0 ATAU karyawan resign (nilai 0)
+        if ($bpjs['jkk']['company'] > 0 || $resigned) {
             $items[] = ['label' => 'JKK (Jaminan Kecelakaan Kerja)', 'amount' => $bpjs['jkk']['company'], 'is_basis' => false];
         }
-        if ($bpjs['jkm']['company'] > 0) {
+        if ($bpjs['jkm']['company'] > 0 || $resigned) {
             $items[] = ['label' => 'JKM (Jaminan Kematian)', 'amount' => $bpjs['jkm']['company'], 'is_basis' => false];
         }
-        if ($bpjs['jht']['company'] > 0) {
+        if ($bpjs['jht']['company'] > 0 || $resigned) {
             $items[] = ['label' => 'JHT Perusahaan (Jaminan Hari Tua)', 'amount' => $bpjs['jht']['company'], 'is_basis' => false];
         }
         if ($bpjs['jp']['company'] > 0) {

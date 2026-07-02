@@ -979,14 +979,9 @@ class PayrollRunController extends Controller
     private function filterBpjsByRegistration(EmployeePayroll $payroll, array $bpjs, Carbon $periodStart): array
     {
         // Karyawan yang KELUAR (resign) di bulan periode ini: hilangkan JHT/JKK/JKM di
-        // bulan terakhirnya. BPJS Kesehatan & JP tetap.
-        $exitRaw = $payroll->employee?->last_working_date ?: $payroll->employee?->resign_date;
-        if ($exitRaw && Carbon::parse($exitRaw)->isSameMonth($periodStart)) {
-            foreach (['jht', 'jkk', 'jkm'] as $key) {
-                $bpjs[$key]['company'] = 0;
-                $bpjs[$key]['employee'] = 0;
-            }
-        }
+        // bulan terakhirnya. BPJS Kesehatan & JP tetap. (Helper yang sama dipakai di
+        // tampilan benefit slip agar konsisten.)
+        $bpjs = \App\Support\PayrollBpjs::dropKetenagakerjaanForResign($bpjs, $payroll->employee, $periodStart);
 
         $joinDate = $payroll->employee?->join_date ? Carbon::parse($payroll->employee->join_date) : null;
         if (

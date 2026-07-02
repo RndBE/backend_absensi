@@ -78,6 +78,9 @@ class SendPayslipEmailJob implements ShouldQueue
 
         $periodDate = Carbon::parse($detail->payrollRun->period.'-01');
         $bpjs = (new BpjsCalculator($periodDate->format('Y-m-d')))->calculate((float) $payroll->basic_salary);
+        $bpjs = \App\Support\PayrollBpjs::dropKetenagakerjaanForResign($bpjs, $detail->employee, $periodDate);
+        // Karyawan resign: JKK/JKM/JHT tetap DITAMPILKAN sebagai Rp 0 (bukan disembunyikan).
+        $resigned = \App\Support\PayrollBpjs::isResignedInMonth($detail->employee, $periodDate);
 
         $items = [[
             'label' => 'Rate BPJS Kesehatan',
@@ -85,7 +88,7 @@ class SendPayslipEmailJob implements ShouldQueue
             'is_basis' => true,
         ]];
 
-        $tkHasContrib = $bpjs['jht']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'] + $bpjs['jp']['company'] > 0;
+        $tkHasContrib = ($bpjs['jht']['company'] + $bpjs['jkk']['company'] + $bpjs['jkm']['company'] + $bpjs['jp']['company'] > 0) || $resigned;
         if ($tkHasContrib) {
             $items[] = [
                 'label' => 'Rate BPJS Ketenagakerjaan',
@@ -94,13 +97,13 @@ class SendPayslipEmailJob implements ShouldQueue
             ];
         }
 
-        if ($bpjs['jkk']['company'] > 0) {
+        if ($bpjs['jkk']['company'] > 0 || $resigned) {
             $items[] = ['label' => 'JKK (Jaminan Kecelakaan Kerja)', 'amount' => $bpjs['jkk']['company'], 'is_basis' => false];
         }
-        if ($bpjs['jkm']['company'] > 0) {
+        if ($bpjs['jkm']['company'] > 0 || $resigned) {
             $items[] = ['label' => 'JKM (Jaminan Kematian)', 'amount' => $bpjs['jkm']['company'], 'is_basis' => false];
         }
-        if ($bpjs['jht']['company'] > 0) {
+        if ($bpjs['jht']['company'] > 0 || $resigned) {
             $items[] = ['label' => 'JHT Perusahaan (Jaminan Hari Tua)', 'amount' => $bpjs['jht']['company'], 'is_basis' => false];
         }
         if ($bpjs['jp']['company'] > 0) {
