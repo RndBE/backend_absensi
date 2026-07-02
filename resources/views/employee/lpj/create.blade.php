@@ -41,7 +41,7 @@
                 </div>
                 <div>
                     <label class="block text-[12px] font-semibold text-gray-600 mb-1">Nomor LPJ</label>
-                    <input type="text" name="nomor_lpj" value="{{ old('nomor_lpj') }}" placeholder="contoh: LPJ/2026/001"
+                    <input type="text" name="nomor_lpj" value="{{ old('nomor_lpj') }}" placeholder="contoh: menggunakan nomor surat tugas"
                         class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none [color-scheme:light]">
                 </div>
                 <div>
