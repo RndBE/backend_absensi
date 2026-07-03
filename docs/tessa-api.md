@@ -113,6 +113,8 @@ curl -X POST https://<host>/api/tessa/requests/overtime \
 ```
 Kalau field format-nya salah (mis. `duration:"2 jam"` atau `date:"besok"`), `store()` akan menolak dengan `422` (validasi sama seperti portal) — jadi tidak akan tersimpan dengan format berbeda.
 
+**Jejak sumber**: pengajuan lewat Tessa otomatis ditandai — suffix `(via Tessa)` pada field teksnya (`reason` untuk cuti/lembur/presensi, `description` untuk anggaran, `purpose` untuk LHP) agar approver/admin tahu asalnya. **Catatan**: lampiran/file tak bisa dikirim lewat Tessa (JSON/WhatsApp), jadi pengajuan via Tessa tersimpan tanpa lampiran; field lain identik dengan portal.
+
 ## Reminder sistem (Tessa kirim via WhatsApp)
 
 Endpoint **sistem** (dijaga **service key**, bukan token per-user — ini fungsi broadcast, bukan aksi milik satu karyawan):

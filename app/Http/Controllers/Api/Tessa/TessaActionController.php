@@ -376,7 +376,9 @@ class TessaActionController extends Controller
         }
 
         // Delegasikan ke store() asli, bertindak SEBAGAI karyawan tsb (employee_id = dia).
-        $sub = $this->actingAs($employee, $request->except(['employee_id', 'employee_code', 'employee', 'as_employee_id']));
+        $input = $request->except(['employee_id', 'employee_code', 'employee', 'as_employee_id']);
+        $input = $this->tagViaTessa($input, $type); // jejak sumber "via Tessa"
+        $sub = $this->actingAs($employee, $input);
 
         return app($controllers[$type])->store($sub);
     }
@@ -384,6 +386,24 @@ class TessaActionController extends Controller
     // =====================================================================
     // Helpers
     // =====================================================================
+
+    /**
+     * Tandai jejak "via Tessa" pada field teks yang sesuai per jenis, agar approver/admin
+     * tahu sumber pengajuan. Non-destruktif: hanya menambah suffix (atau isi bila kosong).
+     */
+    private function tagViaTessa(array $input, string $type): array
+    {
+        $field = match ($type) {
+            'budget' => 'description',
+            'travel-report' => 'purpose',
+            default => 'reason', // leave, overtime, attendance
+        };
+
+        $existing = trim((string) ($input[$field] ?? ''));
+        $input[$field] = $existing === '' ? 'Diajukan via Tessa' : $existing.' (via Tessa)';
+
+        return $input;
+    }
 
     /** Permission admin yang dibutuhkan untuk membuat pengajuan atas nama orang lain. */
     private function createPermissionFor(string $type): string
