@@ -140,6 +140,8 @@ Route::middleware('tessa.service')->prefix('tessa')->group(function () {
     Route::get('/reminders/due', [TessaReminderController::class, 'due']);
     // Pengajuan menunggu approval + approver step aktif → Tessa WA approver-nya.
     Route::get('/approvals/pending', [TessaReminderController::class, 'pendingApprovals']);
+    // Hasil final approval → Tessa WA pengaju-nya.
+    Route::get('/approvals/results', [TessaReminderController::class, 'approvalResults']);
 });
 
 Route::middleware(['auth:sanctum', 'tessa.actor'])->prefix('tessa')->group(function () {

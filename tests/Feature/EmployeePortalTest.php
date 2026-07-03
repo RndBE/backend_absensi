@@ -1358,6 +1358,108 @@ class EmployeePortalTest extends TestCase
         ]);
     }
 
+    public function test_employee_can_open_own_overtime_detail_with_pending_edit_link(): void
+    {
+        $this->seedEmployee();
+        $this->seedOvertimeApprovalForEmployee(1, []);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/overtimes/1')
+            ->assertOk()
+            ->assertSee('Detail Pengajuan Lembur')
+            ->assertSee('Hari Kerja')
+            ->assertSee('Lembur closing laporan')
+            ->assertSee('2j 30m')
+            ->assertSee('/employee/overtimes/1/edit', false);
+    }
+
+    public function test_employee_cannot_open_other_employee_overtime_detail(): void
+    {
+        $this->seedEmployee();
+
+        DB::table('employees')->insert([
+            'id' => 2,
+            'company_id' => 1,
+            'employee_code' => 'EMP002',
+            'full_name' => 'Employee Two',
+            'email' => 'employee2@example.test',
+            'password' => Hash::make('password'),
+            'role' => 'employee',
+            'position' => 'Staff',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->seedOvertimeApprovalForEmployee(2, []);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/overtimes/1')
+            ->assertNotFound();
+    }
+
+    public function test_employee_can_edit_pending_overtime_request(): void
+    {
+        $this->seedEmployee();
+        $this->seedOvertimeApprovalForEmployee(1, []);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/overtimes/1/edit')
+            ->assertOk()
+            ->assertSee('Edit Pengajuan Lembur')
+            ->assertSee('Lembur closing laporan');
+
+        $this->withSession(['employee_id' => 1])
+            ->put('/employee/overtimes/1', [
+                'date' => '2026-06-21',
+                'overtime_type' => 'workday',
+                'pre_shift_duration' => 30,
+                'pre_shift_break' => 0,
+                'post_shift_duration' => 120,
+                'post_shift_break' => 15,
+                'reason' => 'Revisi closing laporan',
+            ])
+            ->assertRedirect('/employee/overtimes/1');
+
+        $this->assertDatabaseHas('overtime_requests', [
+            'id' => 1,
+            'employee_id' => 1,
+            'date' => '2026-06-21 00:00:00',
+            'overtime_type' => 'workday',
+            'total_duration' => 150,
+            'break_duration' => 15,
+            'reason' => 'Revisi closing laporan',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_employee_cannot_edit_processed_overtime_request(): void
+    {
+        $this->seedEmployee();
+        $this->seedOvertimeApprovalForEmployee(1, []);
+        DB::table('overtime_requests')->where('id', 1)->update(['status' => 'approved']);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/overtimes/1/edit')
+            ->assertRedirect('/employee/overtimes/1');
+
+        $this->withSession(['employee_id' => 1])
+            ->put('/employee/overtimes/1', [
+                'date' => '2026-06-21',
+                'overtime_type' => 'workday',
+                'pre_shift_duration' => 30,
+                'pre_shift_break' => 0,
+                'post_shift_duration' => 120,
+                'post_shift_break' => 15,
+                'reason' => 'Tidak boleh berubah',
+            ])
+            ->assertRedirect('/employee/overtimes/1');
+
+        $this->assertDatabaseMissing('overtime_requests', [
+            'id' => 1,
+            'reason' => 'Tidak boleh berubah',
+        ]);
+    }
+
     private function seedEmployee(bool|array $attributes = true, ?bool $isActive = null): void
     {
         $attributes = is_array($attributes) ? $attributes : ['is_active' => $attributes];

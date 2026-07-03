@@ -131,6 +131,76 @@ class TessaReminderController extends Controller
         ]);
     }
 
+    /**
+     * Pengajuan yang sudah final (approved/rejected), beserta nomor pengaju dan pesan
+     * siap kirim, agar Tessa bisa memberi kabar via WhatsApp ke pengaju.
+     */
+    public function approvalResults(Request $request)
+    {
+        $request->validate([
+            'type' => 'nullable|in:leave,overtime,attendance,budget,travel_report',
+            'status' => 'nullable|in:approved,rejected',
+            'since' => 'nullable|date',
+        ]);
+
+        $companyId = $this->companyScope();
+        $since = $request->query('since') ? Carbon::parse($request->query('since')) : null;
+        $filter = $request->query('type');
+        $statusFilter = $request->query('status');
+
+        $types = [
+            'leave' => [LeaveRequest::class, 'Cuti'],
+            'overtime' => [OvertimeRequest::class, 'Lembur'],
+            'attendance' => [AttendanceRequest::class, 'Koreksi Presensi'],
+            'budget' => [BudgetRequest::class, 'Anggaran'],
+            'travel_report' => [TravelReport::class, 'LHP'],
+        ];
+
+        $rows = collect();
+
+        foreach ($types as $key => [$modelClass, $label]) {
+            if ($filter && $filter !== $key) {
+                continue;
+            }
+
+            $items = $modelClass::with('employee:id,full_name,phone,company_id')
+                ->whereIn('status', $statusFilter ? [$statusFilter] : ['approved', 'rejected'])
+                ->when($companyId, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $companyId)))
+                ->when($since, fn ($q) => $q->where('updated_at', '>=', $since))
+                ->orderBy('updated_at')
+                ->get();
+
+            foreach ($items as $item) {
+                $employeeName = $item->employee?->full_name ?? '-';
+                $status = (string) $item->status;
+                $decision = $status === 'approved' ? 'disetujui' : 'ditolak';
+
+                $rows->push([
+                    'type' => $key,
+                    'id' => $item->id,
+                    'status' => $status,
+                    'employee' => [
+                        'id' => $item->employee?->id,
+                        'name' => $employeeName,
+                        'phone' => $item->employee?->phone,
+                    ],
+                    'title' => "Pengajuan {$label} ".ucfirst($decision),
+                    'message' => "Halo {$employeeName}, pengajuan {$label} Anda telah {$decision}.",
+                    'updated_at' => optional($item->updated_at)->toISOString(),
+                ]);
+            }
+        }
+
+        $withPhone = $rows->filter(fn ($r) => filled($r['employee']['phone']))->values();
+
+        return response()->json([
+            'success' => true,
+            'count' => $withPhone->count(),
+            'skipped_no_phone' => $rows->count() - $withPhone->count(),
+            'results' => $withPhone->all(),
+        ]);
+    }
+
     /** Ubah item {employee,title,message} dari service jadi baris siap-kirim. */
     private function fromReminderItems(\Illuminate\Support\Collection $items): \Illuminate\Support\Collection
     {

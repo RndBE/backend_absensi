@@ -28,6 +28,7 @@
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Tipe</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Durasi</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Status</th>
+                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -37,9 +38,12 @@
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $overtime->overtime_type === 'holiday' ? 'Hari Libur' : 'Hari Kerja' }}</td>
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $overtime->total_duration_formatted }}</td>
                             <td class="px-4 py-3.5 border-b border-gray-100">@include('employee.partials.status-badge', ['status' => $overtime->status])</td>
+                            <td class="px-4 py-3.5 border-b border-gray-100">
+                                <a href="{{ route('employee.overtimes.show', $overtime->id) }}" class="text-indigo-600 hover:text-indigo-900">Lihat</a>
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="text-center py-10 text-[13px] text-gray-400">Belum ada pengajuan lembur.</td></tr>
+                        <tr><td colspan="5" class="text-center py-10 text-[13px] text-gray-400">Belum ada pengajuan lembur.</td></tr>
                     @endforelse
                 </tbody>
             </table>

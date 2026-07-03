@@ -160,6 +160,30 @@ Balas pengajuan `pending`/`in_review` + **approver step aktif** (nama, nomor, pe
 - **Alur**: Tessa poll → WA tiap `approver.phone` isi `message` → approver balas "approve"/"tolak" → Tessa panggil `POST /approvals/{type}/{id}/approve|reject` pakai **token approver itu** (chain memverifikasi dia approver step aktif).
 - Tanpa nomor HP → tak bisa di-WA, dihitung di `skipped_no_phone`.
 
+## Notifikasi pengaju (Tessa WA hasil approval final)
+
+Setelah approval selesai final, Tessa bisa memberi tahu pengaju apakah pengajuannya disetujui atau ditolak:
+
+```
+GET /api/tessa/approvals/results?type=leave|overtime|attendance|budget|travel_report[&status=approved|rejected][&since=ISO8601]
+Header: X-Api-Key: <TESSA_API_KEY>
+```
+Balas pengajuan yang statusnya sudah `approved` / `rejected` + nomor HP pengaju + pesan siap kirim:
+```json
+{ "count": 1, "skipped_no_phone": 0,
+  "results": [ {
+    "type": "overtime", "id": 45, "status": "approved",
+    "employee": { "id": 12, "name": "Shandy", "phone": "0812..." },
+    "title": "Pengajuan Lembur Disetujui",
+    "message": "Halo Shandy, pengajuan Lembur Anda telah disetujui.",
+    "updated_at": "2026-07-03T09:00:00.000000Z"
+  } ] }
+```
+- **Hanya keputusan final**: `approved` dan `rejected`. Status `pending` / `in_review` tetap lewat `/approvals/pending` untuk WA approver berikutnya.
+- **Dedup poll**: kirim `?since=<waktu poll terakhir>` agar Tessa hanya mengirim hasil yang baru berubah sejak poll terakhir.
+- **Alur**: approver approve/reject → status pengajuan final `approved`/`rejected` → Tessa poll endpoint ini → WA `employee.phone` isi `message`.
+- Tanpa nomor HP pengaju → tak bisa di-WA, dihitung di `skipped_no_phone`.
+
 ### Model aktor & pengaman
 - **Aktor = karyawan pemilik token** (hasil `/session`), bukan superadmin. Semua aksi dijalankan atas namanya, dan **kapabilitas mengikuti role HRIS-nya** (resolver `AdminPermission`, sama dengan website). Tidak ada `as_employee_id` — identitas terikat token, tak bisa dipalsukan.
 - **Approve/Reject**: TANPA gate permission khusus — otorisasi mengikuti **approval chain** (`employee_approvers`): hanya **approver step aktif** (atau superadmin) yang boleh, ditegakkan oleh `Api\ApprovalController`. Sama seperti mobile: approver ber-role employee (mis. team lead) pun bisa. Multi-step maju otomatis ke approver berikutnya. Tercatat: approver step + acted_by user + catatan **"(via Tessa AI)"**. `"dry_run":true` untuk melihat rencana tanpa eksekusi.
