@@ -8,6 +8,8 @@
     $canCreateEmployee = $adminPermission->can($currentAdmin, 'employees.create');
     $canUpdateEmployee = $adminPermission->can($currentAdmin, 'employees.update');
     $canDeleteEmployee = $adminPermission->can($currentAdmin, 'employees.delete');
+    // Manager: sembunyikan kolom status kepegawaian.
+    $hideStatus = ($currentAdmin?->role ?? '') === 'manager';
 @endphp
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
@@ -49,6 +51,7 @@
                     <option value="{{ $dept->id }}" {{ request('department_id') == $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
                 @endforeach
             </select>
+            @unless($hideStatus)
             <select name="status" onchange="document.getElementById('employeeFilterForm').submit()" class="w-full max-w-[280px] h-[42px] px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 bg-white outline-none appearance-none bg-[url('data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2020%2020%27%3e%3cpath%20stroke=%27%236b7280%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%20stroke-width=%271.5%27%20d=%27M6%208l4%204%204-4%27/%3e%3c/svg%3e')] bg-[position:right_10px_center] bg-no-repeat bg-[length:16px] pr-9 transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10">
                 <option value="">Semua Status</option>
                 <option value="permanent" {{ request('status') === 'permanent' ? 'selected' : '' }}>Tetap</option>
@@ -57,6 +60,7 @@
                 <option value="probation" {{ request('status') === 'probation' ? 'selected' : '' }}>Probation</option>
                 <option value="outsourcing" {{ request('status') === 'outsourcing' ? 'selected' : '' }}>Outsourcing</option>
             </select>
+            @endunless
             @if(request()->filled('department_id') || request()->filled('status'))
                 <a href="{{ route('admin.employees.index') }}" class="inline-flex items-center px-3 py-2.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all duration-200">Reset</a>
             @endif
@@ -71,7 +75,9 @@
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Kode</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Departemen</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Posisi</th>
+                        @unless($hideStatus)
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Status</th>
+                        @endunless
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Bergabung</th>
                         <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Aksi</th>
                     </tr>
@@ -95,6 +101,7 @@
                         <td class="px-4 py-3.5 border-b border-gray-100"><code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{{ $emp->employee_code }}</code></td>
                         <td class="px-4 py-3.5 text-[13.5px] text-gray-700 border-b border-gray-100">{{ $emp->department->name ?? '-' }}</td>
                         <td class="px-4 py-3.5 text-[13.5px] text-gray-700 border-b border-gray-100">{{ $emp->position ?? '-' }}</td>
+                        @unless($hideStatus)
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             @if($emp->employment_status === 'permanent')
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-emerald-100 text-emerald-800">Tetap</span>
@@ -110,6 +117,7 @@
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-slate-100 text-slate-700">{{ ucfirst($emp->employment_status ?? '-') }}</span>
                             @endif
                         </td>
+                        @endunless
                         <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $emp->join_date?->format('d/m/Y') ?? '-' }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex gap-1.5">
@@ -141,11 +149,11 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="7" class="text-center py-12 text-gray-400 text-sm">Tidak ada karyawan ditemukan</td>
+                        <td colspan="{{ $hideStatus ? 6 : 7 }}" class="text-center py-12 text-gray-400 text-sm">Tidak ada karyawan ditemukan</td>
                     </tr>
                     @endforelse
                     <tr id="employeeFuseEmpty" class="hidden">
-                        <td colspan="7" class="text-center py-12 text-gray-400 text-sm">Tidak ada karyawan yang cocok dengan pencarian</td>
+                        <td colspan="{{ $hideStatus ? 6 : 7 }}" class="text-center py-12 text-gray-400 text-sm">Tidak ada karyawan yang cocok dengan pencarian</td>
                     </tr>
                 </tbody>
             </table>

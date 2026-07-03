@@ -17,43 +17,48 @@ class AdminDashboardSummary
         $todayDate = $today->toDateString();
         $companyId = $admin->company_id;
 
-        $totalEmployees = Employee::where('company_id', $companyId)
+        // Manager: seluruh angka dibatasi ke departemennya. Role lain: se-perusahaan.
+        $departmentId = AdminDataScope::departmentId($admin);
+        $scopeEmployee = fn ($q) => $q->where('company_id', $companyId)
+            ->when($departmentId, fn ($e, $d) => $e->where('department_id', $d));
+
+        $totalEmployees = Employee::where('company_id', $companyId)->when($departmentId, fn ($q, $d) => $q->where('department_id', $d))
             ->where('is_active', true)
             ->count();
 
-        $attendedToday = Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+        $attendedToday = Attendance::whereHas('employee', $scopeEmployee)
             ->where('date', $todayDate)
             ->whereNotNull('clock_in')
             ->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->count();
 
-        $presentToday = Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+        $presentToday = Attendance::whereHas('employee', $scopeEmployee)
             ->where('date', $todayDate)
             ->whereNotNull('clock_in')
             ->where('is_late', false)
             ->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->count();
 
-        $lateToday = Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+        $lateToday = Attendance::whereHas('employee', $scopeEmployee)
             ->where('date', $todayDate)
             ->where('is_late', true)
             ->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->count();
 
-        $lateThisMonth = Attendance::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+        $lateThisMonth = Attendance::whereHas('employee', $scopeEmployee)
             ->whereBetween('date', [$today->copy()->startOfMonth()->toDateString(), $today->copy()->endOfMonth()->toDateString()])
             ->where('is_late', true)
             ->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->count();
 
         $pendingStatuses = ['pending', 'in_review'];
-        $pendingLeave = LeaveRequest::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+        $pendingLeave = LeaveRequest::whereHas('employee', $scopeEmployee)
             ->whereIn('status', $pendingStatuses)
             ->count();
-        $pendingOvertime = OvertimeRequest::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+        $pendingOvertime = OvertimeRequest::whereHas('employee', $scopeEmployee)
             ->whereIn('status', $pendingStatuses)
             ->count();
-        $pendingAttendance = AttendanceRequest::whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+        $pendingAttendance = AttendanceRequest::whereHas('employee', $scopeEmployee)
             ->whereIn('status', $pendingStatuses)
             ->count();
 
@@ -74,15 +79,15 @@ class AdminDashboardSummary
                 'total_pending' => $pendingLeave + $pendingOvertime + $pendingAttendance,
             ],
             'hr' => [
-                'resigned_this_month' => Employee::where('company_id', $companyId)
+                'resigned_this_month' => Employee::where('company_id', $companyId)->when($departmentId, fn ($q, $d) => $q->where('department_id', $d))
                     ->whereBetween('resign_date', [$today->copy()->startOfMonth()->toDateString(), $today->copy()->endOfMonth()->toDateString()])
                     ->count(),
-                'contracts_expiring_soon' => Employee::where('company_id', $companyId)
+                'contracts_expiring_soon' => Employee::where('company_id', $companyId)->when($departmentId, fn ($q, $d) => $q->where('department_id', $d))
                     ->where('is_active', true)
                     ->whereNotNull('contract_end_date')
                     ->whereBetween('contract_end_date', [$todayDate, $contractWindowEnd->toDateString()])
                     ->count(),
-                'inactive_employees' => Employee::where('company_id', $companyId)
+                'inactive_employees' => Employee::where('company_id', $companyId)->when($departmentId, fn ($q, $d) => $q->where('department_id', $d))
                     ->where('is_active', false)
                     ->count(),
                 'contract_window_days' => 60,

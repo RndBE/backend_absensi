@@ -37,6 +37,11 @@ class AttendanceRecapController extends Controller
             ->where('is_active', true)
             ->with(['department:id,name', 'scheduleTemplate.days.shift']);
 
+        // Manager hanya melihat rekap departemennya sendiri.
+        if ($managerDept = \App\Support\AdminDataScope::departmentId($admin)) {
+            $query->where('department_id', $managerDept);
+        }
+
         if ($departmentId) {
             $query->where('department_id', $departmentId);
         }

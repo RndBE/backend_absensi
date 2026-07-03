@@ -8,6 +8,7 @@ use App\Models\Notification;
 use App\Models\Setting;
 use App\Models\TravelReport;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 class LpjReminderService
 {
@@ -101,5 +102,51 @@ class LpjReminderService
         }
 
         return ['sent' => $sent, 'skipped' => $skipped];
+    }
+
+    /**
+     * Daftar penerima yang JATUH TEMPO diingatkan LPJ pada $date (read-only, tanpa
+     * mengirim). Dipakai kanal luar (mis. Tessa/WhatsApp). Berbasis state: hanya yang
+     * LPJ-nya belum dibuat. Dedup antar-panggilan diatur oleh kadens pemanggil.
+     *
+     * @return Collection<int, array{employee: \App\Models\Employee, title: string, message: string, reference_id: int}>
+     */
+    public static function dueForDate(Carbon $date, ?int $companyId = null): Collection
+    {
+        if (! self::isEnabled()) {
+            return collect();
+        }
+
+        $reminderDays = self::reminderDays();
+        $targetReturnDate = $date->copy()->subDays($reminderDays)->toDateString();
+
+        $reports = TravelReport::with(['budgetRequest', 'employee'])
+            ->whereNotNull('return_date')
+            ->whereDate('return_date', $targetReturnDate)
+            ->whereHas('budgetRequest', fn ($q) => $q->whereIn('status', ['approved', 'paid']))
+            ->when($companyId, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $companyId)))
+            ->get();
+
+        $items = collect();
+
+        foreach ($reports as $report) {
+            $budget = $report->budgetRequest;
+            $employee = $report->employee;
+            if (! $budget || ! $employee) {
+                continue;
+            }
+            if (Lpj::where('budget_request_id', $budget->id)->where('employee_id', $employee->id)->exists()) {
+                continue;
+            }
+
+            $items->push([
+                'employee' => $employee,
+                'title' => 'Pengingat LPJ',
+                'message' => "Halo {$employee->full_name}, jangan lupa membuat LPJ untuk \"{$budget->title}\". Sudah {$reminderDays} hari sejak tanggal pulang.",
+                'reference_id' => $budget->id,
+            ]);
+        }
+
+        return $items;
     }
 }

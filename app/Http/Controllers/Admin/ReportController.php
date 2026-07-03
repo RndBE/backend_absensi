@@ -28,7 +28,8 @@ class ReportController extends Controller
     {
         $admin = Employee::find(session('admin_id'));
         $month = $request->month ?? date('Y-m');
-        $departmentId = $request->department_id;
+        // Manager dipaksa ke departemennya sendiri; role lain bebas pilih.
+        $departmentId = \App\Support\AdminDataScope::departmentId($admin) ?: $request->department_id;
         $employeeId = $request->employee_id;
 
         $start = Carbon::parse($month . '-01')->startOfMonth();
@@ -77,7 +78,9 @@ class ReportController extends Controller
         }
 
         $departments = Department::where('company_id', $admin->company_id)->orderBy('name')->get();
-        $employees = Employee::where('company_id', $admin->company_id)->where('is_active', true)->orderBy('full_name')->get();
+        $employees = Employee::where('company_id', $admin->company_id)->where('is_active', true)
+            ->when(\App\Support\AdminDataScope::departmentId($admin), fn ($q, $d) => $q->where('department_id', $d))
+            ->orderBy('full_name')->get();
 
         return view('admin.reports.attendance', compact('attendances', 'summary', 'departments', 'employees', 'month', 'departmentId', 'employeeId'));
     }
@@ -93,7 +96,8 @@ class ReportController extends Controller
             ->whereBetween('date', [$start, $end])
             ->with('employee');
 
-        if ($request->department_id) $query->whereHas('employee', fn($q) => $q->where('department_id', $request->department_id));
+        $deptFilter = \App\Support\AdminDataScope::departmentId($admin) ?: $request->department_id;
+        if ($deptFilter) $query->whereHas('employee', fn($q) => $q->where('department_id', $deptFilter));
         if ($request->employee_id) $query->where('employee_id', $request->employee_id);
 
         $data = $query->orderBy('date')->orderBy('employee_id')->get();

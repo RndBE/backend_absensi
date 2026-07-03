@@ -18,7 +18,8 @@ class AttendanceController extends Controller
         $today = Carbon::today();
 
         $attendances = Attendance::with(['employee:id,full_name,photo,department_id,position,employment_status', 'employee.department:id,name'])
-            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id)
+                ->when(\App\Support\AdminDataScope::departmentId($admin), fn ($e, $dept) => $e->where('department_id', $dept)))
             ->where('date', $today)
             ->orderBy('clock_in', 'desc')
             ->paginate(50);
@@ -54,7 +55,8 @@ class AttendanceController extends Controller
             'employee.department:id,name',
             'reviewer:id,full_name',
         ])
-            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id));
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id)
+                ->when(\App\Support\AdminDataScope::departmentId($admin), fn ($e, $dept) => $e->where('department_id', $dept)));
 
         if ($request->date_from) {
             $query->where('date', '>=', $request->date_from);

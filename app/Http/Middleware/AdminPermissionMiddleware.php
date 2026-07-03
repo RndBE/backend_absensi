@@ -23,7 +23,12 @@ class AdminPermissionMiddleware
         }
 
         if ($permissions && !app(AdminPermission::class)->canAny($admin, $permissions)) {
-            return response('Anda tidak memiliki permission untuk mengakses fitur ini.', 403);
+            // Halaman biasa → tampilkan halaman 403 bergaya admin; API/AJAX → JSON.
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => 'Anda tidak memiliki permission untuk mengakses fitur ini.'], 403);
+            }
+
+            return response()->view('admin.errors.403', [], 403);
         }
 
         return $next($request);

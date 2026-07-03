@@ -6,6 +6,8 @@
         $adminPermission = app(\App\Support\AdminPermission::class);
         $canUpdateEmployee = $adminPermission->can($currentAdmin, 'employees.update');
         $canDeleteEmployee = $adminPermission->can($currentAdmin, 'employees.delete');
+        // Manager: sembunyikan status kepegawaian.
+        $hideStatus = ($currentAdmin?->role ?? '') === 'manager';
     @endphp
     {{-- Header --}}
     <div class="flex items-center justify-between mb-5">
@@ -148,6 +150,7 @@
                         <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Level</div>
                         <div class="text-[13.5px] font-medium text-gray-800">{{ $employee->job_level ?? '-' }}</div>
                     </div>
+                    @unless($hideStatus)
                     <div>
                         <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Status
                             Kepegawaian</div>
@@ -170,6 +173,7 @@
                         <span
                             class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold {{ $statusBg }}">{{ $statusLabel }}</span>
                     </div>
+                    @endunless
                     <div>
                         <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Jadwal Kerja
                         </div>

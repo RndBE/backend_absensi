@@ -9,6 +9,7 @@ use App\Models\Setting;
 use App\Models\TravelReport;
 use App\Support\WorkingDays;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 class LhpReminderService
 {
@@ -111,6 +112,67 @@ class LhpReminderService
         }
 
         return ['sent' => $sent, 'skipped' => $skipped];
+    }
+
+    /**
+     * Daftar penerima yang JATUH TEMPO diingatkan LHP pada $date (read-only, tanpa
+     * mengirim). Dua pemicu: beberapa hari setelah pulang, & H- hari kerja sebelum batas.
+     * Hanya yang LHP-nya belum dibuat. Dipakai kanal luar (Tessa/WhatsApp).
+     *
+     * @return Collection<int, array{employee: Employee, title: string, message: string, reference_id: int}>
+     */
+    public static function dueForDate(Carbon $date, ?int $companyId = null): Collection
+    {
+        if (! self::isEnabled()) {
+            return collect();
+        }
+
+        $today = $date->copy()->startOfDay();
+        $afterDays = self::afterDays();
+        $beforeDays = self::beforeDays();
+
+        $budgets = BudgetRequest::with([
+                'employee:id,full_name,phone,company_id',
+                'participants:id,full_name,phone,company_id',
+            ])
+            ->whereIn('status', ['approved', 'paid'])
+            ->whereNotNull('return_date')
+            ->when($companyId, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $companyId)))
+            ->get();
+
+        $items = collect();
+
+        foreach ($budgets as $budget) {
+            $deadline = $budget->lhpDeadlineDate();
+
+            $isAfterReturn = $budget->return_date
+                && $today->isSameDay($budget->return_date->copy()->addDays($afterDays));
+            $isBeforeDeadline = $deadline
+                && WorkingDays::add($today, $beforeDays, $budget->employee?->company_id)->isSameDay($deadline);
+
+            if (! $isAfterReturn && ! $isBeforeDeadline) {
+                continue;
+            }
+
+            $message = $isBeforeDeadline
+                ? "Batas pengumpulan LHP \"{$budget->title}\" pada {$deadline->translatedFormat('d M Y')}. Segera buat LHP agar tidak terlambat."
+                : "Anda sudah pulang dari perjalanan \"{$budget->title}\". Jangan lupa membuat LHP.";
+
+            foreach (self::responsibleEmployees($budget) as $employee) {
+                if (self::hasTravelReport($budget->id, $employee->id)) {
+                    continue;
+                }
+
+                $items->push([
+                    'employee' => $employee,
+                    'title' => 'Pengingat LHP',
+                    'message' => "Halo {$employee->full_name}, {$message}",
+                    'reference_id' => $budget->id,
+                ]);
+            }
+        }
+
+        return $items;
     }
 
     /** Pemilik anggaran + peserta yang di-tag, unik per id. */
