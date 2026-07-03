@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AttendanceRequestController;
 use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\OvertimeController;
+use App\Http\Controllers\Api\Tessa\Concerns\EnforcesHrisRole;
 use App\Http\Controllers\Api\TravelReportController;
 use App\Http\Controllers\Controller;
 use App\Models\DataChangeRequest;
@@ -31,6 +32,8 @@ use Illuminate\Support\Facades\DB;
  */
 class TessaActionController extends Controller
 {
+    use EnforcesHrisRole;
+
     /** Tipe pengajuan yang boleh di-approve Tessa (data-change SENGAJA tidak ada — wajib via web). */
     private const APPROVAL_TYPES = ['leave', 'overtime', 'attendance', 'budget', 'travel_report'];
 
@@ -65,9 +68,12 @@ class TessaActionController extends Controller
     {
         $request->validate([
             'notes' => 'nullable|string|max:1000',
-            'as_employee_id' => 'nullable|integer',
             'dry_run' => 'nullable|boolean',
         ]);
+
+        // Hanya role yang boleh memproses persetujuan. Aturan approver per-step tetap
+        // ditegakkan oleh ApprovalController di bawah (aktor = user yang login).
+        $this->requirePermission('approvals.action');
 
         if ($type === 'data-change') {
             return $this->fail('Perubahan data karyawan harus disetujui superadmin lewat website, bukan via Tessa.', 422);
@@ -90,10 +96,7 @@ class TessaActionController extends Controller
             return $this->fail("Pengajuan sudah diproses (status: {$item->status}).", 422);
         }
 
-        $actor = $this->resolveActor($request, $companyId);
-        if (! $actor) {
-            return $this->fail('Tidak ada superadmin sebagai aktor. Set TESSA_ACTS_AS_EMPLOYEE_ID atau kirim as_employee_id.', 422);
-        }
+        $actor = $this->actor();
 
         // Mode preview: tampilkan rencana tanpa mengeksekusi.
         if ($request->boolean('dry_run')) {
@@ -107,12 +110,12 @@ class TessaActionController extends Controller
                     'request_id' => $item->id,
                     'employee' => $item->employee?->full_name,
                     'current_step' => $item->current_step,
-                    'as_superadmin' => $actor->full_name,
+                    'as_user' => $actor?->full_name,
                 ],
             ]);
         }
 
-        // Delegasikan ke logika approval asli, bertindak sebagai superadmin (aktor),
+        // Delegasikan ke logika approval asli, bertindak sebagai USER yang login (aktor),
         // dengan catatan "via Tessa" agar jejaknya jujur.
         $notes = trim(($request->input('notes') ? $request->input('notes').' ' : '').'(via Tessa AI)');
         $sub = $this->actingAs($actor, ['notes' => $notes]);
@@ -125,7 +128,7 @@ class TessaActionController extends Controller
     // =====================================================================
 
     /**
-     * Body: { employee|employee_code|employee_id, changes: {field: value, ...}, as_employee_id? }
+     * Body: { employee|employee_code|employee_id, changes: {field: value, ...} }
      * Tiap field jadi satu DataChangeRequest; superadmin menyetujui di website.
      */
     public function requestDataChange(Request $request)
@@ -135,8 +138,9 @@ class TessaActionController extends Controller
             'employee_id' => 'nullable|integer',
             'employee_code' => 'nullable|string',
             'employee' => 'nullable|string',
-            'as_employee_id' => 'nullable|integer',
         ]);
+
+        $this->requirePermission('employees.update'); // usul perubahan data karyawan: admin saja
 
         $companyId = $this->companyId($request);
 
@@ -187,13 +191,9 @@ class TessaActionController extends Controller
 
     public function createShift(Request $request)
     {
+        $this->requirePermission('schedule.master.manage');
         $data = $this->validateShift($request);
-        $actor = $this->resolveActor($request, $this->companyId($request));
-        if (! $actor) {
-            return $this->fail('Butuh superadmin sebagai konteks perusahaan. Set TESSA_ACTS_AS_EMPLOYEE_ID atau kirim as_employee_id.', 422);
-        }
-
-        $companyId = $actor->company_id;
+        $companyId = $this->actor()->company_id;
         $isOff = (bool) ($data['is_off'] ?? false);
         $autoOt = ! $isOff && (bool) ($data['auto_overtime'] ?? false);
 
@@ -215,6 +215,7 @@ class TessaActionController extends Controller
 
     public function updateShift(Request $request, $id)
     {
+        $this->requirePermission('schedule.master.manage');
         $companyId = $this->companyId($request);
         $shift = Shift::query()
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
@@ -256,11 +257,8 @@ class TessaActionController extends Controller
             'days.*.shift_id' => 'nullable|integer',
         ]);
 
-        $actor = $this->resolveActor($request, $this->companyId($request));
-        if (! $actor) {
-            return $this->fail('Butuh superadmin sebagai konteks perusahaan.', 422);
-        }
-        $companyId = $actor->company_id;
+        $this->requirePermission('schedule.master.manage');
+        $companyId = $this->actor()->company_id;
 
         $resolved = [];
         foreach ($request->input('days') as $day) {
@@ -302,6 +300,7 @@ class TessaActionController extends Controller
             'employees' => 'required|array|min:1|max:500',
         ]);
 
+        $this->requirePermission('schedule.master.manage');
         $companyId = $this->companyId($request);
         $template = ScheduleTemplate::query()
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
@@ -361,9 +360,18 @@ class TessaActionController extends Controller
         }
 
         $companyId = $this->companyId($request);
-        $employee = $this->resolveEmployee($request->only(['employee_id', 'employee_code', 'employee']), $companyId);
+        $ref = $request->only(['employee_id', 'employee_code', 'employee']);
+        $hasRef = filled($ref['employee_id'] ?? null) || filled($ref['employee_code'] ?? null) || filled($ref['employee'] ?? null);
+
+        // Default: pengajuan untuk DIRI SENDIRI (self-service, boleh role employee).
+        $employee = $hasRef ? $this->resolveEmployee($ref, $companyId) : $this->actor();
         if (is_string($employee)) {
             return $this->fail($employee, 422);
+        }
+
+        // Membuat pengajuan atas nama ORANG LAIN = aksi admin, butuh permission sesuai jenis.
+        if ((int) $employee->id !== (int) $this->actor()?->id) {
+            $this->requirePermission($this->createPermissionFor($type));
         }
 
         // Delegasikan ke store() asli, bertindak SEBAGAI karyawan tsb (employee_id = dia).
@@ -376,11 +384,16 @@ class TessaActionController extends Controller
     // Helpers
     // =====================================================================
 
-    private function companyId(Request $request): ?int
+    /** Permission admin yang dibutuhkan untuk membuat pengajuan atas nama orang lain. */
+    private function createPermissionFor(string $type): string
     {
-        $id = $request->attributes->get('tessa_company_id');
-
-        return $id ? (int) $id : null;
+        return [
+            'leave' => 'leaves.create',
+            'overtime' => 'attendance.manage',
+            'attendance' => 'attendance.manage',
+            'budget' => 'budget.manage',
+            'travel-report' => 'travel.reports.manage',
+        ][$type] ?? 'employees.update';
     }
 
     private function approvalModel(string $type): ?string
@@ -394,23 +407,6 @@ class TessaActionController extends Controller
         ];
 
         return $map[$type] ?? null;
-    }
-
-    /** Resolve superadmin yang menjadi aktor Tessa. */
-    private function resolveActor(Request $request, ?int $companyId): ?Employee
-    {
-        $explicitId = $request->input('as_employee_id') ?: config('services.tessa.acts_as_employee_id');
-
-        $query = Employee::query()
-            ->where('role', 'superadmin')
-            ->where('is_active', true)
-            ->when($companyId, fn ($q) => $q->where('company_id', $companyId));
-
-        if ($explicitId) {
-            return (clone $query)->find($explicitId);
-        }
-
-        return $query->orderBy('id')->first();
     }
 
     /** Resolve karyawan by id/code/nama (scoped). Kembalikan Employee atau string error. */
@@ -469,7 +465,6 @@ class TessaActionController extends Controller
             'is_overnight' => 'nullable|boolean',
             'work_hours' => 'nullable|integer|min:1|max:24',
             'auto_overtime' => 'nullable|boolean',
-            'as_employee_id' => 'nullable|integer',
         ]);
     }
 

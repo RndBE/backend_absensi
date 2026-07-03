@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Tessa;
 
+use App\Http\Controllers\Api\Tessa\Concerns\EnforcesHrisRole;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\AttendanceRequest;
@@ -28,6 +29,8 @@ use Illuminate\Support\Carbon;
  */
 class TessaController extends Controller
 {
+    use EnforcesHrisRole;
+
     /** Status pengajuan yang valid untuk filter. */
     private const STATUSES = ['pending', 'in_review', 'approved', 'rejected'];
 
@@ -63,6 +66,8 @@ class TessaController extends Controller
         $query = Employee::query()
             ->with('department:id,name')
             ->when($this->companyId($request), fn ($q, $id) => $q->where('company_id', $id))
+            // Non-admin hanya boleh melihat dirinya sendiri.
+            ->when(! $this->actorIsAdmin(), fn ($q) => $q->whereKey($this->actor()?->id))
             ->when($request->boolean('only_active', true), fn ($q) => $q->where('is_active', true))
             ->when($request->query('department_id'), fn ($q, $id) => $q->where('department_id', $id))
             ->when($request->query('search'), function ($q, $search) {
@@ -80,6 +85,11 @@ class TessaController extends Controller
 
     public function employee(Request $request, $id)
     {
+        // Non-admin hanya boleh melihat profil dirinya sendiri.
+        if (! $this->actorIsAdmin() && (int) $id !== (int) $this->actor()?->id) {
+            return response()->json(['success' => false, 'message' => 'Anda hanya bisa melihat data diri sendiri.'], 403);
+        }
+
         $employee = Employee::query()
             ->with(['department:id,name', 'company:id,name', 'manager:id,full_name'])
             ->when($this->companyId($request), fn ($q, $cid) => $q->where('company_id', $cid))
@@ -111,7 +121,7 @@ class TessaController extends Controller
             ->with('employee:id,full_name,employee_code,department_id', 'employee.department:id,name')
             ->whereBetween('date', [$from, $to])
             ->when($this->companyId($request), fn ($q, $cid) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $cid)))
-            ->when($request->query('employee_id'), fn ($q, $eid) => $q->where('employee_id', $eid))
+            ->when($this->scopedEmployeeId($request), fn ($q, $eid) => $q->where('employee_id', $eid))
             ->when($request->query('status'), fn ($q, $s) => $q->where('status', $s))
             ->when($request->boolean('late_only'), fn ($q) => $q->where('is_late', true))
             ->orderByDesc('date')->orderBy('clock_in');
@@ -132,6 +142,8 @@ class TessaController extends Controller
 
     public function attendanceRecap(Request $request)
     {
+        $this->requirePermission('attendance.view'); // rekap se-perusahaan: admin saja
+
         $date = $request->query('date') ? Carbon::parse($request->query('date'))->toDateString() : today()->toDateString();
         $companyId = $this->companyId($request);
 
@@ -170,7 +182,7 @@ class TessaController extends Controller
         $query = LeaveRequest::query()
             ->with(['employee:id,full_name', 'leaveType:id,name', 'approvalLogs.approver:id,full_name', 'approvalLogs.actedBy:id,full_name'])
             ->when($this->companyId($request), fn ($q, $cid) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $cid)))
-            ->when($request->query('employee_id'), fn ($q, $eid) => $q->where('employee_id', $eid))
+            ->when($this->scopedEmployeeId($request), fn ($q, $eid) => $q->where('employee_id', $eid))
             ->when($this->status($request), fn ($q, $s) => $q->where('status', $s))
             ->latest();
 
@@ -193,7 +205,7 @@ class TessaController extends Controller
         $query = OvertimeRequest::query()
             ->with(['employee:id,full_name', 'approvalLogs.approver:id,full_name', 'approvalLogs.actedBy:id,full_name'])
             ->when($this->companyId($request), fn ($q, $cid) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $cid)))
-            ->when($request->query('employee_id'), fn ($q, $eid) => $q->where('employee_id', $eid))
+            ->when($this->scopedEmployeeId($request), fn ($q, $eid) => $q->where('employee_id', $eid))
             ->when($this->status($request), fn ($q, $s) => $q->where('status', $s))
             ->latest();
 
@@ -215,7 +227,7 @@ class TessaController extends Controller
         $query = AttendanceRequest::query()
             ->with(['employee:id,full_name', 'approvalLogs.approver:id,full_name', 'approvalLogs.actedBy:id,full_name'])
             ->when($this->companyId($request), fn ($q, $cid) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $cid)))
-            ->when($request->query('employee_id'), fn ($q, $eid) => $q->where('employee_id', $eid))
+            ->when($this->scopedEmployeeId($request), fn ($q, $eid) => $q->where('employee_id', $eid))
             ->when($this->status($request), fn ($q, $s) => $q->where('status', $s))
             ->latest();
 
@@ -237,7 +249,7 @@ class TessaController extends Controller
         $query = BudgetRequest::query()
             ->with(['employee:id,full_name', 'approvalLogs.approver:id,full_name', 'approvalLogs.actedBy:id,full_name'])
             ->when($this->companyId($request), fn ($q, $cid) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $cid)))
-            ->when($request->query('employee_id'), fn ($q, $eid) => $q->where('employee_id', $eid))
+            ->when($this->scopedEmployeeId($request), fn ($q, $eid) => $q->where('employee_id', $eid))
             ->when($this->status($request), fn ($q, $s) => $q->where('status', $s))
             ->latest();
 
@@ -258,7 +270,7 @@ class TessaController extends Controller
         $query = TravelReport::query()
             ->with(['employee:id,full_name', 'approvalLogs.approver:id,full_name', 'approvalLogs.actedBy:id,full_name'])
             ->when($this->companyId($request), fn ($q, $cid) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $cid)))
-            ->when($request->query('employee_id'), fn ($q, $eid) => $q->where('employee_id', $eid))
+            ->when($this->scopedEmployeeId($request), fn ($q, $eid) => $q->where('employee_id', $eid))
             ->when($this->status($request), fn ($q, $s) => $q->where('status', $s))
             ->latest();
 
@@ -280,7 +292,7 @@ class TessaController extends Controller
         $query = Lpj::query()
             ->with(['employee:id,full_name', 'approvalLogs.approver:id,full_name', 'approvalLogs.actedBy:id,full_name'])
             ->when($this->companyId($request), fn ($q, $cid) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $cid)))
-            ->when($request->query('employee_id'), fn ($q, $eid) => $q->where('employee_id', $eid))
+            ->when($this->scopedEmployeeId($request), fn ($q, $eid) => $q->where('employee_id', $eid))
             ->when($this->status($request), fn ($q, $s) => $q->where('status', $s))
             ->latest();
 
@@ -299,6 +311,8 @@ class TessaController extends Controller
 
     public function approvalsSummary(Request $request)
     {
+        $this->requirePermission('approvals.view'); // ringkasan pending se-perusahaan: admin saja
+
         $companyId = $this->companyId($request);
         $scoped = fn ($class) => $class::query()
             ->whereIn('status', ['pending', 'in_review'])
@@ -339,6 +353,8 @@ class TessaController extends Controller
         $query = Notification::query()
             ->with('employee:id,full_name')
             ->when($this->companyId($request), fn ($q, $cid) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $cid)))
+            // Non-admin hanya melihat notifikasi miliknya.
+            ->when(! $this->actorIsAdmin(), fn ($q) => $q->where('employee_id', $this->actor()?->id))
             ->when($request->query('type'), fn ($q, $t) => $q->where('type', $t))
             ->latest();
 
@@ -359,6 +375,8 @@ class TessaController extends Controller
 
     public function sendNotification(Request $request)
     {
+        $this->requirePermission('company.manage'); // broadcast notifikasi: admin saja
+
         $validated = $request->validate([
             'title' => 'required|string|max:150',
             'message' => 'required|string|max:1000',
@@ -461,6 +479,8 @@ class TessaController extends Controller
      */
     public function assignSchedules(Request $request)
     {
+        $this->requirePermission('schedule.manage'); // isi jadwal karyawan: admin saja
+
         $validated = $request->validate([
             'assignments' => 'required|array|min:1|max:500',
             'assignments.*.date' => 'required|date',
@@ -590,13 +610,6 @@ class TessaController extends Controller
     // =====================================================================
     // Helpers
     // =====================================================================
-
-    private function companyId(Request $request): ?int
-    {
-        $id = $request->attributes->get('tessa_company_id');
-
-        return $id ? (int) $id : null;
-    }
 
     private function status(Request $request): ?string
     {

@@ -61,16 +61,15 @@ return [
         'timeout' => env('WHATSAPP_TIMEOUT', 15),
     ],
 
-    // Integrasi AI kantor "Tessa". API key statis untuk akses read + sebagian aksi.
-    // Payroll/slip gaji TIDAK pernah diekspos ke Tessa (lihat middleware tessa.api).
+    // Integrasi AI kantor "Tessa" — MENGIKUTI role HRIS.
+    // Payroll/slip gaji TIDAK pernah diekspos ke Tessa (lihat middleware tessa.actor).
     'tessa' => [
+        // Service key: HANYA untuk /tessa/ping & /tessa/session (menukar kredensial karyawan
+        // jadi token per-user). Aksi & baca berikutnya memakai token karyawan itu, sehingga
+        // kapabilitasnya mengikuti role HRIS orang tsb — tidak bisa naik pangkat.
         'api_key' => env('TESSA_API_KEY'),
         // Batasi Tessa ke satu perusahaan tertentu (opsional). Kosong = semua perusahaan.
         'company_id' => env('TESSA_COMPANY_ID'),
-        // Aktor default (harus role superadmin) yang menjadi "tangan" Tessa saat
-        // approve/reject & saat mengusulkan perubahan data. Bisa di-override per request
-        // via field as_employee_id. Kosong = pakai superadmin pertama pada scope perusahaan.
-        'acts_as_employee_id' => env('TESSA_ACTS_AS_EMPLOYEE_ID'),
     ],
 
 ];

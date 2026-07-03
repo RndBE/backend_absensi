@@ -1,24 +1,46 @@
 # Tessa API — Integrasi AI Kantor
 
-API read-only + sebagian aksi untuk AI kantor **Tessa**. Payroll/slip gaji **tidak** dapat diakses.
-
-## Autentikasi
-
-Kirim API key di setiap request (salah satu):
-
-```
-Authorization: Bearer <TESSA_API_KEY>
-```
-atau
-```
-X-Api-Key: <TESSA_API_KEY>
-```
-
-Key disimpan di `.env` server: `TESSA_API_KEY`. Opsional `TESSA_COMPANY_ID` untuk membatasi Tessa ke satu perusahaan (kosong = semua).
-
-Respons gagal auth: `401`. Bila integrasi belum dikonfigurasi: `503`.
+API baca + sebagian aksi untuk AI kantor **Tessa**, yang **MENGIKUTI role HRIS**. Payroll/slip gaji **tidak** dapat diakses (apa pun role-nya).
 
 Base URL: `https://<host>/api/tessa`
+
+## Autentikasi — 2 langkah
+
+Tessa TIDAK punya role sendiri. Aktor = karyawan pemilik token, dan kapabilitasnya PERSIS mengikuti role HRIS orang itu.
+
+**1. Service key** membuktikan pemanggil adalah server Tessa. Dipakai HANYA untuk `/ping` & `/session`:
+```
+X-Api-Key: <TESSA_API_KEY>          (atau Authorization: Bearer <TESSA_API_KEY>)
+```
+
+**2. Kenali karyawan → token per-user.** Dua cara (keduanya dijaga service key):
+
+Berdasarkan **nomor HP** (untuk bot WhatsApp — cocokkan ke `employees.phone`):
+```bash
+curl -X POST https://<host>/api/tessa/session \
+  -H "X-Api-Key: <TESSA_API_KEY>" -H "Content-Type: application/json" \
+  -d '{"phone":"+62812xxxx"}'
+```
+Atau berdasarkan **kredensial** (email + kata sandi):
+```bash
+curl -X POST https://<host>/api/tessa/session \
+  -H "X-Api-Key: <TESSA_API_KEY>" -H "Content-Type: application/json" \
+  -d '{"email":"budi@perusahaan.com","password":"••••••"}'
+```
+Respons: `{ "success":true, "token":"<token>", "employee":{...,"role":"..."}, "is_admin":true|false }`.
+`is_admin=false` (role employee) → hanya self-service & data sendiri. `is_admin=true` → sesuai permission-nya.
+
+Nomor HP dinormalkan otomatis (`0812…`, `62812…`, `+62812…` dianggap sama). Nomor tak terdaftar → `404`; terdaftar ganda → `409`.
+
+**3. Semua endpoint lain** memakai token karyawan itu:
+```
+Authorization: Bearer <token dari /session>
+```
+Identitas & role terikat ke token — **tidak bisa dipalsukan / naik pangkat**. Logout: `POST /session/logout`.
+
+Key `.env`: `TESSA_API_KEY` (service key), opsional `TESSA_COMPANY_ID` (batasi ke satu perusahaan).
+
+Respons: gagal service key `401`/belum dikonfigurasi `503`; token tidak valid `401`; role tak mengizinkan `403`.
 
 ## Endpoint baca
 
@@ -43,31 +65,62 @@ Base URL: `https://<host>/api/tessa`
 Daftar mendukung pagination: `?limit=` (default 50, maks 200) dan `?page=`.
 Filter `status`: `pending`, `in_review`, `approved`, `rejected`.
 
+**Cakupan sesuai role:**
+- **Non-admin (role employee):** semua daftar & profil DIPAKSA hanya ke datanya sendiri (`/employees` hanya dirinya, `/attendance`/`/leaves`/dst hanya miliknya, `/announcements` hanya notifikasinya).
+- **Admin (role selain employee):** melihat sesuai scope perusahaannya + filter `employee_id`.
+- `/attendance/recap` & `/approvals/summary` (agregat se-perusahaan): **admin saja** (butuh `attendance.view` / `approvals.view`).
+
 ## Aksi
 
-| Method | Path | Body |
-|---|---|---|
-| POST | `/notifications` | `title`*, `message`*, lalu salah satu target: `employee_id` / `department_id` / `all=true`. Opsional `push=true` untuk kirim push FCM. |
-| POST | `/schedules` | `assignments`* (array, maks 500 baris). Mengisi jadwal shift karyawan per tanggal. Mendukung `dry_run`. |
-| POST | `/approvals/{type}/{id}/approve` | Setujui pengajuan. `type`: leave/overtime/attendance/budget/travel_report. Opsional `notes`, `as_employee_id`, `dry_run`. |
-| POST | `/approvals/{type}/{id}/reject` | Tolak pengajuan (param sama). |
-| POST | `/data-change-requests` | Usulkan ubah data karyawan: `employee\|employee_code\|employee_id` + `changes{field:value}`. Jadi pengajuan yang disetujui superadmin di website. |
-| POST | `/shifts` | Buat master shift: `name`*, `start_time`, `end_time`, `is_off`, `is_overnight`, `work_hours`, `auto_overtime`. |
-| PUT | `/shifts/{id}` | Edit master shift (field sama). |
-| POST | `/schedule-templates` | Buat template mingguan: `name`*, `days[]` ({`day_of_week`:1-7, `shift`\|`shift_id`}). |
-| POST | `/schedule-templates/assign` | Tempel template: `template_id`* + `employees[]`. |
-| POST | `/requests/{type}` | Buat pengajuan atas nama karyawan. `type`: leave/overtime/attendance/budget/travel-report + `employee\|employee_code\|employee_id` + field sesuai jenisnya. |
+Tiap aksi dicek terhadap **permission role HRIS** aktor (resolver yang sama dengan website). Role yang tak punya izin → `403`.
+
+| Method | Path | Permission | Body |
+|---|---|---|---|
+| POST | `/notifications` | `company.manage` | `title`*, `message`*, lalu salah satu target: `employee_id` / `department_id` / `all=true`. Opsional `push=true`. |
+| POST | `/schedules` | `schedule.manage` | `assignments`* (array, maks 500 baris). Mengisi jadwal shift per tanggal. Mendukung `dry_run`. |
+| POST | `/approvals/{type}/{id}/approve` | `approvals.action` | Setujui pengajuan. `type`: leave/overtime/attendance/budget/travel_report. Opsional `notes`, `dry_run`. Aturan approver per-step tetap berlaku (aktor = user login). |
+| POST | `/approvals/{type}/{id}/reject` | `approvals.action` | Tolak pengajuan (param sama). |
+| POST | `/data-change-requests` | `employees.update` | Usulkan ubah data karyawan: `employee\|employee_code\|employee_id` + `changes{field:value}`. Jadi pengajuan yang disetujui superadmin di website. |
+| POST | `/shifts` | `schedule.master.manage` | Buat master shift: `name`*, `start_time`, `end_time`, `is_off`, `is_overnight`, `work_hours`, `auto_overtime`. |
+| PUT | `/shifts/{id}` | `schedule.master.manage` | Edit master shift (field sama). |
+| POST | `/schedule-templates` | `schedule.master.manage` | Buat template mingguan: `name`*, `days[]` ({`day_of_week`:1-7, `shift`\|`shift_id`}). |
+| POST | `/schedule-templates/assign` | `schedule.master.manage` | Tempel template: `template_id`* + `employees[]`. |
+| POST | `/requests/{type}` | self / create-perm | Buat pengajuan. `type`: leave/overtime/attendance/budget/travel-report. Tanpa ref karyawan = untuk **diri sendiri** (boleh employee). Untuk **orang lain** butuh permission jenis terkait (mis. `leaves.create`, `budget.manage`). |
+
+## Reminder sistem (Tessa kirim via WhatsApp)
+
+Endpoint **sistem** (dijaga **service key**, bukan token per-user — ini fungsi broadcast, bukan aksi milik satu karyawan):
+
+```
+GET /api/tessa/reminders/due?type=clockin|lhp|lpj[&date=YYYY-MM-DD]
+Header: X-Api-Key: <TESSA_API_KEY>
+```
+Balasan:
+```json
+{
+  "success": true, "type": "lpj", "date": "2026-07-03",
+  "count": 2, "skipped_no_phone": 1,
+  "reminders": [
+    { "employee_id": 5, "name": "Budi", "phone": "0812...", "title": "Pengingat LPJ", "message": "Halo Budi, jangan lupa..." }
+  ]
+}
+```
+- **Read-only, berbasis state**: `lpj`/`lhp` = yang belum membuat LPJ/LHP pada pemicunya; `clockin` = terjadwal kerja hari ini tapi belum clock-in.
+- **Cara pakai**: scheduler Tessa panggil **sekali** pada jam yang diinginkan, lalu kirim tiap `message` ke `phone`-nya. `title`/`message` sudah siap kirim.
+- Menghormati toggle di Pengaturan Presensi (`*_reminder_enabled`) & `TESSA_COMPANY_ID`. Yang tanpa nomor HP dilaporkan di `skipped_no_phone`.
+- Tidak menyentuh payroll. Ini **melengkapi** notifikasi in-app/FCM, bukan menggantikan.
 
 ### Model aktor & pengaman
-- **Aktor**: aksi sensitif (approve/reject, usul perubahan data) dijalankan "atas nama" seorang **superadmin**. Default diambil dari `TESSA_ACTS_AS_EMPLOYEE_ID`, atau di-override per request via `as_employee_id`. Approve tercatat: disetujui oleh approver step + acted_by superadmin + catatan **"(via Tessa AI)"**.
-- **Approve `dry_run`**: kirim `"dry_run":true` untuk melihat rencana tanpa mengeksekusi.
-- **Ubah data karyawan TIDAK langsung** — selalu jadi pengajuan yang harus disetujui superadmin manusia di website (tab Perubahan Data). Field terkunci: `role`, `password`, `manager_id`, `approver_id`, `company_id` (dan semua hal payroll/gaji).
-- **Approve perubahan data** sengaja TIDAK tersedia untuk Tessa — wajib lewat website.
+- **Aktor = karyawan pemilik token** (hasil `/session`), bukan superadmin. Semua aksi dijalankan atas namanya, dan **kapabilitas mengikuti role HRIS-nya** (resolver `AdminPermission`, sama dengan website). Tidak ada `as_employee_id` — identitas terikat token, tak bisa dipalsukan.
+- **Approve**: butuh `approvals.action` DAN aturan approver per-step tetap ditegakkan (aktor = user login). Tercatat: approver step + acted_by user + catatan **"(via Tessa AI)"**. `"dry_run":true` untuk melihat rencana tanpa eksekusi.
+- **Employee vs admin**: role employee hanya self-service & data sendiri; role lain sesuai permission-nya. "Superadmin di Tessa" TIDAK berarti apa-apa — yang menentukan hanya role HRIS.
+- **Ubah data karyawan TIDAK langsung** — selalu jadi pengajuan yang disetujui superadmin manusia di website (tab Perubahan Data). Field terkunci: `role`, `password`, `manager_id`, `approver_id`, `company_id` (dan semua hal payroll/gaji).
+- **Payroll/slip gaji**: diblokir total di middleware, apa pun role-nya.
 
-Contoh kirim notifikasi:
+Contoh kirim notifikasi (pakai token karyawan dari `/session`):
 ```bash
 curl -X POST https://<host>/api/tessa/notifications \
-  -H "Authorization: Bearer <TESSA_API_KEY>" \
+  -H "Authorization: Bearer <token-karyawan>" \
   -H "Content-Type: application/json" \
   -d '{"title":"Pengingat LHP","message":"Mohon lengkapi LHP Anda.","employee_id":12,"push":true}'
 ```
@@ -78,7 +131,7 @@ Setiap baris di `assignments`: tentukan karyawan (salah satu dari `employee` nam
 
 ```bash
 curl -X POST https://<host>/api/tessa/schedules \
-  -H "Authorization: Bearer <TESSA_API_KEY>" \
+  -H "Authorization: Bearer <token-karyawan>" \
   -H "Content-Type: application/json" \
   -d '{"assignments":[
     {"employee":"Budi Santoso","date":"2026-07-01","shift":"Pagi"},
@@ -91,7 +144,7 @@ curl -X POST https://<host>/api/tessa/schedules \
 ```bash
 # 1. Preview dulu (TIDAK menyimpan apa pun)
 curl -X POST https://<host>/api/tessa/schedules \
-  -H "Authorization: Bearer <TESSA_API_KEY>" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token-karyawan>" -H "Content-Type: application/json" \
   -d '{"dry_run":true,"assignments":[{"employee":"Budi","date":"2026-07-01","shift":"Pagi"}]}'
 # Respons: action "would_create"/"would_update" + "current_shift" (shift saat ini)
 

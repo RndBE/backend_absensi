@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EmployeeSessionLifetime;
+use App\Http\Middleware\TessaActor;
 use App\Http\Middleware\TessaApiKey;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -19,7 +20,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
-            'tessa.api' => TessaApiKey::class,
+            'tessa.service' => TessaApiKey::class, // service key: /ping & /session (mint token)
+            'tessa.actor' => TessaActor::class,    // token per-user: data & aksi (ikut role HRIS)
+            'tessa.api' => TessaApiKey::class,      // alias lama (kompatibilitas)
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -18,6 +18,8 @@ use App\Http\Controllers\Api\TravelReportController;
 use App\Http\Controllers\Api\TravelZoneController;
 use App\Http\Controllers\Api\Tessa\TessaController;
 use App\Http\Controllers\Api\Tessa\TessaActionController;
+use App\Http\Controllers\Api\Tessa\TessaReminderController;
+use App\Http\Controllers\Api\Tessa\TessaSessionController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -124,12 +126,22 @@ Route::middleware('auth:sanctum')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Tessa (AI kantor) — API key statis, read + sebagian aksi.
-| Tidak ada endpoint payroll/slip gaji di sini (lihat middleware tessa.api).
+| Tessa (AI kantor) — mengikuti role HRIS.
+| /ping & /session dilindungi service key (TESSA_API_KEY). Sisanya memakai token
+| per-user (Sanctum) → aktor = karyawan pemilik token, kapabilitas ikut role-nya.
+| Payroll/slip gaji diblokir total (lihat middleware tessa.actor).
 |--------------------------------------------------------------------------
 */
-Route::middleware('tessa.api')->prefix('tessa')->group(function () {
+Route::middleware('tessa.service')->prefix('tessa')->group(function () {
     Route::get('/ping', [TessaController::class, 'ping']);
+    // Login karyawan → token Tessa (identitas & role terikat ke akunnya).
+    Route::post('/session', [TessaSessionController::class, 'login']);
+    // Reminder sistem (clockin/lhp/lpj) yang jatuh tempo → Tessa kirim via WhatsApp.
+    Route::get('/reminders/due', [TessaReminderController::class, 'due']);
+});
+
+Route::middleware(['auth:sanctum', 'tessa.actor'])->prefix('tessa')->group(function () {
+    Route::post('/session/logout', [TessaSessionController::class, 'logout']);
 
     // Karyawan & profil (tanpa gaji)
     Route::get('/employees', [TessaController::class, 'employees']);
