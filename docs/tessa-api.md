@@ -87,6 +87,32 @@ Tiap aksi dicek terhadap **permission role HRIS** aktor (resolver yang sama deng
 | POST | `/schedule-templates/assign` | `schedule.master.manage` | Tempel template: `template_id`* + `employees[]`. |
 | POST | `/requests/{type}` | self / create-perm | Buat pengajuan. `type`: leave/overtime/attendance/budget/travel-report. Tanpa ref karyawan = untuk **diri sendiri** (boleh employee). Untuk **orang lain** butuh permission jenis terkait (mis. `leaves.create`, `budget.manage`). |
 
+## Format payload pengajuan (`POST /requests/{type}`)
+
+Endpoint ini mendelegasikan ke `store()` yang **sama** dengan portal/mobile, jadi record di DB **identik** — asalkan Tessa mengirim field dengan **format yang benar**. Tiga aturan wajib:
+
+- **Tanggal** → `YYYY-MM-DD` (mis. "besok"/"10 Juli" harus diubah Tessa jadi `2026-07-10`).
+- **Jam** → `HH:mm` 24 jam (mis. `14:30`).
+- **Durasi** → **angka menit** (mis. "2 jam" → `120`), bukan teks.
+
+Tanpa ref karyawan = untuk diri sendiri. Field per jenis:
+
+| type | Field wajib | Field opsional (format) |
+|---|---|---|
+| `leave` | `leave_type_id` (int), `start_date`, `end_date`, `total_days` (≥0.5), `reason` | `delegate_to` (id) |
+| `overtime` | `date`, `reason` | `overtime_type` (`workday`\|`holiday`), `duration` (menit) **atau** `pre_shift_duration`/`post_shift_duration` (menit) + `planned_start`/`planned_end` (`HH:mm`), `break_duration` (menit) |
+| `attendance` | `date`, `reason` | `clock_in`/`clock_out` (`HH:mm`) |
+| `budget` | `type` (`budget`\|`reimbursement`), `title`, `items[]` ({`type`,`amount`}) | `description`, `surat_tugas_no`, `surat_tugas_date`, `distance_km`, `participants[]` |
+| `travel-report` | `destination_city`, `departure_date`, `return_date`, `purpose`, `conclusion`, `activities` | `budget_request_id`, `surat_tugas_no`, `surat_tugas_date`, `distance_km` |
+
+Contoh lembur (untuk diri sendiri, 2 jam pada 10 Juli):
+```bash
+curl -X POST https://<host>/api/tessa/requests/overtime \
+  -H "Authorization: Bearer <token-karyawan>" -H "Content-Type: application/json" \
+  -d '{"date":"2026-07-10","overtime_type":"workday","duration":120,"reason":"Kejar target rilis"}'
+```
+Kalau field format-nya salah (mis. `duration:"2 jam"` atau `date:"besok"`), `store()` akan menolak dengan `422` (validasi sama seperti portal) — jadi tidak akan tersimpan dengan format berbeda.
+
 ## Reminder sistem (Tessa kirim via WhatsApp)
 
 Endpoint **sistem** (dijaga **service key**, bukan token per-user — ini fungsi broadcast, bukan aksi milik satu karyawan):
