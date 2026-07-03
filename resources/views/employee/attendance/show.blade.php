@@ -351,27 +351,112 @@ function toRad(value) {
     return value * Math.PI / 180;
 }
 
+let cameraStarting = false;
+
 async function startCamera() {
+    if (cameraStarting) return;
+    cameraStarting = true;
+    stopCamera(); // lepas stream lama dulu (hindari "kamera sedang dipakai")
+
+    const video = document.getElementById('cameraPreview');
+    captureBtn.disabled = true;
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        cameraAlert.className = 'rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800';
-        cameraAlert.textContent = 'Browser tidak mendukung akses kamera.';
-        captureBtn.disabled = true;
+        cameraStarting = false;
+        showCameraError(window.isSecureContext === false
+            ? 'Kamera butuh koneksi aman (https). Buka lewat https:// di Chrome/Safari.'
+            : 'Browser ini tidak mendukung kamera. Buka di Chrome/Safari (jangan browser dalam aplikasi WhatsApp/IG).');
         return;
     }
 
-    try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
-            audio: false,
-        });
-        document.getElementById('cameraPreview').srcObject = cameraStream;
-        captureBtn.disabled = true;
-        startQualityMonitor();
-    } catch (error) {
-        cameraAlert.className = 'rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800';
-        cameraAlert.textContent = 'Gagal membuka kamera. Izinkan akses kamera lalu coba lagi.';
-        captureBtn.disabled = true;
+    // Coba dari constraint ideal → paling longgar, supaya jalan di banyak browser HP.
+    const attempts = [
+        { video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: { facingMode: 'user' }, audio: false },
+        { video: true, audio: false },
+    ];
+
+    let stream = null;
+    let lastError = null;
+    for (const constraints of attempts) {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            break;
+        } catch (error) {
+            lastError = error;
+            // Izin ditolak / diblokir: tak ada gunanya mencoba constraint lain.
+            if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) break;
+        }
     }
+
+    if (!stream) {
+        cameraStarting = false;
+        showCameraError(cameraErrorMessage(lastError));
+        return;
+    }
+
+    cameraStream = stream;
+    video.srcObject = stream;
+    video.setAttribute('playsinline', '');
+    video.muted = true;
+
+    // Sebagian browser HP (Android/webview) tak autoplay; panggil play() eksplisit.
+    try { await video.play(); } catch (_) { /* sebagian browser butuh gesture; tetap tunggu frame */ }
+
+    // Pastikan preview benar-benar menghasilkan gambar sebelum mengaktifkan tombol.
+    const ready = await waitForVideoReady(video, 5000);
+    cameraStarting = false;
+
+    if (!ready) {
+        showCameraError('Kamera tidak menampilkan gambar. Ketuk di sini untuk coba lagi, atau buka di Chrome/Safari.');
+        return;
+    }
+
+    cameraAlert.onclick = null;
+    cameraAlert.style.cursor = '';
+    startQualityMonitor(); // quality-monitor yang akan meng-enable tombol
+}
+
+/** Tunggu sampai <video> menghasilkan frame (videoWidth > 0) atau timeout. */
+function waitForVideoReady(video, timeoutMs) {
+    return new Promise((resolve) => {
+        if (video.videoWidth > 0) return resolve(true);
+        let done = false;
+        const finish = (val) => { if (!done) { done = true; cleanup(); resolve(val); } };
+        const onReady = () => { if (video.videoWidth > 0) finish(true); };
+        const poll = window.setInterval(onReady, 250); // event tak selalu konsisten di webview
+        const timer = window.setTimeout(() => finish(video.videoWidth > 0), timeoutMs);
+        function cleanup() {
+            ['loadedmetadata', 'loadeddata', 'playing'].forEach(ev => video.removeEventListener(ev, onReady));
+            window.clearInterval(poll);
+            window.clearTimeout(timer);
+        }
+        ['loadedmetadata', 'loadeddata', 'playing'].forEach(ev => video.addEventListener(ev, onReady));
+    });
+}
+
+/** Tampilkan error kamera + jadikan alert bisa diketuk untuk mencoba lagi. */
+function showCameraError(message) {
+    stopQualityMonitor();
+    captureBtn.disabled = true;
+    cameraAlert.className = 'rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800 cursor-pointer';
+    cameraAlert.textContent = message;
+    cameraAlert.style.cursor = 'pointer';
+    cameraAlert.onclick = () => startCamera();
+}
+
+/** Pesan ramah berdasarkan jenis error getUserMedia. */
+function cameraErrorMessage(error) {
+    const name = error && error.name;
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError')
+        return 'Izin kamera ditolak. Aktifkan izin kamera untuk situs ini (ikon gembok di address bar), lalu ketuk untuk coba lagi.';
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError')
+        return 'Kamera tidak ditemukan di perangkat ini.';
+    if (name === 'NotReadableError' || name === 'TrackStartError')
+        return 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi itu, lalu ketuk untuk coba lagi.';
+    if (name === 'SecurityError')
+        return 'Kamera diblokir. Buka lewat https:// di Chrome/Safari (jangan browser dalam aplikasi).';
+    return 'Gagal membuka kamera. Ketuk di sini untuk coba lagi, atau buka di Chrome/Safari.';
 }
 
 function stopCamera() {
