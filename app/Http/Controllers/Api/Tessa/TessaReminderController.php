@@ -4,9 +4,14 @@ namespace App\Http\Controllers\Api\Tessa;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
-use App\Models\Employee;
+use App\Models\AttendanceRequest;
+use App\Models\BudgetRequest;
+use App\Models\EmployeeApprover;
+use App\Models\LeaveRequest;
+use App\Models\OvertimeRequest;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
+use App\Models\TravelReport;
 use App\Services\LhpReminderService;
 use App\Services\LpjReminderService;
 use Illuminate\Http\Request;
@@ -50,6 +55,79 @@ class TessaReminderController extends Controller
             'count' => $withPhone->count(),
             'skipped_no_phone' => $noPhone,
             'reminders' => $withPhone->all(),
+        ]);
+    }
+
+    /**
+     * Pengajuan yang menunggu persetujuan, beserta APPROVER STEP AKTIF-nya (nama + nomor +
+     * pesan siap kirim), agar Tessa mem-WA approver yang tepat. Service key.
+     *
+     * Dedup: kirim ?since=<ISO waktu poll terakhir> → hanya yang berubah sejak itu
+     * (pengajuan baru + yang baru saja maju ke step berikut → approver baru).
+     */
+    public function pendingApprovals(Request $request)
+    {
+        $request->validate([
+            'type' => 'nullable|in:leave,overtime,attendance,budget,travel_report',
+            'since' => 'nullable|date',
+        ]);
+
+        $companyId = $this->companyScope();
+        $since = $request->query('since') ? Carbon::parse($request->query('since')) : null;
+        $filter = $request->query('type');
+
+        // type Tessa => [model, request_type employee_approvers, label]
+        $types = [
+            'leave' => [LeaveRequest::class, 'leave', 'Cuti'],
+            'overtime' => [OvertimeRequest::class, 'overtime', 'Lembur'],
+            'attendance' => [AttendanceRequest::class, 'attendance', 'Koreksi Presensi'],
+            'budget' => [BudgetRequest::class, 'budget', 'Anggaran'],
+            'travel_report' => [TravelReport::class, 'travel_report', 'LHP'],
+        ];
+
+        $rows = collect();
+
+        foreach ($types as $key => [$modelClass, $requestType, $label]) {
+            if ($filter && $filter !== $key) {
+                continue;
+            }
+
+            $items = $modelClass::with('employee:id,full_name,company_id')
+                ->whereIn('status', ['pending', 'in_review'])
+                ->when($companyId, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $companyId)))
+                ->when($since, fn ($q) => $q->where('updated_at', '>=', $since))
+                ->get();
+
+            foreach ($items as $item) {
+                $step = (int) ($item->current_step ?? 1);
+                $approver = EmployeeApprover::getApproverAt($item->employee_id, $requestType, $step);
+                if (! $approver) {
+                    continue; // tak ada approver di step ini → lewati
+                }
+
+                $employeeName = $item->employee?->full_name ?? '-';
+                $rows->push([
+                    'type' => $key,
+                    'id' => $item->id,
+                    'employee' => $employeeName,
+                    'current_step' => $step,
+                    'approver' => [
+                        'id' => $approver->id,
+                        'name' => $approver->full_name,
+                        'phone' => $approver->phone,
+                    ],
+                    'message' => "Ada pengajuan {$label} dari {$employeeName} menunggu persetujuan Anda (step {$step}). Balas \"approve\" untuk menyetujui atau \"tolak\" untuk menolak.",
+                ]);
+            }
+        }
+
+        $withPhone = $rows->filter(fn ($r) => filled($r['approver']['phone']))->values();
+
+        return response()->json([
+            'success' => true,
+            'count' => $withPhone->count(),
+            'skipped_no_phone' => $rows->count() - $withPhone->count(),
+            'pending' => $withPhone->all(),
         ]);
     }
 

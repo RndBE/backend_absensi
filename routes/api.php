@@ -138,6 +138,8 @@ Route::middleware('tessa.service')->prefix('tessa')->group(function () {
     Route::post('/session', [TessaSessionController::class, 'login']);
     // Reminder sistem (clockin/lhp/lpj) yang jatuh tempo → Tessa kirim via WhatsApp.
     Route::get('/reminders/due', [TessaReminderController::class, 'due']);
+    // Pengajuan menunggu approval + approver step aktif → Tessa WA approver-nya.
+    Route::get('/approvals/pending', [TessaReminderController::class, 'pendingApprovals']);
 });
 
 Route::middleware(['auth:sanctum', 'tessa.actor'])->prefix('tessa')->group(function () {
