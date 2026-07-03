@@ -71,9 +71,10 @@ class TessaActionController extends Controller
             'dry_run' => 'nullable|boolean',
         ]);
 
-        // Hanya role yang boleh memproses persetujuan. Aturan approver per-step tetap
-        // ditegakkan oleh ApprovalController di bawah (aktor = user yang login).
-        $this->requirePermission('approvals.action');
+        // TIDAK ada gate permission di sini. Otorisasi = aturan approver per-step yang
+        // ditegakkan Api\ApprovalController (hanya approver step aktif / superadmin yang
+        // boleh, else 403). Ini menyamai aplikasi mobile — approver ber-role employee
+        // (mis. team lead) pun tetap bisa approve lewat Tessa.
 
         if ($type === 'data-change') {
             return $this->fail('Perubahan data karyawan harus disetujui superadmin lewat website, bukan via Tessa.', 422);

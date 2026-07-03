@@ -78,8 +78,8 @@ Tiap aksi dicek terhadap **permission role HRIS** aktor (resolver yang sama deng
 |---|---|---|---|
 | POST | `/notifications` | `company.manage` | `title`*, `message`*, lalu salah satu target: `employee_id` / `department_id` / `all=true`. Opsional `push=true`. |
 | POST | `/schedules` | `schedule.manage` | `assignments`* (array, maks 500 baris). Mengisi jadwal shift per tanggal. Mendukung `dry_run`. |
-| POST | `/approvals/{type}/{id}/approve` | `approvals.action` | Setujui pengajuan. `type`: leave/overtime/attendance/budget/travel_report. Opsional `notes`, `dry_run`. Aturan approver per-step tetap berlaku (aktor = user login). |
-| POST | `/approvals/{type}/{id}/reject` | `approvals.action` | Tolak pengajuan (param sama). |
+| POST | `/approvals/{type}/{id}/approve` | approver step (chain) | Setujui pengajuan. `type`: leave/overtime/attendance/budget/travel_report. Opsional `notes`, `dry_run`. Otorisasi = approver step aktif / superadmin (via Api\ApprovalController), sama seperti mobile — approver ber-role employee pun bisa. |
+| POST | `/approvals/{type}/{id}/reject` | approver step (chain) | Tolak pengajuan (param sama). |
 | POST | `/data-change-requests` | `employees.update` | Usulkan ubah data karyawan: `employee\|employee_code\|employee_id` + `changes{field:value}`. Jadi pengajuan yang disetujui superadmin di website. |
 | POST | `/shifts` | `schedule.master.manage` | Buat master shift: `name`*, `start_time`, `end_time`, `is_off`, `is_overnight`, `work_hours`, `auto_overtime`. |
 | PUT | `/shifts/{id}` | `schedule.master.manage` | Edit master shift (field sama). |
@@ -112,7 +112,7 @@ Balasan:
 
 ### Model aktor & pengaman
 - **Aktor = karyawan pemilik token** (hasil `/session`), bukan superadmin. Semua aksi dijalankan atas namanya, dan **kapabilitas mengikuti role HRIS-nya** (resolver `AdminPermission`, sama dengan website). Tidak ada `as_employee_id` — identitas terikat token, tak bisa dipalsukan.
-- **Approve**: butuh `approvals.action` DAN aturan approver per-step tetap ditegakkan (aktor = user login). Tercatat: approver step + acted_by user + catatan **"(via Tessa AI)"**. `"dry_run":true` untuk melihat rencana tanpa eksekusi.
+- **Approve/Reject**: TANPA gate permission khusus — otorisasi mengikuti **approval chain** (`employee_approvers`): hanya **approver step aktif** (atau superadmin) yang boleh, ditegakkan oleh `Api\ApprovalController`. Sama seperti mobile: approver ber-role employee (mis. team lead) pun bisa. Multi-step maju otomatis ke approver berikutnya. Tercatat: approver step + acted_by user + catatan **"(via Tessa AI)"**. `"dry_run":true` untuk melihat rencana tanpa eksekusi.
 - **Employee vs admin**: role employee hanya self-service & data sendiri; role lain sesuai permission-nya. "Superadmin di Tessa" TIDAK berarti apa-apa — yang menentukan hanya role HRIS.
 - **Ubah data karyawan TIDAK langsung** — selalu jadi pengajuan yang disetujui superadmin manusia di website (tab Perubahan Data). Field terkunci: `role`, `password`, `manager_id`, `approver_id`, `company_id` (dan semua hal payroll/gaji).
 - **Payroll/slip gaji**: diblokir total di middleware, apa pun role-nya.
