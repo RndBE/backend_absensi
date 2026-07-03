@@ -351,6 +351,33 @@ function toRad(value) {
     return value * Math.PI / 180;
 }
 
+// Shim getUserMedia: normalkan API kamera agar seragam di browser lama/webview
+// (Safari lama, Android WebView, browser bawaan yang masih pakai prefiks webkit/moz).
+(function normalizeGetUserMedia() {
+    if (navigator.mediaDevices === undefined) {
+        navigator.mediaDevices = {};
+    }
+    if (navigator.mediaDevices.getUserMedia === undefined) {
+        const legacy = navigator.getUserMedia || navigator.webkitGetUserMedia
+            || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+        if (legacy) {
+            navigator.mediaDevices.getUserMedia = (constraints) => new Promise((resolve, reject) => {
+                legacy.call(navigator, constraints, resolve, reject);
+            });
+        }
+    }
+})();
+
+/** Pasang MediaStream ke <video>, dengan fallback createObjectURL untuk webview jadul. */
+function attachStream(video, stream) {
+    if ('srcObject' in video) {
+        video.srcObject = stream;
+    } else {
+        const url = window.URL || window.webkitURL;
+        video.src = url && url.createObjectURL ? url.createObjectURL(stream) : stream;
+    }
+}
+
 let cameraStarting = false;
 
 async function startCamera() {
@@ -396,9 +423,11 @@ async function startCamera() {
     }
 
     cameraStream = stream;
-    video.srcObject = stream;
+    attachStream(video, stream);
     video.setAttribute('playsinline', '');
+    video.setAttribute('autoplay', '');
     video.muted = true;
+    video.playsInline = true;
 
     // Sebagian browser HP (Android/webview) tak autoplay; panggil play() eksplisit.
     try { await video.play(); } catch (_) { /* sebagian browser butuh gesture; tetap tunggu frame */ }
@@ -427,11 +456,11 @@ function waitForVideoReady(video, timeoutMs) {
         const poll = window.setInterval(onReady, 250); // event tak selalu konsisten di webview
         const timer = window.setTimeout(() => finish(video.videoWidth > 0), timeoutMs);
         function cleanup() {
-            ['loadedmetadata', 'loadeddata', 'playing'].forEach(ev => video.removeEventListener(ev, onReady));
+            ['loadedmetadata', 'loadeddata', 'canplay', 'playing'].forEach(ev => video.removeEventListener(ev, onReady));
             window.clearInterval(poll);
             window.clearTimeout(timer);
         }
-        ['loadedmetadata', 'loadeddata', 'playing'].forEach(ev => video.addEventListener(ev, onReady));
+        ['loadedmetadata', 'loadeddata', 'canplay', 'playing'].forEach(ev => video.addEventListener(ev, onReady));
     });
 }
 
