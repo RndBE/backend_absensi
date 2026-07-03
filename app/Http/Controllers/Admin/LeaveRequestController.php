@@ -28,8 +28,9 @@ class LeaveRequestController extends Controller
             'approvalLogs.approver:id,full_name',
         ]);
 
-        // Filter by employee's company
-        $query->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id));
+        // Filter by employee's company (manager: hanya departemennya).
+        $query->whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id)
+            ->when(\App\Support\AdminDataScope::departmentId($admin), fn($e, $d) => $e->where('department_id', $d)));
 
         if ($status !== 'all') {
             $query->where('status', $status);
@@ -42,6 +43,7 @@ class LeaveRequestController extends Controller
         $leaves = $query->orderBy('created_at', 'desc')->paginate(15)->withQueryString();
 
         $employees = Employee::where('company_id', $admin->company_id)
+            ->when(\App\Support\AdminDataScope::departmentId($admin), fn($q, $d) => $q->where('department_id', $d))
             ->where('is_active', true)
             ->orderBy('full_name')
             ->get(['id', 'full_name']);

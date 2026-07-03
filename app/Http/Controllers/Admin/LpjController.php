@@ -19,6 +19,11 @@ class LpjController extends Controller
             'budgetRequest:id,title,total_amount',
         ]);
 
+        // Manager: hanya melihat departemennya sendiri.
+        if ($dept = \App\Support\AdminDataScope::departmentId(\App\Models\Employee::find(session('admin_id')))) {
+            $query->whereHas('employee', fn ($q) => $q->where('department_id', $dept));
+        }
+
         $status = $request->get('status', 'all');
         if ($status !== 'all') {
             $query->where('status', $status);

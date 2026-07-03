@@ -150,7 +150,7 @@ class ReportController extends Controller
         $year = $request->year ?? date('Y');
         $status = $request->status;
 
-        $query = LeaveRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+        $query = LeaveRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id)->when(\App\Support\AdminDataScope::departmentId($admin), fn($e, $d) => $e->where('department_id', $d)))
             ->whereYear('start_date', $year)
             ->with(['employee', 'leaveType']);
 
@@ -170,7 +170,7 @@ class ReportController extends Controller
             $leaveSummary[$empId]['count']++;
         }
 
-        $employees = Employee::where('company_id', $admin->company_id)->where('is_active', true)->orderBy('full_name')->get();
+        $employees = Employee::where('company_id', $admin->company_id)->where('is_active', true)->when(\App\Support\AdminDataScope::departmentId($admin), fn ($q, $d) => $q->where('department_id', $d))->orderBy('full_name')->get();
 
         return view('admin.reports.leave', compact('leaves', 'leaveSummary', 'employees', 'year', 'status'));
     }
@@ -180,7 +180,7 @@ class ReportController extends Controller
         $admin = Employee::find(session('admin_id'));
         $year = $request->year ?? date('Y');
 
-        $query = LeaveRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+        $query = LeaveRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id)->when(\App\Support\AdminDataScope::departmentId($admin), fn($e, $d) => $e->where('department_id', $d)))
             ->whereYear('start_date', $year)
             ->with(['employee', 'leaveType']);
 
@@ -213,7 +213,7 @@ class ReportController extends Controller
         $start = Carbon::parse($month . '-01')->startOfMonth();
         $end = $start->copy()->endOfMonth();
 
-        $query = OvertimeRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+        $query = OvertimeRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id)->when(\App\Support\AdminDataScope::departmentId($admin), fn($e, $d) => $e->where('department_id', $d)))
             ->whereBetween('date', [$start, $end])
             ->with('employee');
 
@@ -234,7 +234,7 @@ class ReportController extends Controller
             $otSummary[$empId]['count']++;
         }
 
-        $employees = Employee::where('company_id', $admin->company_id)->where('is_active', true)->orderBy('full_name')->get();
+        $employees = Employee::where('company_id', $admin->company_id)->where('is_active', true)->when(\App\Support\AdminDataScope::departmentId($admin), fn ($q, $d) => $q->where('department_id', $d))->orderBy('full_name')->get();
 
         return view('admin.reports.overtime', compact('overtimes', 'otSummary', 'employees', 'month'));
     }
@@ -246,7 +246,7 @@ class ReportController extends Controller
         $start = Carbon::parse($month . '-01')->startOfMonth();
         $end = $start->copy()->endOfMonth();
 
-        $query = OvertimeRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id))
+        $query = OvertimeRequest::whereHas('employee', fn($q) => $q->where('company_id', $admin->company_id)->when(\App\Support\AdminDataScope::departmentId($admin), fn($e, $d) => $e->where('department_id', $d)))
             ->whereBetween('date', [$start, $end])
             ->with('employee');
 

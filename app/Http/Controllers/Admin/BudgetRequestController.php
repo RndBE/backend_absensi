@@ -18,6 +18,11 @@ class BudgetRequestController extends Controller
             'items',
         ]);
 
+        // Manager: hanya melihat departemennya sendiri.
+        if ($dept = \App\Support\AdminDataScope::departmentId(\App\Models\Employee::find(session('admin_id')))) {
+            $query->whereHas('employee', fn ($q) => $q->where('department_id', $dept));
+        }
+
         // Filter by status
         if ($request->filled('status') && $request->status !== 'all') {
             $query->where('status', $request->status);

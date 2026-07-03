@@ -20,6 +20,7 @@ class DashboardController extends Controller
     {
         $today = Carbon::today();
         $admin = Employee::find(session('admin_id'));
+        $dept = \App\Support\AdminDataScope::departmentId($admin); // manager → hanya departemennya
         $summary = $dashboardSummary->forAdmin($admin);
 
         $totalEmployees = $summary['attendance']['total_employees'];
@@ -36,6 +37,7 @@ class DashboardController extends Controller
         $contractWindowEnd = $today->copy()->addDays($summary['hr']['contract_window_days']);
 
         $contractsEndingSoon = Employee::where('company_id', $admin->company_id)
+            ->when($dept, fn ($q, $d) => $q->where('department_id', $d))
             ->where('is_active', true)
             ->whereNotNull('contract_end_date')
             ->whereBetween('contract_end_date', [$today->toDateString(), $contractWindowEnd->toDateString()])
@@ -45,7 +47,8 @@ class DashboardController extends Controller
 
         // Recent attendance
         $recentAttendance = Attendance::with('employee:id,full_name,photo,department_id', 'employee.department:id,name')
-            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id)
+                ->when($dept, fn ($e, $d) => $e->where('department_id', $d)))
             ->where('date', $today)
             ->orderBy('clock_in', 'desc')
             ->limit(10)
@@ -77,7 +80,8 @@ class DashboardController extends Controller
     private function recentLeaveRequests(int $companyId): Collection
     {
         return LeaveRequest::with(['employee:id,full_name,photo,company_id', 'leaveType:id,name'])
-            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId)
+                ->when(\App\Support\AdminDataScope::departmentId(\App\Models\Employee::find(session('admin_id'))), fn ($e, $d) => $e->where('department_id', $d)))
             ->latest()
             ->limit(5)
             ->get()
@@ -93,7 +97,8 @@ class DashboardController extends Controller
     private function recentOvertimeRequests(int $companyId): Collection
     {
         return OvertimeRequest::with('employee:id,full_name,photo,company_id')
-            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId)
+                ->when(\App\Support\AdminDataScope::departmentId(\App\Models\Employee::find(session('admin_id'))), fn ($e, $d) => $e->where('department_id', $d)))
             ->latest()
             ->limit(5)
             ->get()
@@ -109,7 +114,8 @@ class DashboardController extends Controller
     private function recentAttendanceRequests(int $companyId): Collection
     {
         return AttendanceRequest::with('employee:id,full_name,photo,company_id')
-            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId)
+                ->when(\App\Support\AdminDataScope::departmentId(\App\Models\Employee::find(session('admin_id'))), fn ($e, $d) => $e->where('department_id', $d)))
             ->latest()
             ->limit(5)
             ->get()
@@ -125,7 +131,8 @@ class DashboardController extends Controller
     private function recentBudgetRequests(int $companyId): Collection
     {
         return BudgetRequest::with('employee:id,full_name,photo,company_id')
-            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId)
+                ->when(\App\Support\AdminDataScope::departmentId(\App\Models\Employee::find(session('admin_id'))), fn ($e, $d) => $e->where('department_id', $d)))
             ->latest()
             ->limit(5)
             ->get()
@@ -141,7 +148,8 @@ class DashboardController extends Controller
     private function recentTravelReports(int $companyId): Collection
     {
         return TravelReport::with('employee:id,full_name,photo,company_id')
-            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId))
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $companyId)
+                ->when(\App\Support\AdminDataScope::departmentId(\App\Models\Employee::find(session('admin_id'))), fn ($e, $d) => $e->where('department_id', $d)))
             ->latest()
             ->limit(5)
             ->get()
