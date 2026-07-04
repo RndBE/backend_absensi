@@ -39,7 +39,9 @@
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100">{{ $overtime->total_duration_formatted }}</td>
                             <td class="px-4 py-3.5 border-b border-gray-100">@include('employee.partials.status-badge', ['status' => $overtime->status])</td>
                             <td class="px-4 py-3.5 border-b border-gray-100">
-                                <a href="{{ route('employee.overtimes.show', $overtime->id) }}" class="text-indigo-600 hover:text-indigo-900">Lihat</a>
+                                <a href="{{ route('employee.overtimes.show', $overtime->id) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all">
+                                    <span class="material-symbols-outlined text-[14px]">visibility</span> Detail
+                                </a>
                             </td>
                         </tr>
                     @empty

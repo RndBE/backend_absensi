@@ -70,6 +70,8 @@ Route::post('/employee/logout', [EmployeeAuthController::class, 'logout'])->name
 // Employee Portal Protected
 Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->group(function () {
     Route::get('/dashboard', [EmployeeDashboardController::class, 'index'])->name('dashboard');
+    // Cek status sesi (JSON) → dipakai heartbeat untuk auto-redirect ke login saat sesi habis.
+    Route::get('/session/check', fn () => response()->json(['ok' => true]))->name('session.check');
     Route::get('/profile', [EmployeeProfileController::class, 'show'])->name('profile.show');
     Route::post('/profile/photo', [EmployeeProfileController::class, 'updatePhoto'])->name('profile.photo.update');
     Route::delete('/profile/photo', [EmployeeProfileController::class, 'destroyPhoto'])->name('profile.photo.destroy');

@@ -165,5 +165,41 @@
         })();
     </script>
     @stack('scripts')
+
+    {{-- Auto-redirect ke login saat sesi habis (tanpa perlu refresh manual). --}}
+    <script>
+        (function () {
+            const loginUrl = @json(route('employee.login'));
+            const checkUrl = @json(route('employee.session.check'));
+            let busy = false;
+
+            async function checkSession() {
+                // Hanya cek saat tab terlihat (hemat request & biarkan sesi bisa kedaluwarsa alami).
+                if (busy || document.visibilityState !== 'visible') return;
+                busy = true;
+                try {
+                    const res = await fetch(checkUrl, {
+                        headers: { 'Accept': 'application/json' },
+                        cache: 'no-store',
+                        credentials: 'same-origin',
+                    });
+                    // 401 (sesi habis) / 403 (akun nonaktif) → paksa ke login.
+                    if (res.status === 401 || res.status === 403) {
+                        window.location.href = loginUrl;
+                    }
+                } catch (e) {
+                    // Offline / gangguan jaringan → abaikan, coba lagi nanti.
+                } finally {
+                    busy = false;
+                }
+            }
+
+            // Cek berkala + langsung saat kembali ke tab.
+            window.setInterval(checkSession, 20000);
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'visible') checkSession();
+            });
+        })();
+    </script>
 </body>
 </html>
