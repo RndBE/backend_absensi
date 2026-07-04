@@ -93,6 +93,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/overtimes', [EmployeeOvertimeController::class, 'index'])->name('overtimes.index');
     Route::get('/overtimes/create', [EmployeeOvertimeController::class, 'create'])->name('overtimes.create');
     Route::get('/overtimes/attendance-times', [EmployeeOvertimeController::class, 'attendanceTimes'])->name('overtimes.attendance-times');
+    Route::get('/overtimes/day-type', [EmployeeOvertimeController::class, 'dayType'])->name('overtimes.day-type');
     Route::post('/overtimes', [EmployeeOvertimeController::class, 'store'])->name('overtimes.store');
     Route::get('/overtimes/{id}/edit', [EmployeeOvertimeController::class, 'edit'])->name('overtimes.edit');
     Route::put('/overtimes/{id}', [EmployeeOvertimeController::class, 'update'])->name('overtimes.update');

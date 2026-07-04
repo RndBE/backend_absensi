@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\OvertimeRequest;
+use App\Support\ScheduledWorkingDays;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -87,6 +88,24 @@ class OvertimeController extends Controller
             'found'     => (bool) $attendance,
             'clock_in'  => $attendance && $attendance->clock_in ? substr($attendance->clock_in, 0, 5) : null,
             'clock_out' => $attendance && $attendance->clock_out ? substr($attendance->clock_out, 0, 5) : null,
+        ]);
+    }
+
+    /**
+     * Tipe lembur otomatis dari tanggal: hari kerja terjadwal → "workday",
+     * selain itu (off/libur) → "holiday". Untuk auto-isi selector di form.
+     */
+    public function dayType(Request $request)
+    {
+        $request->validate(['date' => 'required|date']);
+
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $isWorking = ScheduledWorkingDays::isWorkingDate($employee, Carbon::parse($request->query('date')));
+
+        return response()->json([
+            'overtime_type' => $isWorking ? 'workday' : 'holiday',
+            'is_working_day' => $isWorking,
         ]);
     }
 

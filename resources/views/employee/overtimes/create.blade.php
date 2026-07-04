@@ -287,7 +287,8 @@
         </div>
 
         <div id="holidayFields" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3"
-             data-attendance-times-url="{{ route('employee.overtimes.attendance-times') }}">
+             data-attendance-times-url="{{ route('employee.overtimes.attendance-times') }}"
+             data-day-type-url="{{ route('employee.overtimes.day-type') }}">
             <p class="col-span-1 sm:col-span-3 text-[11px] text-gray-400 flex items-center gap-1 -mb-1">
                 <span class="material-symbols-outlined text-[14px]">info</span>
                 Jam terisi otomatis dari clock-in/out Anda di tanggal tersebut. Bisa diubah manual.
@@ -368,6 +369,7 @@ const dateInput = document.querySelector('input[name="date"]');
 const startInput = document.querySelector('input[name="planned_start"]');
 const endInput = document.querySelector('input[name="planned_end"]');
 const attendanceTimesUrl = holidayFields?.dataset.attendanceTimesUrl;
+const dayTypeUrl = holidayFields?.dataset.dayTypeUrl;
 
 async function prefillHolidayTimes({ force = false } = {}) {
     const isHoliday = document.getElementById('overtimeType').value === 'holiday';
@@ -395,7 +397,30 @@ function toggleOvertimeType() {
     if (isHoliday) prefillHolidayTimes();
 }
 
-dateInput?.addEventListener('change', () => prefillHolidayTimes({ force: true }));
+// Auto-set tipe lembur (hari kerja / libur) dari tanggal yang dipilih.
+async function autoDetectType() {
+    if (!dayTypeUrl || !dateInput?.value) return;
+    try {
+        const resp = await fetch(`${dayTypeUrl}?date=${encodeURIComponent(dateInput.value)}`, {
+            headers: { 'Accept': 'application/json' },
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const sel = document.getElementById('overtimeType');
+        if (data.overtime_type && sel && sel.value !== data.overtime_type) {
+            sel.value = data.overtime_type;
+            toggleOvertimeType(); // tampilkan field sesuai tipe (+ prefill jam bila libur)
+        }
+    } catch (e) {
+        // Abaikan — biarkan pilih manual.
+    }
+}
+
+dateInput?.addEventListener('change', async () => {
+    await autoDetectType();                 // set tipe otomatis dari tanggal
+    prefillHolidayTimes({ force: true });    // segarkan jam bila (tetap) hari libur
+});
+if (dateInput?.value) autoDetectType();      // deteksi juga saat halaman dimuat
 toggleOvertimeType();
 </script>
 @endpush

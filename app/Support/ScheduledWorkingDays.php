@@ -154,6 +154,29 @@ class ScheduledWorkingDays
         return $count;
     }
 
+    /**
+     * Apakah satu $date adalah hari KERJA terjadwal bagi $employee (bukan off/libur).
+     * Dipakai mis. auto-deteksi tipe lembur (hari kerja vs libur) di form pengajuan.
+     */
+    public static function isWorkingDate(Employee $employee, Carbon $date): bool
+    {
+        $dateStr = $date->toDateString();
+
+        $overrides = ScheduleAssignment::with('shift')
+            ->where('employee_id', $employee->id)
+            ->whereDate('date', $dateStr)
+            ->get()
+            ->keyBy(fn ($a) => Carbon::parse($a->date)->toDateString());
+
+        $holidaySet = Holiday::where('company_id', $employee->company_id)
+            ->whereDate('date', $dateStr)
+            ->exists() ? [$dateStr => true] : [];
+
+        // Relasi template/workSchedule di-load lazy di dalam isWorkingDay hanya bila FK terisi
+        // (akses ter-guard), jadi tak perlu preload untuk satu tanggal.
+        return self::isWorkingDay($employee, $date->copy()->startOfDay(), $overrides, $holidaySet);
+    }
+
     private static function isWorkingDay(Employee $employee, Carbon $date, $overrides, array $holidaySet): bool
     {
         $dateStr = $date->toDateString();
