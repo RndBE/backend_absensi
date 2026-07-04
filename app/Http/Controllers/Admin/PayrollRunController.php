@@ -1214,7 +1214,7 @@ class PayrollRunController extends Controller
 
         return [
             'id' => null,
-            'name' => 'Potongan Kedisiplinan',
+            'name' => 'Potongan Sanksi Laporan',
             'type' => 'deduction',
             'category' => 'recurring',
             'amount' => $amount,

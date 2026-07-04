@@ -65,7 +65,7 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
             [3, 50000]
         );
 
-        $this->assertSame('Potongan Kedisiplinan', $component['name']);
+        $this->assertSame('Potongan Sanksi Laporan', $component['name']);
         $this->assertSame('deduction', $component['type']);
         $this->assertSame(150000.0, $component['amount']);
         $this->assertSame('3 hari × Rp 50.000', $component['detail']);
