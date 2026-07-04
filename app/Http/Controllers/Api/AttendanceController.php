@@ -408,6 +408,8 @@ class AttendanceController extends Controller
             ]
         );
 
+        $this->notifyHrAdminsOfClockIn($attendance);
+
         $needsReview = $attendance->review_status === 'pending';
         if ($needsReview) {
             $this->notifyAttendanceSecurityReview($attendance, 'clock_in');
@@ -596,6 +598,79 @@ class AttendanceController extends Controller
 
             $this->sendAttendanceSecurityPush($recipient, $notification);
         }
+    }
+
+    private function notifyHrAdminsOfClockIn(Attendance $attendance): void
+    {
+        $attendance->loadMissing('employee:id,company_id,full_name');
+        $employee = $attendance->employee;
+
+        if (!$employee || !$attendance->clock_in) {
+            return;
+        }
+
+        $permission = app(AdminPermission::class);
+        $recipients = Employee::where('company_id', $employee->company_id)
+            ->where('id', '!=', $employee->id)
+            ->where('is_active', true)
+            ->get()
+            ->filter(fn (Employee $recipient) => $this->shouldReceiveHrClockInNotification($recipient, $permission));
+
+        if ($recipients->isEmpty()) {
+            return;
+        }
+
+        $clockIn = substr((string) $attendance->clock_in, 0, 5);
+        $date = $attendance->date ? Carbon::parse($attendance->date)->format('d/m/Y') : '-';
+        $attendanceDate = $attendance->date ? Carbon::parse($attendance->date)->toDateString() : null;
+        $sameDayAttendanceIds = Attendance::where('employee_id', $employee->id)
+            ->when(
+                $attendanceDate,
+                fn ($query) => $query->whereDate('date', $attendanceDate),
+                fn ($query) => $query->whereKey($attendance->id)
+            )
+            ->pluck('id');
+        $message = "{$employee->full_name} sudah clock-in pukul {$clockIn} pada {$date}.";
+
+        foreach ($recipients as $recipient) {
+            $notification = Notification::where('employee_id', $recipient->id)
+                ->where('type', 'attendance_clock_in')
+                ->where('reference_type', Attendance::class)
+                ->whereIn('reference_id', $sameDayAttendanceIds)
+                ->first();
+
+            if (!$notification) {
+                $notification = new Notification([
+                    'employee_id' => $recipient->id,
+                    'type' => 'attendance_clock_in',
+                    'reference_type' => Attendance::class,
+                    'reference_id' => $attendance->id,
+                ]);
+            }
+
+            $notification->fill([
+                'title' => 'Clock-In Karyawan',
+                'message' => $message,
+                'is_read' => false,
+            ]);
+            $notification->save();
+
+            $this->sendHrClockInPush($recipient, $notification);
+        }
+    }
+
+    private function shouldReceiveHrClockInNotification(Employee $recipient, AdminPermission $permission): bool
+    {
+        return in_array('hr_admin', $permission->roleSlugs($recipient), true);
+    }
+
+    protected function sendHrClockInPush(Employee $recipient, Notification $notification): void
+    {
+        FcmService::sendToEmployee($recipient, $notification->title, $notification->message, [
+            'type' => 'attendance_clock_in',
+            'reference_type' => 'attendance',
+            'reference_id' => (string) $notification->reference_id,
+        ]);
     }
 
     private function shouldReceiveAttendanceSecurityNotification(Employee $recipient, AdminPermission $permission): bool

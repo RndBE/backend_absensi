@@ -51,6 +51,8 @@ Respons: gagal service key `401`/belum dikonfigurasi `503`; token tidak valid `4
 | GET | `/employees/{id}` | Detail karyawan (tanpa gaji) |
 | GET | `/attendance` | Presensi. Filter: `from`, `to`, `employee_id`, `status`, `late_only` |
 | GET | `/attendance/recap` | Rekap kehadiran. Filter: `date` |
+| GET | `/schedules` | Jadwal kerja. Filter: `from`, `to`, `employee_id` |
+| GET | `/leave-balances` | Saldo cuti. Filter: `year`, `employee_id` |
 | GET | `/leaves` | Pengajuan cuti. Filter: `status`, `employee_id` |
 | GET | `/overtimes` | Pengajuan lembur |
 | GET | `/attendance-requests` | Pengajuan presensi |
@@ -58,6 +60,7 @@ Respons: gagal service key `401`/belum dikonfigurasi `503`; token tidak valid `4
 | GET | `/travel-reports` | LHP |
 | GET | `/lpj` | LPJ |
 | GET | `/approvals/summary` | Jumlah pengajuan pending per jenis |
+| GET | `/approvals/{type}/{id}/next` | Approver step aktif / status final untuk pengajuan. `type`: leave/overtime/attendance/budget/travel_report |
 | GET | `/company` | Info perusahaan |
 | GET | `/announcements` | Feed notifikasi/pengumuman. Filter: `type` |
 | GET | `/shifts` | Daftar shift yang valid (nama, jam, off/overnight) — referensi sebelum mengisi jadwal |
@@ -78,8 +81,10 @@ Tiap aksi dicek terhadap **permission role HRIS** aktor (resolver yang sama deng
 |---|---|---|---|
 | POST | `/notifications` | `company.manage` | `title`*, `message`*, lalu salah satu target: `employee_id` / `department_id` / `all=true`. Opsional `push=true`. |
 | POST | `/schedules` | `schedule.manage` | `assignments`* (array, maks 500 baris). Mengisi jadwal shift per tanggal. Mendukung `dry_run`. |
+| POST | `/schedules/import` | `schedule.manage` | Upload file jadwal Excel/CSV multipart field `file`. Mendukung `dry_run`. PDF ditolak dengan pesan jelas sampai parser PDF/OCR tersedia. |
 | POST | `/approvals/{type}/{id}/approve` | approver step (chain) | Setujui pengajuan. `type`: leave/overtime/attendance/budget/travel_report. Opsional `notes`, `dry_run`. Otorisasi = approver step aktif / superadmin (via Api\ApprovalController), sama seperti mobile — approver ber-role employee pun bisa. |
 | POST | `/approvals/{type}/{id}/reject` | approver step (chain) | Tolak pengajuan (param sama). |
+| PUT | `/requests/{type}/{id}` | self / create-perm | Edit pengajuan yang masih `pending`. `type`: leave/overtime/attendance. Employee hanya miliknya sendiri; edit punya orang lain butuh permission jenis terkait. |
 | POST | `/data-change-requests` | `employees.update` | Usulkan ubah data karyawan: `employee\|employee_code\|employee_id` + `changes{field:value}`. Jadi pengajuan yang disetujui superadmin di website. |
 | POST | `/shifts` | `schedule.master.manage` | Buat master shift: `name`*, `start_time`, `end_time`, `is_off`, `is_overnight`, `work_hours`, `auto_overtime`. |
 | PUT | `/shifts/{id}` | `schedule.master.manage` | Edit master shift (field sama). |
@@ -114,6 +119,36 @@ curl -X POST https://<host>/api/tessa/requests/overtime \
 Kalau field format-nya salah (mis. `duration:"2 jam"` atau `date:"besok"`), `store()` akan menolak dengan `422` (validasi sama seperti portal) — jadi tidak akan tersimpan dengan format berbeda.
 
 **Jejak sumber**: pengajuan lewat Tessa otomatis ditandai — suffix `(via Tessa)` pada field teksnya (`reason` untuk cuti/lembur/presensi, `description` untuk anggaran, `purpose` untuk LHP) agar approver/admin tahu asalnya. **Catatan**: lampiran/file tak bisa dikirim lewat Tessa (JSON/WhatsApp), jadi pengajuan via Tessa tersimpan tanpa lampiran; field lain identik dengan portal.
+
+## Self-service tambahan
+
+Saldo cuti:
+```bash
+curl https://<host>/api/tessa/leave-balances?year=2026 \
+  -H "Authorization: Bearer <token-karyawan>"
+```
+
+Jadwal kerja pribadi:
+```bash
+curl "https://<host>/api/tessa/schedules?from=2026-07-06&to=2026-07-12" \
+  -H "Authorization: Bearer <token-karyawan>"
+```
+
+Cek approver step aktif:
+```bash
+curl https://<host>/api/tessa/approvals/overtime/45/next \
+  -H "Authorization: Bearer <token-karyawan>"
+```
+
+Edit pengajuan pending via Tessa:
+```bash
+curl -X PUT https://<host>/api/tessa/requests/overtime/45 \
+  -H "Authorization: Bearer <token-karyawan>" -H "Content-Type: application/json" \
+  -d '{"date":"2026-07-10","post_shift_duration":120,"post_shift_break":15,"reason":"Revisi durasi lembur"}'
+```
+- Edit hanya untuk status `pending`; yang sudah `in_review`/`approved`/`rejected` ditolak.
+- Tipe edit yang didukung: `leave`, `overtime`, `attendance`. `budget` dan `travel-report` sengaja belum diedit via chat karena struktur item/aktivitasnya lebih kompleks.
+- Employee biasa dipaksa hanya data dirinya sendiri; admin mengikuti permission HRIS.
 
 ## Reminder sistem (Tessa kirim via WhatsApp)
 
@@ -224,6 +259,49 @@ curl -X POST https://<host>/api/tessa/schedules \
 
 # 2. Kalau sudah benar, kirim ulang TANPA dry_run untuk menyimpan.
 ```
+
+### Import jadwal dari Excel/CSV via Tessa
+
+Endpoint import membaca sheet pertama lalu mengubah tiap baris menjadi payload `assignments` yang sama dengan `POST /schedules`.
+
+Header kolom yang dikenali:
+
+| Field jadwal | Header yang diterima |
+|---|---|
+| Kode karyawan | `employee_code`, `kode karyawan`, `kode pegawai`, `nik`, `no induk` |
+| Nama karyawan | `employee`, `nama`, `nama karyawan`, `karyawan` |
+| ID karyawan | `employee_id`, `id karyawan` |
+| Tanggal | `date`, `tanggal`, `tgl` |
+| Shift | `shift`, `jadwal`, `nama shift`, `shift kerja` |
+| ID shift | `shift_id`, `id shift` |
+| Catatan | `notes`, `catatan`, `keterangan` |
+
+Contoh file:
+
+| employee_code | date | shift | notes |
+|---|---|---|---|
+| SEC-001 | 2026-07-06 | Malam | Pos 1 |
+| SEC-002 | 2026-07-06 | Pagi | Pos 2 |
+
+Preview dari file Excel:
+```bash
+curl -X POST https://<host>/api/tessa/schedules/import \
+  -H "Authorization: Bearer <token-karyawan>" \
+  -F "dry_run=1" \
+  -F "file=@jadwal-security.xlsx"
+```
+
+Simpan setelah hasil preview benar:
+```bash
+curl -X POST https://<host>/api/tessa/schedules/import \
+  -H "Authorization: Bearer <token-karyawan>" \
+  -F "file=@jadwal-security.xlsx"
+```
+
+Catatan import:
+- Format yang didukung saat ini: `.xlsx`, `.xls`, `.csv`.
+- PDF akan mendapat `422` dengan pesan "PDF belum bisa diparse otomatis"; untuk PDF scan perlu tahap OCR/parser tambahan.
+- Hasil respons tetap per baris (`results[]`) dan memakai aturan yang sama: nama karyawan/shift ambigu akan diminta pakai `employee_code`, `employee_id`, atau `shift_id`.
 
 Catatan:
 - `dry_run: true` → hanya validasi & tampilkan rencana, **tidak menulis** ke database.

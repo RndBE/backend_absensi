@@ -9,6 +9,8 @@ use App\Models\AttendanceRequest;
 use App\Models\BudgetRequest;
 use App\Models\Company;
 use App\Models\Employee;
+use App\Models\EmployeeApprover;
+use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\Lpj;
 use App\Models\Notification;
@@ -17,8 +19,10 @@ use App\Models\ScheduleAssignment;
 use App\Models\Shift;
 use App\Models\TravelReport;
 use App\Services\FcmService;
+use App\Services\TessaScheduleImportParser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use InvalidArgumentException;
 
 /**
  * API untuk AI kantor "Tessa".
@@ -47,11 +51,12 @@ class TessaController extends Controller
             'capabilities' => [
                 'read' => [
                     'employees', 'attendance', 'attendance-recap',
+                    'leave-balances', 'schedules',
                     'leaves', 'overtimes', 'attendance-requests',
                     'budget-requests', 'travel-reports', 'lpj',
-                    'approvals-summary', 'company', 'announcements', 'shifts',
+                    'approvals-summary', 'next-approver', 'company', 'announcements', 'shifts',
                 ],
-                'actions' => ['send-notification', 'assign-schedule'],
+                'actions' => ['send-notification', 'assign-schedule', 'import-schedule', 'edit-pending-request'],
                 'forbidden' => ['payroll', 'payslip', 'salary'],
             ],
         ]);
@@ -173,9 +178,96 @@ class TessaController extends Controller
         ]);
     }
 
+    public function schedules(Request $request)
+    {
+        $request->validate([
+            'from' => 'nullable|date',
+            'to' => 'nullable|date',
+            'employee_id' => 'nullable|integer',
+        ]);
+
+        [$from, $to] = $this->dateRange($request);
+        $employeeId = $this->scopedEmployeeId($request);
+        $companyId = $this->companyId($request);
+
+        $items = ScheduleAssignment::query()
+            ->with(['employee:id,full_name,employee_code,company_id', 'shift:id,name,start_time,end_time,is_off,is_overnight'])
+            ->whereBetween('date', [$from, $to])
+            ->when($companyId, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $companyId)))
+            ->when($employeeId, fn ($q) => $q->where('employee_id', $employeeId))
+            ->orderBy('date')
+            ->orderBy('employee_id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'from' => $from,
+            'to' => $to,
+            'count' => $items->count(),
+            'data' => $items->map(fn (ScheduleAssignment $assignment) => [
+                'id' => $assignment->id,
+                'date' => $assignment->date?->format('Y-m-d'),
+                'employee' => [
+                    'id' => $assignment->employee?->id,
+                    'name' => $assignment->employee?->full_name,
+                    'employee_code' => $assignment->employee?->employee_code,
+                ],
+                'shift' => [
+                    'id' => $assignment->shift?->id,
+                    'name' => $assignment->shift?->name,
+                    'start_time' => $assignment->shift?->start_time,
+                    'end_time' => $assignment->shift?->end_time,
+                    'is_off' => (bool) $assignment->shift?->is_off,
+                    'is_overnight' => (bool) $assignment->shift?->is_overnight,
+                ],
+                'notes' => $assignment->notes,
+            ])->values(),
+        ]);
+    }
+
     // =====================================================================
     // Cuti, lembur & pengajuan
     // =====================================================================
+
+    public function leaveBalances(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'nullable|integer',
+            'year' => 'nullable|integer|min:2000|max:2100',
+        ]);
+
+        $year = (int) $request->query('year', now()->year);
+        $employeeId = $this->scopedEmployeeId($request);
+        $companyId = $this->companyId($request);
+
+        $items = LeaveBalance::query()
+            ->with(['employee:id,full_name,employee_code,company_id', 'leaveType:id,name'])
+            ->where('year', $year)
+            ->when($companyId, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $companyId)))
+            ->when($employeeId, fn ($q) => $q->where('employee_id', $employeeId))
+            ->orderBy('employee_id')
+            ->orderBy('leave_type_id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'year' => $year,
+            'count' => $items->count(),
+            'data' => $items->map(fn (LeaveBalance $balance) => [
+                'employee' => [
+                    'id' => $balance->employee?->id,
+                    'name' => $balance->employee?->full_name,
+                    'employee_code' => $balance->employee?->employee_code,
+                ],
+                'leave_type_id' => $balance->leave_type_id,
+                'leave_type' => $balance->leaveType?->name,
+                'total_days' => (float) $balance->total_days,
+                'carry_over' => (float) $balance->carry_over,
+                'used_days' => (float) $balance->used_days,
+                'remaining_days' => (float) $balance->remaining_days,
+            ])->values(),
+        ]);
+    }
 
     public function leaves(Request $request)
     {
@@ -331,6 +423,51 @@ class TessaController extends Controller
                     'lpj' => $scoped(Lpj::class),
                 ],
             ],
+        ]);
+    }
+
+    public function nextApprover(Request $request, string $type, $id)
+    {
+        $modelClass = $this->approvalModel($type);
+        if (! $modelClass) {
+            return response()->json(['success' => false, 'message' => 'Tipe tidak valid.'], 404);
+        }
+
+        $item = $modelClass::with('employee:id,full_name,company_id')->find($id);
+        if (! $item) {
+            return response()->json(['success' => false, 'message' => 'Pengajuan tidak ditemukan.'], 404);
+        }
+
+        if (! $this->actorIsAdmin() && (int) $item->employee_id !== (int) $this->actor()?->id) {
+            return response()->json(['success' => false, 'message' => 'Anda hanya bisa melihat approval pengajuan sendiri.'], 403);
+        }
+
+        $companyId = $this->companyId($request);
+        if ($companyId && $item->employee?->company_id !== $companyId) {
+            return response()->json(['success' => false, 'message' => 'Pengajuan di luar cakupan perusahaan Tessa.'], 403);
+        }
+
+        $status = (string) $item->status;
+        $currentStep = (int) ($item->current_step ?? 1);
+        $isFinal = in_array($status, ['approved', 'rejected'], true);
+        $approver = $isFinal ? null : EmployeeApprover::getApproverAt($item->employee_id, $this->requestTypeFor($type), $currentStep);
+
+        return response()->json([
+            'success' => true,
+            'type' => $type,
+            'id' => $item->id,
+            'status' => $status,
+            'employee' => $item->employee?->full_name,
+            'current_step' => $currentStep,
+            'is_final' => $isFinal,
+            'approver' => $approver ? [
+                'id' => $approver->id,
+                'name' => $approver->full_name,
+                'phone' => $approver->phone,
+            ] : null,
+            'message' => $approver
+                ? "Pengajuan Anda sedang menunggu persetujuan {$approver->full_name} (step {$currentStep})."
+                : ($isFinal ? "Pengajuan sudah final dengan status {$status}." : 'Approver step aktif belum dikonfigurasi.'),
         ]);
     }
 
@@ -495,11 +632,54 @@ class TessaController extends Controller
 
         $companyId = $this->companyId($request);
         $dryRun = $request->boolean('dry_run');
+
+        return $this->scheduleAssignmentResponse($validated['assignments'], $companyId, $dryRun);
+    }
+
+    public function importSchedules(Request $request, TessaScheduleImportParser $parser)
+    {
+        $this->requirePermission('schedule.manage');
+
+        $request->validate([
+            'file' => 'required|file|max:5120',
+            'dry_run' => 'nullable|boolean',
+        ]);
+
+        try {
+            $assignments = $parser->parse($request->file('file'));
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        if ($assignments === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File jadwal tidak berisi baris yang bisa diproses. Pastikan header berisi employee_code/nama, date/tanggal, dan shift.',
+                'parsed' => 0,
+            ], 422);
+        }
+
+        return $this->scheduleAssignmentResponse(
+            $assignments,
+            $this->companyId($request),
+            $request->boolean('dry_run'),
+            [
+                'parsed' => count($assignments),
+                'source' => [
+                    'filename' => $request->file('file')->getClientOriginalName(),
+                    'extension' => strtolower($request->file('file')->getClientOriginalExtension()),
+                ],
+            ]
+        );
+    }
+
+    private function scheduleAssignmentResponse(array $assignments, ?int $companyId, bool $dryRun, array $extra = [])
+    {
         $results = [];
         $ok = 0;
 
-        foreach ($validated['assignments'] as $i => $row) {
-            $result = $this->applyScheduleRow($row, $companyId, $dryRun);
+        foreach ($assignments as $i => $row) {
+            $result = $this->applyScheduleRow((array) $row, $companyId, $dryRun);
             if ($result['success']) {
                 $ok++;
             }
@@ -508,7 +688,7 @@ class TessaController extends Controller
 
         $total = count($results);
 
-        return response()->json([
+        return response()->json($extra + [
             'success' => $ok > 0,
             'dry_run' => $dryRun,
             'message' => $dryRun
@@ -523,6 +703,14 @@ class TessaController extends Controller
     /** Proses satu baris jadwal: resolve karyawan + shift, lalu simpan (atau preview bila $dryRun). */
     private function applyScheduleRow(array $row, ?int $companyId, bool $dryRun = false): array
     {
+        if (empty($row['date'])) {
+            return ['success' => false, 'error' => 'Tanggal jadwal wajib diisi.'];
+        }
+
+        if (empty($row['shift_id']) && empty($row['shift'])) {
+            return ['success' => false, 'error' => 'Wajib isi shift (nama) atau shift_id.'];
+        }
+
         // 1. Resolve karyawan (scoped ke perusahaan Tessa bila diset).
         $base = Employee::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId));
 
@@ -666,6 +854,22 @@ class TessaController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    private function approvalModel(string $type): ?string
+    {
+        return [
+            'leave' => LeaveRequest::class,
+            'overtime' => OvertimeRequest::class,
+            'attendance' => AttendanceRequest::class,
+            'budget' => BudgetRequest::class,
+            'travel_report' => TravelReport::class,
+        ][$type] ?? null;
+    }
+
+    private function requestTypeFor(string $type): string
+    {
+        return $type === 'travel_report' ? 'travel_report' : $type;
     }
 
     private function respondPaginated($query, Request $request, callable $map, int $default = 50, int $max = 200)

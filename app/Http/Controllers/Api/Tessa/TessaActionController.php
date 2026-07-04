@@ -10,12 +10,16 @@ use App\Http\Controllers\Api\Tessa\Concerns\EnforcesHrisRole;
 use App\Http\Controllers\Api\TravelReportController;
 use App\Http\Controllers\Controller;
 use App\Models\DataChangeRequest;
+use App\Models\AttendanceRequest;
 use App\Models\Employee;
+use App\Models\LeaveRequest;
 use App\Models\Notification;
+use App\Models\OvertimeRequest;
 use App\Models\ScheduleTemplate;
 use App\Models\ScheduleTemplateDay;
 use App\Models\Shift;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -383,6 +387,57 @@ class TessaActionController extends Controller
         return app($controllers[$type])->store($sub);
     }
 
+    /**
+     * Edit pengajuan pending lewat Tessa. Sengaja dibatasi ke tipe sederhana
+     * agar chat tidak mengubah struktur item/aktivitas kompleks secara ambigu.
+     */
+    public function updateRequest(Request $request, string $type, $id)
+    {
+        $modelClass = [
+            'leave' => LeaveRequest::class,
+            'overtime' => OvertimeRequest::class,
+            'attendance' => AttendanceRequest::class,
+        ][$type] ?? null;
+
+        if (! $modelClass) {
+            return $this->fail("Jenis '{$type}' belum bisa diedit via Tessa. Pilih: leave, overtime, attendance.", 404);
+        }
+
+        $companyId = $this->companyId($request);
+        $item = $modelClass::with('employee:id,full_name,company_id')->find($id);
+        if (! $item) {
+            return $this->fail('Pengajuan tidak ditemukan.', 404);
+        }
+        if ($companyId && $item->employee?->company_id !== $companyId) {
+            return $this->fail('Pengajuan di luar cakupan perusahaan Tessa.', 403);
+        }
+
+        $actor = $this->actor();
+        if ((int) $item->employee_id !== (int) $actor?->id) {
+            $this->requirePermission($this->createPermissionFor($type));
+        }
+
+        if ($item->status !== 'pending') {
+            return $this->fail("Pengajuan sudah diproses (status: {$item->status}); hanya status pending yang bisa diedit.", 422);
+        }
+
+        $attributes = match ($type) {
+            'leave' => $this->leaveUpdateAttributes($request, $item),
+            'overtime' => $this->overtimeUpdateAttributes($request, $item),
+            'attendance' => $this->attendanceUpdateAttributes($request, $item),
+        };
+
+        $item->update($attributes);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pengajuan pending berhasil diperbarui via Tessa.',
+            'type' => $type,
+            'id' => $item->id,
+            'data' => $item->fresh(),
+        ]);
+    }
+
     // =====================================================================
     // Helpers
     // =====================================================================
@@ -415,6 +470,112 @@ class TessaActionController extends Controller
             'budget' => 'budget.manage',
             'travel-report' => 'travel.reports.manage',
         ][$type] ?? 'employees.update';
+    }
+
+    private function leaveUpdateAttributes(Request $request, LeaveRequest $item): array
+    {
+        $data = $request->validate([
+            'leave_type_id' => 'nullable|integer',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'total_days' => 'nullable|numeric|min:0.5',
+            'reason' => 'nullable|string|max:1000',
+            'delegate_to' => 'nullable|integer',
+        ]);
+
+        $attributes = array_intersect_key($data, array_flip(['leave_type_id', 'start_date', 'end_date', 'total_days', 'delegate_to']));
+        if (array_key_exists('reason', $data)) {
+            $attributes['reason'] = $this->tagViaTessa(['reason' => $data['reason']], 'leave')['reason'];
+        }
+
+        return $attributes;
+    }
+
+    private function overtimeUpdateAttributes(Request $request, OvertimeRequest $item): array
+    {
+        $data = $request->validate([
+            'date' => 'nullable|date',
+            'overtime_type' => 'nullable|in:workday,holiday',
+            'reason' => 'nullable|string|max:1000',
+            'pre_shift_duration' => 'nullable|integer|min:0',
+            'pre_shift_break' => 'nullable|integer|min:0',
+            'post_shift_duration' => 'nullable|integer|min:0',
+            'post_shift_break' => 'nullable|integer|min:0',
+            'planned_start' => 'nullable|date_format:H:i',
+            'planned_end' => 'nullable|date_format:H:i',
+            'break_duration' => 'nullable|integer|min:0',
+            'duration' => 'nullable|integer|min:1',
+        ]);
+
+        $type = $data['overtime_type'] ?? $item->overtime_type ?? 'workday';
+        $attributes = [
+            'date' => $data['date'] ?? $item->date,
+            'overtime_type' => $type,
+        ];
+
+        if ($type === 'holiday') {
+            $startValue = $data['planned_start'] ?? ($item->planned_start ? substr((string) $item->planned_start, 0, 5) : null);
+            $endValue = $data['planned_end'] ?? ($item->planned_end ? substr((string) $item->planned_end, 0, 5) : null);
+            if (! $startValue || ! $endValue) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException($this->fail('Jam mulai dan selesai wajib diisi untuk lembur hari libur.', 422));
+            }
+
+            $start = Carbon::parse($startValue);
+            $end = Carbon::parse($endValue);
+            if ($end->lessThan($start)) {
+                $end->addDay();
+            }
+
+            $attributes += [
+                'planned_start' => $startValue,
+                'planned_end' => $endValue,
+                'pre_shift_duration' => 0,
+                'pre_shift_break' => 0,
+                'post_shift_duration' => 0,
+                'post_shift_break' => 0,
+                'break_duration' => $data['break_duration'] ?? $item->break_duration ?? 0,
+                'total_duration' => (int) $start->diffInMinutes($end),
+            ];
+        } else {
+            $preDuration = $data['pre_shift_duration'] ?? $item->pre_shift_duration ?? 0;
+            $preBreak = $data['pre_shift_break'] ?? $item->pre_shift_break ?? 0;
+            $postDuration = $data['post_shift_duration'] ?? $data['duration'] ?? $item->post_shift_duration ?? 0;
+            $postBreak = $data['post_shift_break'] ?? $data['break_duration'] ?? $item->post_shift_break ?? 0;
+
+            $attributes += [
+                'planned_start' => null,
+                'planned_end' => null,
+                'pre_shift_duration' => $preDuration,
+                'pre_shift_break' => $preBreak,
+                'post_shift_duration' => $postDuration,
+                'post_shift_break' => $postBreak,
+                'break_duration' => $preBreak + $postBreak,
+                'total_duration' => $preDuration + $postDuration,
+            ];
+        }
+
+        if (array_key_exists('reason', $data)) {
+            $attributes['reason'] = $this->tagViaTessa(['reason' => $data['reason']], 'overtime')['reason'];
+        }
+
+        return $attributes;
+    }
+
+    private function attendanceUpdateAttributes(Request $request, AttendanceRequest $item): array
+    {
+        $data = $request->validate([
+            'date' => 'nullable|date',
+            'clock_in' => 'nullable|date_format:H:i',
+            'clock_out' => 'nullable|date_format:H:i',
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        $attributes = array_intersect_key($data, array_flip(['date', 'clock_in', 'clock_out']));
+        if (array_key_exists('reason', $data)) {
+            $attributes['reason'] = $this->tagViaTessa(['reason' => $data['reason']], 'attendance')['reason'];
+        }
+
+        return $attributes;
     }
 
     private function approvalModel(string $type): ?string

@@ -392,12 +392,75 @@ class ApiAttendanceClockInTest extends TestCase
         ]);
         $this->assertStringContainsString(
             'Employee One terdeteksi Fake GPS saat clock in',
-            DB::table('notifications')->where('employee_id', 2)->value('message')
+            DB::table('notifications')
+                ->where('employee_id', 2)
+                ->where('type', 'attendance_security_review')
+                ->value('message')
         );
         $this->assertDatabaseMissing('notifications', ['employee_id' => 1]);
         $this->assertDatabaseMissing('notifications', ['employee_id' => 3]);
         $this->assertDatabaseMissing('notifications', ['employee_id' => 4]);
         $this->assertDatabaseMissing('notifications', ['employee_id' => 6]);
+    }
+
+    public function test_clock_in_notifies_active_hr_admins_in_same_company(): void
+    {
+        DB::table('settings')->insert([
+            ['key' => 'require_photo', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'require_gps', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'face_verification_enabled', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $this->seedEmployee();
+        $this->seedAdminEmployee(2, 'HR Admin', 'hr_admin', 1);
+        $this->seedAdminEmployee(3, 'Other Company HR', 'hr_admin', 2);
+        $this->seedAdminEmployee(4, 'Finance Admin', 'finance_admin', 1);
+        $this->seedAdminEmployee(5, 'Super Admin', 'superadmin', 1);
+        $this->seedAdminEmployee(6, 'Inactive HR', 'hr_admin', 1, null, false);
+
+        $request = Request::create('/api/attendance/clock-in', 'POST');
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new AttendanceController())->clockIn($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $attendanceId = DB::table('attendances')->where('employee_id', 1)->value('id');
+
+        $this->assertDatabaseHas('notifications', [
+            'employee_id' => 2,
+            'title' => 'Clock-In Karyawan',
+            'type' => 'attendance_clock_in',
+            'reference_type' => \App\Models\Attendance::class,
+            'reference_id' => $attendanceId,
+            'is_read' => false,
+        ]);
+        $this->assertStringContainsString(
+            'Employee One sudah clock-in pukul 14:34 pada 26/05/2026.',
+            DB::table('notifications')->where('employee_id', 2)->value('message')
+        );
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 1, 'type' => 'attendance_clock_in']);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 3, 'type' => 'attendance_clock_in']);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 4, 'type' => 'attendance_clock_in']);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 5, 'type' => 'attendance_clock_in']);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => 6, 'type' => 'attendance_clock_in']);
+    }
+
+    public function test_repeated_clock_in_does_not_duplicate_hr_admin_notification(): void
+    {
+        DB::table('settings')->insert([
+            ['key' => 'require_photo', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'require_gps', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'face_verification_enabled', 'value' => '0', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $this->seedEmployee();
+        $this->seedAdminEmployee(2, 'HR Admin', 'hr_admin', 1);
+
+        $request = Request::create('/api/attendance/clock-in', 'POST');
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        (new AttendanceController())->clockIn($request);
+        (new AttendanceController())->clockIn($request);
+
+        $this->assertSame(1, DB::table('notifications')->where('type', 'attendance_clock_in')->count());
     }
 
     public function test_employee_with_regular_shift_can_clock_in_today_when_yesterday_was_not_clocked_out(): void
@@ -704,7 +767,7 @@ class ApiAttendanceClockInTest extends TestCase
         ]);
     }
 
-    private function seedAdminEmployee(int $id, string $name, string $role, int $companyId, ?string $fcmToken = null): void
+    private function seedAdminEmployee(int $id, string $name, string $role, int $companyId, ?string $fcmToken = null, bool $isActive = true): void
     {
         DB::table('employees')->insert([
             'id' => $id,
@@ -718,7 +781,7 @@ class ApiAttendanceClockInTest extends TestCase
             'role' => $role,
             'position' => $name,
             'fcm_token' => $fcmToken,
-            'is_active' => true,
+            'is_active' => $isActive,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

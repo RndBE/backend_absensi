@@ -154,8 +154,10 @@ Route::middleware(['auth:sanctum', 'tessa.actor'])->prefix('tessa')->group(funct
     // Presensi & jadwal
     Route::get('/attendance', [TessaController::class, 'attendance']);
     Route::get('/attendance/recap', [TessaController::class, 'attendanceRecap']);
+    Route::get('/schedules', [TessaController::class, 'schedules']);
 
     // Cuti, lembur & pengajuan
+    Route::get('/leave-balances', [TessaController::class, 'leaveBalances']);
     Route::get('/leaves', [TessaController::class, 'leaves']);
     Route::get('/overtimes', [TessaController::class, 'overtimes']);
     Route::get('/attendance-requests', [TessaController::class, 'attendanceRequests']);
@@ -173,9 +175,11 @@ Route::middleware(['auth:sanctum', 'tessa.actor'])->prefix('tessa')->group(funct
 
     // Aksi: notifikasi & jadwal harian
     Route::post('/notifications', [TessaController::class, 'sendNotification']);
+    Route::post('/schedules/import', [TessaController::class, 'importSchedules']);
     Route::post('/schedules', [TessaController::class, 'assignSchedules']);
 
     // Aksi: approve / reject pengajuan (mendukung dry_run)
+    Route::get('/approvals/{type}/{id}/next', [TessaController::class, 'nextApprover']);
     Route::post('/approvals/{type}/{id}/approve', [TessaActionController::class, 'approve']);
     Route::post('/approvals/{type}/{id}/reject', [TessaActionController::class, 'reject']);
 
@@ -190,4 +194,5 @@ Route::middleware(['auth:sanctum', 'tessa.actor'])->prefix('tessa')->group(funct
 
     // Aksi: buat pengajuan atas nama karyawan
     Route::post('/requests/{type}', [TessaActionController::class, 'createRequest']);
+    Route::put('/requests/{type}/{id}', [TessaActionController::class, 'updateRequest']);
 });
