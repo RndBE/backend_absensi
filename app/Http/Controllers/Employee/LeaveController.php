@@ -17,7 +17,8 @@ class LeaveController extends Controller
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
-        $period = $request->query('period') ? Carbon::parse($request->query('period').'-01') : now();
+        // Tanpa ?period= → tampilkan SEMUA riwayat. Dengan ?period=YYYY-MM → filter bulan itu.
+        $period = $request->query('period') ? Carbon::parse($request->query('period').'-01') : null;
 
         return view('employee.leaves.index', [
             'employee' => $employee,
@@ -28,10 +29,10 @@ class LeaveController extends Controller
                 ->get(),
             'requests' => LeaveRequest::with('leaveType')
                 ->where('employee_id', $employee->id)
-                ->whereYear('created_at', $period->year)
-                ->whereMonth('created_at', $period->month)
+                ->when($period, fn ($q) => $q->whereYear('created_at', $period->year)->whereMonth('created_at', $period->month))
                 ->latest()
-                ->get(),
+                ->paginate(15)
+                ->withQueryString(),
             'period' => $period,
         ]);
     }

@@ -69,6 +69,9 @@
                 </tbody>
             </table>
         </div>
+        @if($requests->hasPages())
+            <div class="px-4 py-3 border-t border-gray-100">{{ $requests->links() }}</div>
+        @endif
     </section>
 </div>
 @endsection

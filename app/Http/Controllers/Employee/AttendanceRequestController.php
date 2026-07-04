@@ -14,17 +14,18 @@ class AttendanceRequestController extends Controller
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
-        $period = $request->query('period') ? Carbon::parse($request->query('period').'-01') : now();
+        // Tanpa ?period= → tampilkan SEMUA riwayat. Dengan ?period=YYYY-MM → filter bulan itu.
+        $period = $request->query('period') ? Carbon::parse($request->query('period').'-01') : null;
 
         return view('employee.attendance-requests.index', [
             'employee' => $employee,
             'requests' => AttendanceRequest::where('employee_id', $employee->id)
-                ->whereYear('date', $period->year)
-                ->whereMonth('date', $period->month)
+                ->when($period, fn ($q) => $q->whereYear('date', $period->year)->whereMonth('date', $period->month))
                 ->with('attachments')
                 ->orderBy('date', 'desc')
                 ->orderBy('created_at', 'desc')
-                ->get(),
+                ->paginate(15)
+                ->withQueryString(),
             'period' => $period,
         ]);
     }

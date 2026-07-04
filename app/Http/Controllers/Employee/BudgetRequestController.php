@@ -41,7 +41,8 @@ class BudgetRequestController extends Controller
                 ->whereYear('created_at', $period->year)
                 ->whereMonth('created_at', $period->month)
                 ->latest()
-                ->get(),
+                ->paginate(15)
+                ->withQueryString(),
         ]);
     }
 
