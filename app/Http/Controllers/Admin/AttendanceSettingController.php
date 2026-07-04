@@ -19,7 +19,7 @@ class AttendanceSettingController extends Controller
         'remote_requires_approval' => '1',
         'remote_requires_notes' => '1',
         'clockin_reminder_enabled' => '0',
-        'clockin_reminder_time' => '07:45',
+        'clockin_reminder_before' => '15',
         'auto_clockout_enabled' => '0',
         'auto_clockout_time' => '18:00',
         'face_verification_enabled' => '1',
@@ -49,7 +49,7 @@ class AttendanceSettingController extends Controller
             'office_longitude' => 'required|numeric',
             'office_radius_meters' => 'required|integer|min:50|max:1000',
             'office_address' => 'nullable|string|max:255',
-            'clockin_reminder_time' => 'nullable|date_format:H:i',
+            'clockin_reminder_before' => 'nullable|integer|min:0|max:120',
             'auto_clockout_time' => 'nullable|date_format:H:i',
             'lpj_reminder_days' => 'nullable|integer|min:1|max:30',
             'lpj_reminder_time' => 'nullable|date_format:H:i',
@@ -68,7 +68,7 @@ class AttendanceSettingController extends Controller
 
         $textKeys = [
             'office_latitude', 'office_longitude', 'office_radius_meters',
-            'office_address', 'clockin_reminder_time', 'auto_clockout_time',
+            'office_address', 'clockin_reminder_before', 'auto_clockout_time',
             'lpj_reminder_days', 'lpj_reminder_time',
             'lhp_reminder_after_days', 'lhp_reminder_before_days', 'lhp_reminder_time',
         ];

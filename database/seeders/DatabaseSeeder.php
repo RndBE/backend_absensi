@@ -472,7 +472,7 @@ class DatabaseSeeder extends Seeder
         Setting::setValue('remote_requires_approval', '1');
         Setting::setValue('remote_requires_notes', '1');
         Setting::setValue('clockin_reminder_enabled', '0');
-        Setting::setValue('clockin_reminder_time', '07:45');
+        Setting::setValue('clockin_reminder_before', '15');
         Setting::setValue('auto_clockout_enabled', '0');
         Setting::setValue('auto_clockout_time', '18:00');
         Setting::setValue('max_attachment_size_mb', '10');

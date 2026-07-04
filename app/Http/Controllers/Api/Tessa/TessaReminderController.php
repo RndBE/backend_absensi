@@ -32,16 +32,18 @@ class TessaReminderController extends Controller
         $request->validate([
             'type' => 'required|in:clockin,lhp,lpj',
             'date' => 'nullable|date',
+            'since' => 'nullable|date', // clockin: waktu poll terakhir (untuk anti-dobel)
         ]);
 
         $type = $request->query('type');
         $date = $request->query('date') ? Carbon::parse($request->query('date'))->startOfDay() : now()->startOfDay();
+        $since = $request->query('since') ? Carbon::parse($request->query('since')) : null;
         $companyId = $this->companyScope();
 
         $recipients = match ($type) {
             'lpj' => $this->fromReminderItems(LpjReminderService::dueForDate($date, $companyId)),
             'lhp' => $this->fromReminderItems(LhpReminderService::dueForDate($date, $companyId)),
-            'clockin' => $this->clockinDue($date, $companyId),
+            'clockin' => $this->clockinDue($date, $companyId, $since),
         };
 
         // Hanya yang punya nomor HP yang bisa dikirim WhatsApp; sisanya dilaporkan.
@@ -213,12 +215,24 @@ class TessaReminderController extends Controller
         ])->values();
     }
 
-    /** Karyawan terjadwal kerja hari ini yang belum clock-in (bila reminder aktif). */
-    private function clockinDue(Carbon $date, ?int $companyId): \Illuminate\Support\Collection
+    /**
+     * Karyawan yang perlu diingatkan clock-in — SHIFT-AWARE & PRA-SHIFT: diingatkan
+     * beberapa menit SEBELUM jam masuk (setting `clockin_reminder_before`) bila belum
+     * clock-in. Jadi tiap orang diingatkan menjelang jam masuknya sendiri (jam 8, jam 9,
+     * security malam, dst), bukan satu jam global untuk semua — agar absen tepat waktu.
+     *
+     * $since = waktu poll terakhir (anti-dobel). Kosong → lookback 30 menit.
+     */
+    private function clockinDue(Carbon $date, ?int $companyId, ?Carbon $since): \Illuminate\Support\Collection
     {
         if (Setting::getValue('clockin_reminder_enabled', '0') !== '1') {
             return collect();
         }
+
+        $now = now();
+        $since = $since ?: $now->copy()->subMinutes(30);
+        $dateStr = $date->toDateString();
+        $before = (int) Setting::getValue('clockin_reminder_before', 15); // menit SEBELUM jam masuk
 
         // Sudah clock-in hari ini → dikeluarkan.
         $clockedIn = Attendance::whereDate('date', $date)
@@ -231,17 +245,35 @@ class TessaReminderController extends Controller
             ->whereHas('shift', fn ($q) => $q->where('is_off', false)) // hari kerja, bukan libur
             ->whereHas('employee', fn ($q) => $q->where('is_active', true)
                 ->when($companyId, fn ($e) => $e->where('company_id', $companyId)))
-            ->with('employee:id,full_name,phone,company_id')
+            ->with(['employee:id,full_name,phone,company_id', 'shift:id,start_time'])
             ->get()
-            ->filter(fn ($a) => $a->employee && ! $clockedIn->has($a->employee_id))
+            ->filter(function ($a) use ($clockedIn, $dateStr, $now, $since, $before) {
+                if (! $a->employee || $clockedIn->has($a->employee_id)) {
+                    return false;
+                }
+                $start = $a->shift?->start_time;
+                if (! $start) {
+                    return false; // shift tanpa jam mulai → tak bisa ditentukan
+                }
+                // Waktu ingatkan = jam masuk DIKURANGI jeda (X menit sebelum jam masuk),
+                // sebagai pengingat agar absen tepat waktu. Diingatkan saat baru terlewati.
+                $remindAt = Carbon::parse($dateStr.' '.$start)->subMinutes($before);
+
+                return $remindAt->gt($since) && $remindAt->lte($now);
+            })
             ->unique('employee_id')
-            ->map(fn ($a) => [
-                'employee_id' => $a->employee->id,
-                'name' => $a->employee->full_name,
-                'phone' => $a->employee->phone,
-                'title' => 'Pengingat Clock-In',
-                'message' => "Halo {$a->employee->full_name}, Anda belum melakukan clock-in hari ini. Jangan lupa presensi ya.",
-            ])
+            ->map(function ($a) {
+                $start = substr((string) $a->shift->start_time, 0, 5);
+
+                return [
+                    'employee_id' => $a->employee->id,
+                    'name' => $a->employee->full_name,
+                    'phone' => $a->employee->phone,
+                    'shift_start' => $start,
+                    'title' => 'Pengingat Clock-In',
+                    'message' => "Halo {$a->employee->full_name}, shift Anda mulai pukul {$start}. Jangan lupa clock-in ya.",
+                ];
+            })
             ->values();
     }
 

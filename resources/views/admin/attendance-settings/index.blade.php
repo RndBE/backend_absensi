@@ -163,15 +163,16 @@
                                 <span class="material-symbols-outlined text-[20px] text-gray-400">alarm</span>
                                 <div>
                                     <div class="text-[13px] font-semibold text-gray-800">Reminder Clock-In</div>
-                                    <div class="text-[11px] text-gray-400">Push notification pengingat clock-in</div>
+                                    <div class="text-[11px] text-gray-400">Ingatkan yang belum clock-in — otomatis di jam masuk shift masing-masing</div>
                                 </div>
                             </div>
                             <input type="checkbox" name="clockin_reminder_enabled" value="1" {{ $settings['clockin_reminder_enabled'] == '1' ? 'checked' : '' }}
                                 class="w-5 h-5 accent-indigo-500 rounded cursor-pointer" id="reminderCheck" onchange="toggleReminderTime()">
                         </label>
                         <div id="reminderTimeWrap" class="{{ $settings['clockin_reminder_enabled'] == '1' ? '' : 'opacity-40 pointer-events-none' }}">
-                            <label class="block text-[11px] font-semibold text-gray-500 mb-1">Jam Reminder</label>
-                            <input type="time" name="clockin_reminder_time" value="{{ $settings['clockin_reminder_time'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                            <label class="block text-[11px] font-semibold text-gray-500 mb-1">Ingatkan berapa menit sebelum jam masuk</label>
+                            <input type="number" name="clockin_reminder_before" min="0" max="120" value="{{ $settings['clockin_reminder_before'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                            <p class="text-[11px] text-gray-400 mt-1">Pengingat dikirim <strong>sekian menit sebelum jam masuk</strong> tiap shift (jam 8, jam 9, security malam — masing-masing) agar absen tepat waktu, bukan satu jam tetap.</p>
                         </div>
                     </div>
 

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Company;
 use App\Models\Employee;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -47,6 +48,7 @@ class TessaReminderDueTest extends TestCase
             $table->unsignedBigInteger('company_id');
             $table->string('name');
             $table->boolean('is_off')->default(false);
+            $table->time('start_time')->nullable();
             $table->timestamps();
         });
         Schema::create('schedule_assignments', function (Blueprint $table) {
@@ -83,13 +85,20 @@ class TessaReminderDueTest extends TestCase
         ]);
     }
 
-    private function shift(bool $isOff = false): int
+    private function shift(bool $isOff = false, ?string $startTime = '08:00'): int
     {
         return DB::table('shifts')->insertGetId([
             'company_id' => Company::firstOrCreate(['name' => 'PT Tessa'])->id,
             'name' => $isOff ? 'Libur' : 'Pagi',
             'is_off' => $isOff,
+            'start_time' => $isOff ? null : $startTime,
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow(); // reset waktu beku
+        parent::tearDown();
     }
 
     private function assign(int $employeeId, int $shiftId): void
@@ -99,9 +108,10 @@ class TessaReminderDueTest extends TestCase
         ]);
     }
 
-    private function enableClockin(string $value = '1'): void
+    private function enableClockin(string $value = '1', int $before = 0): void
     {
         DB::table('settings')->updateOrInsert(['key' => 'clockin_reminder_enabled'], ['value' => $value]);
+        DB::table('settings')->updateOrInsert(['key' => 'clockin_reminder_before'], ['value' => (string) $before]);
     }
 
     public function test_requires_service_key(): void
@@ -116,8 +126,9 @@ class TessaReminderDueTest extends TestCase
 
     public function test_clockin_lists_scheduled_but_unclocked_employees(): void
     {
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 08:05:00')); // shift 08:00 baru saja mulai
         $this->enableClockin();
-        $work = $this->shift(false);
+        $work = $this->shift(false, '08:00');
         $off = $this->shift(true);
 
         $a = $this->makeEmployee('a@t.test', '08120000001'); // kerja, belum clock-in → MUNCUL
@@ -139,6 +150,39 @@ class TessaReminderDueTest extends TestCase
         $this->assertSame([$a->id], $ids);            // hanya A
         $this->assertSame(1, $resp->json('count'));
         $this->assertSame(1, $resp->json('skipped_no_phone')); // D tanpa nomor
+    }
+
+    public function test_clockin_skips_employees_whose_shift_not_started_yet(): void
+    {
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 08:05:00')); // jam 08:05
+        $this->enableClockin();
+        $early = $this->shift(false, '08:00'); // sudah mulai
+        $late = $this->shift(false, '09:00');  // belum mulai (masuk jam 9)
+
+        $a = $this->makeEmployee('a@t.test', '08120000001');
+        $b = $this->makeEmployee('b@t.test', '08120000002');
+        $this->assign($a->id, $early);
+        $this->assign($b->id, $late);
+
+        $resp = $this->getJson('/api/tessa/reminders/due?type=clockin&date='.self::DATE, ['X-Api-Key' => 'svc-key']);
+        $resp->assertOk();
+
+        // Hanya yang shift-nya sudah mulai (A). Yang masuk jam 9 (B) belum diingatkan.
+        $this->assertSame([$a->id], collect($resp->json('reminders'))->pluck('employee_id')->all());
+    }
+
+    public function test_clockin_reminds_before_shift_start(): void
+    {
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 07:45:00')); // 15 menit sebelum shift 08:00
+        $this->enableClockin('1', 15);                              // ingatkan 15 menit sebelum
+        $work = $this->shift(false, '08:00');
+
+        $a = $this->makeEmployee('a@t.test', '08120000001');
+        $this->assign($a->id, $work);
+
+        $resp = $this->getJson('/api/tessa/reminders/due?type=clockin&date='.self::DATE, ['X-Api-Key' => 'svc-key']);
+        $resp->assertOk();
+        $this->assertSame([$a->id], collect($resp->json('reminders'))->pluck('employee_id')->all());
     }
 
     public function test_clockin_disabled_returns_empty(): void
