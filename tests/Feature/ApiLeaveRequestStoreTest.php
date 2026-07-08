@@ -172,6 +172,57 @@ class ApiLeaveRequestStoreTest extends TestCase
         $this->assertSame('Cuti Tahunan', $data[0]['name']);
     }
 
+    public function test_api_leave_balance_only_returns_annual_leave_balance(): void
+    {
+        $this->seedEmployee();
+
+        DB::table('leave_types')->insert([
+            [
+                'id' => 1,
+                'name' => 'Cuti Tahunan',
+                'max_days' => 12,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 2,
+                'name' => 'WFH',
+                'max_days' => 12,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        DB::table('leave_balances')->insert([
+            [
+                'employee_id' => 1,
+                'leave_type_id' => 1,
+                'year' => now()->year,
+                'remaining_days' => 9,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => 1,
+                'leave_type_id' => 2,
+                'year' => now()->year,
+                'remaining_days' => 5,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $request = Request::create('/api/leave/balance', 'GET');
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        $response = (new LeaveController)->balance($request);
+        $data = $response->getData(true)['data'];
+
+        $this->assertCount(1, $data);
+        $this->assertSame('Cuti Tahunan', $data[0]['leave_type']['name']);
+        $this->assertSame(9, $data[0]['remaining_days']);
+    }
+
     public function test_api_leave_request_rejects_cuti_tahunan_without_balance(): void
     {
         // Aturan bisnis: hanya "Cuti Tahunan" yang butuh saldo. Tanpa saldo → ditolak 422.

@@ -10,6 +10,7 @@ use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Models\Notification;
 use App\Services\FcmService;
+use App\Support\LeaveQuota;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -20,6 +21,7 @@ class LeaveController extends Controller
         $balances = LeaveBalance::where('employee_id', $request->user()->id)
             ->where('year', now()->year)
             ->with('leaveType')
+            ->whereHas('leaveType', fn ($query) => $query->where('name', LeaveQuota::ANNUAL_NAME))
             ->get();
 
         return response()->json(['success' => true, 'data' => $balances]);
