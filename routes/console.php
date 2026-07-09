@@ -45,3 +45,10 @@ try {
 Schedule::command('lhp:remind')->dailyAt($lhpReminderTime)
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/lhp-reminder.log'));
+
+// Ingatkan karyawan clock-in menjelang jam masuk shift masing-masing (WA + in-app + FCM).
+// Jalan tiap menit agar tepat waktu per-shift; toggle & menit "sebelum jam masuk" dicek
+// di dalam ClockinReminderService (dedup harian mencegah pengiriman ganda).
+Schedule::command('clockin:remind')->everyMinute()
+    ->withoutOverlapping()
+    ->appendOutputTo(storage_path('logs/clockin-reminder.log'));

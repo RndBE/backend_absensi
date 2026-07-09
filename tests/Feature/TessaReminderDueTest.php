@@ -36,6 +36,7 @@ class TessaReminderDueTest extends TestCase
             $table->id();
             $table->string('employee_code')->unique();
             $table->unsignedBigInteger('company_id');
+            $table->unsignedBigInteger('schedule_template_id')->nullable();
             $table->string('full_name');
             $table->string('email')->unique();
             $table->string('phone')->nullable();
@@ -57,6 +58,28 @@ class TessaReminderDueTest extends TestCase
             $table->date('date');
             $table->unsignedBigInteger('shift_id');
             $table->string('notes')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('schedule_templates', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id');
+            $table->string('name');
+            $table->string('description')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('schedule_template_days', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('template_id');
+            $table->unsignedTinyInteger('day_of_week');
+            $table->unsignedBigInteger('shift_id')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('holidays', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id');
+            $table->date('date');
+            $table->string('name');
+            $table->boolean('is_national')->default(true);
             $table->timestamps();
         });
         Schema::create('attendances', function (Blueprint $table) {

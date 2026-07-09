@@ -169,7 +169,10 @@ Balasan:
 }
 ```
 - **Read-only, berbasis state**: `lpj`/`lhp` = yang belum membuat LPJ/LHP pada pemicunya; `clockin` = terjadwal kerja hari ini tapi belum clock-in.
-- **Cara pakai**: scheduler Tessa panggil **sekali** pada jam yang diinginkan, lalu kirim tiap `message` ke `phone`-nya. `title`/`message` sudah siap kirim.
+- ⚠️ **`type=clockin` JANGAN dipoll Tessa lagi.** Backend punya scheduler `clockin:remind` (tiap menit) yang mengirim sendiri: WhatsApp gateway + notifikasi in-app + push FCM. Kalau Tessa ikut mengirim, karyawan menerima **pesan dobel**. Endpoint ini dipertahankan untuk audit/kanal lain. Poll `lpj`/`lhp` tetap seperti biasa.
+- **Cara pakai `lpj`/`lhp`**: scheduler Tessa panggil **sekali** pada jam yang diinginkan, lalu kirim tiap `message` ke `phone`-nya. `title`/`message` sudah siap kirim.
+- **Jendela waktu `clockin`**: baris hanya muncul bila `jam masuk shift − clockin_reminder_before` jatuh di rentang `(since, now]` (tanpa `since` → lookback 30 menit). Karena itu `date` di masa lampau **selalu** mengembalikan `count: 0` — jendelanya dibandingkan ke **jam sekarang**, bukan ke tanggal yang diminta. Endpoint ini tidak bisa dipakai untuk backfill/verifikasi tanggal lampau.
+- **Sumber jadwal `clockin`** (sama dengan `App\Support\ScheduledWorkingDays`): override `schedule_assignments` menang lebih dulu — termasuk menang atas hari libur, mis. security yang tetap masuk saat tanggal merah; lalu hari libur membatalkan; sisanya dari template mingguan `employees.schedule_template_id`. Karyawan tanpa ketiganya tak punya jam masuk, sehingga tidak pernah diingatkan.
 - Menghormati toggle di Pengaturan Presensi (`*_reminder_enabled`) & `TESSA_COMPANY_ID`. Yang tanpa nomor HP dilaporkan di `skipped_no_phone`.
 - Tidak menyentuh payroll. Ini **melengkapi** notifikasi in-app/FCM, bukan menggantikan.
 
