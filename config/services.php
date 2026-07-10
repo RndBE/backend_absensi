@@ -63,12 +63,6 @@ return [
         'timeout' => env('WHATSAPP_TIMEOUT', 15),
     ],
 
-    // 'whatsapp' => [
-    //     'endpoint' => env('WHATSAPP_ENDPOINT', 'http://72.60.78.159:3000/client/sendMessage/beacon'),
-    //     'api_key' => env('WHATSAPP_API_KEY'),
-    //     'timeout' => env('WHATSAPP_TIMEOUT', 15),
-    // ],
-
     // Integrasi AI kantor "Tessa" — MENGIKUTI role HRIS.
     // Payroll/slip gaji TIDAK pernah diekspos ke Tessa (lihat middleware tessa.actor).
     'tessa' => [
