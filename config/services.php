@@ -56,7 +56,7 @@ return [
     ],
 
     'whatsapp' => [
-        'endpoint' => env('WHATSAPP_ENDPOINT', 'http://72.60.78.159:3000/client/sendMessage/beacon'),
+        'endpoint' => env('WHATSAPP_ENDPOINT', 'http://127.0.0.1:3000/client/sendMessage/beacon'),
         'api_key' => env('WHATSAPP_API_KEY'),
         'timeout' => env('WHATSAPP_TIMEOUT', 15),
     ],
