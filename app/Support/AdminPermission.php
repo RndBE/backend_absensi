@@ -12,9 +12,64 @@ use Illuminate\Support\Str;
 
 class AdminPermission
 {
+    /**
+     * Cache seumur-request. Satu panggilan can() dulu menembak ~10 query (cek keberadaan
+     * tabel/kolom lewat information_schema, roles, role_permissions, overrides). Halaman admin
+     * memanggilnya puluhan kali — sidebar saja sudah belasan — sehingga satu halaman bisa
+     * menghabiskan ratusan query untuk pertanyaan yang jawabannya sama.
+     *
+     * Container dibangun ulang tiap request (dan tiap test), jadi cache ini tidak pernah basi
+     * antar request. Penulis (updateRole/updateEmployeeOverrides) membuang cache-nya sendiri.
+     */
+    private array $tableExists = [];
+
+    private array $columnExists = [];
+
+    /** @var array<int, array<int, string>> employee_id => slug role */
+    private array $roleSlugsCache = [];
+
+    /** @var array<int, array<string, bool>> employee_id => permission => allowed */
+    private array $overridesCache = [];
+
+    /** @var array<string, array<string, bool>> role slug => permission => allowed */
+    private array $rolePermissionCache = [];
+
+    /** @var array<string, int|null>|null slug role => id */
+    private ?array $roleIdBySlug = null;
+
     public function groupedPermissions(): array
     {
         return config('admin_permissions.groups', []);
+    }
+
+    private function hasTable(string $table): bool
+    {
+        return $this->tableExists[$table] ??= Schema::hasTable($table);
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        return $this->columnExists["{$table}.{$column}"] ??= Schema::hasColumn($table, $column);
+    }
+
+    private function roleId(string $slug): ?int
+    {
+        if ($this->roleIdBySlug === null) {
+            $this->roleIdBySlug = $this->hasTable('roles')
+                ? Role::pluck('id', 'slug')->all()
+                : [];
+        }
+
+        return $this->roleIdBySlug[$slug] ?? null;
+    }
+
+    /** Buang cache setelah permission ditulis ulang. */
+    private function flushCache(): void
+    {
+        $this->roleSlugsCache = [];
+        $this->overridesCache = [];
+        $this->rolePermissionCache = [];
+        $this->roleIdBySlug = null;
     }
 
     public function allPermissions(): array
@@ -24,7 +79,7 @@ class AdminPermission
 
     public function roles(): array
     {
-        if (Schema::hasTable('roles')) {
+        if ($this->hasTable('roles')) {
             $roles = Role::query()
                 ->orderByRaw("case slug when 'superadmin' then 1 when 'hr_admin' then 2 when 'payroll_admin' then 3 when 'finance_admin' then 4 when 'manager' then 5 when 'employee' then 6 else 99 end")
                 ->pluck('name', 'slug')
@@ -52,9 +107,13 @@ class AdminPermission
 
     public function roleSlugs(Employee $employee): array
     {
+        if (isset($this->roleSlugsCache[$employee->id])) {
+            return $this->roleSlugsCache[$employee->id];
+        }
+
         $slugs = [];
 
-        if (Schema::hasTable('roles') && Schema::hasTable('employee_roles')) {
+        if ($this->hasTable('roles') && $this->hasTable('employee_roles')) {
             $slugs = $employee->roles()
                 ->pluck('roles.slug')
                 ->filter()
@@ -66,7 +125,7 @@ class AdminPermission
             $slugs[] = $this->normalizeLegacyRole($employee->role);
         }
 
-        return array_values(array_unique($slugs));
+        return $this->roleSlugsCache[$employee->id] = array_values(array_unique($slugs));
     }
 
     public function isAdminUser(Employee $employee): bool
@@ -146,13 +205,13 @@ class AdminPermission
             $permissions[$permission] = true;
         }
 
-        if (Schema::hasTable('role_permissions')) {
+        if ($this->hasTable('role_permissions')) {
             $query = RolePermission::query();
 
-            if (Schema::hasColumn('role_permissions', 'role_id') && Schema::hasTable('roles')) {
-                $roleId = Role::where('slug', $role)->value('id');
+            if ($this->hasColumn('role_permissions', 'role_id') && $this->hasTable('roles')) {
+                $roleId = $this->roleId($role);
                 $query->where('role_id', $roleId);
-            } elseif (Schema::hasColumn('role_permissions', 'role')) {
+            } elseif ($this->hasColumn('role_permissions', 'role')) {
                 $query->where('role', $role);
             } else {
                 return $permissions;
@@ -171,7 +230,7 @@ class AdminPermission
         $allowed = array_flip($allowedPermissions);
         $roleId = null;
 
-        if (Schema::hasTable('roles') && Schema::hasColumn('role_permissions', 'role_id')) {
+        if ($this->hasTable('roles') && $this->hasColumn('role_permissions', 'role_id')) {
             $roleId = Role::firstOrCreate(
                 ['slug' => $role],
                 ['name' => $this->roles()[$role] ?? Str::headline(str_replace('_', ' ', $role)), 'is_system' => true]
@@ -181,7 +240,7 @@ class AdminPermission
         foreach ($this->allPermissions() as $permission) {
             if ($roleId) {
                 $values = ['allowed' => array_key_exists($permission, $allowed)];
-                if (Schema::hasColumn('role_permissions', 'role')) {
+                if ($this->hasColumn('role_permissions', 'role')) {
                     $values['role'] = $role;
                 }
 
@@ -196,11 +255,13 @@ class AdminPermission
                 );
             }
         }
+
+        $this->flushCache();
     }
 
     public function overridesForEmployee(Employee $employee): array
     {
-        if (!Schema::hasTable('employee_permission_overrides')) {
+        if (!$this->hasTable('employee_permission_overrides')) {
             return [];
         }
 
@@ -226,44 +287,55 @@ class AdminPermission
                 ['allowed' => $state === 'allow']
             );
         }
+
+        $this->flushCache();
     }
 
+    /** Seluruh override karyawan dimuat sekali, bukan satu query per permission. */
     private function employeeOverride(int $employeeId, string $permission): ?bool
     {
-        if (!Schema::hasTable('employee_permission_overrides')) {
+        if (!$this->hasTable('employee_permission_overrides')) {
             return null;
         }
 
-        $override = EmployeePermissionOverride::where('employee_id', $employeeId)
-            ->where('permission', $permission)
-            ->first();
+        $this->overridesCache[$employeeId] ??= EmployeePermissionOverride::where('employee_id', $employeeId)
+            ->pluck('allowed', 'permission')
+            ->map(fn ($allowed) => (bool) $allowed)
+            ->all();
 
-        return $override?->allowed;
+        return $this->overridesCache[$employeeId][$permission] ?? null;
     }
 
+    /** Seluruh permission sebuah role dimuat sekali, bukan satu query per permission. */
     private function rolePermission(string $role, string $permission): ?bool
     {
-        if (!Schema::hasTable('role_permissions')) {
+        if (!$this->hasTable('role_permissions')) {
             return null;
         }
 
-        $query = RolePermission::where('permission', $permission);
+        if (! isset($this->rolePermissionCache[$role])) {
+            $query = RolePermission::query();
 
-        if (Schema::hasColumn('role_permissions', 'role_id') && Schema::hasTable('roles')) {
-            $roleId = Role::where('slug', $role)->value('id');
-            if (!$roleId) {
+            if ($this->hasColumn('role_permissions', 'role_id') && $this->hasTable('roles')) {
+                $roleId = $this->roleId($role);
+                if (!$roleId) {
+                    $this->rolePermissionCache[$role] = [];
+
+                    return null;
+                }
+                $query->where('role_id', $roleId);
+            } elseif ($this->hasColumn('role_permissions', 'role')) {
+                $query->where('role', $role);
+            } else {
                 return null;
             }
-            $query->where('role_id', $roleId);
-        } elseif (Schema::hasColumn('role_permissions', 'role')) {
-            $query->where('role', $role);
-        } else {
-            return null;
+
+            $this->rolePermissionCache[$role] = $query->pluck('allowed', 'permission')
+                ->map(fn ($allowed) => (bool) $allowed)
+                ->all();
         }
 
-        $rolePermission = $query->first();
-
-        return $rolePermission?->allowed;
+        return $this->rolePermissionCache[$role][$permission] ?? null;
     }
 
     private function normalizeLegacyRole(string $role): string

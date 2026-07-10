@@ -1261,8 +1261,7 @@ class PayrollRunController extends Controller
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->flip();
 
-        $employee = Employee::with(['scheduleTemplate.days.shift'])->find($empId);
-        $templateDays = $employee?->scheduleTemplate?->days?->keyBy('day_of_week') ?? collect();
+        $employee = Employee::with(Employee::scheduleTemplateEagerLoads())->find($empId);
         $overrides = ScheduleAssignment::with('shift')
             ->where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $countUntil])
@@ -1276,8 +1275,15 @@ class PayrollRunController extends Controller
                 continue;
             }
 
+            // Belum masuk / sudah keluar → tak ada kewajiban hadir, jadi bukan alpha.
+            if ($employee && ! $employee->isEmployedOn($date)) {
+                continue;
+            }
+
+            // Override menang; template memakai yang BERLAKU pada tanggal itu, bukan yang
+            // terpasang sekarang — jadwal yang pernah berubah tak lagi berlaku surut.
             $shift = $overrides->get($dateString)?->shift
-                ?? $templateDays->get($date->dayOfWeekIso)?->shift;
+                ?? $employee?->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
 
             if ($shift && ! $shift->is_off) {
                 $inferredAbsentDates->push($dateString);
@@ -1457,7 +1463,8 @@ class PayrollRunController extends Controller
             return false;
         }
 
-        $template = $employee->scheduleTemplate;
+        // Template yang berlaku pada tanggal itu — bukan yang terpasang sekarang.
+        $template = $employee->scheduleTemplateOn($dateStr);
         if (! $template) {
             return false;
         }

@@ -181,10 +181,31 @@
                     @csrf
                     <input type="hidden" name="template_id" value="{{ $template->id }}">
 
+                    <div class="mb-3 p-3 rounded-lg bg-white border border-emerald-100">
+                        <label class="block text-[11px] font-bold text-gray-700 mb-1">Berlaku mulai tanggal</label>
+                        <input type="date" name="effective_from" value="{{ now()->toDateString() }}" required
+                            class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-emerald-500">
+                        <p class="text-[11px] text-gray-400 mt-1">
+                            Jadwal <strong>sebelum</strong> tanggal ini tidak berubah. Isi tanggal pergantian yang sebenarnya —
+                            mis. karyawan pindah dari 6 hari kerja ke 5 hari kerja pada 18 Mei, isi <strong>18 Mei</strong>,
+                            bukan hari ini.
+                        </p>
+
+                        <label class="flex items-start gap-2 mt-3 pt-3 border-t border-gray-100 cursor-pointer">
+                            <input type="checkbox" name="unassign_unchecked" value="1"
+                                class="mt-0.5 w-4 h-4 accent-red-500 rounded cursor-pointer">
+                            <span class="text-[11px] text-gray-600">
+                                <strong class="text-red-600">Lepaskan karyawan yang tidak dicentang</strong> dari template ini,
+                                terhitung sejak tanggal di atas. Biarkan kosong kalau Anda hanya ingin
+                                <em>menambah</em> karyawan — yang tidak dicentang akan dibiarkan apa adanya.
+                            </span>
+                        </label>
+                    </div>
+
                     <div class="flex items-center justify-between mb-3">
                         <div class="text-[12px] font-bold text-gray-700">
                             Pilih karyawan untuk template ini
-                            <span class="ml-1 text-[10px] font-normal text-gray-400">(centang = assign, hapus centang = lepas)</span>
+                            <span class="ml-1 text-[10px] font-normal text-gray-400">(centang = assign pada tanggal di atas)</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <button type="button" onclick="selectAllTpl({{ $template->id }}, true)"

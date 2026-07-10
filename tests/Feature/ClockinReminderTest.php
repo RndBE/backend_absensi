@@ -48,6 +48,9 @@ class ClockinReminderTest extends TestCase
             $table->string('email')->unique();
             $table->string('phone')->nullable();
             $table->string('fcm_token')->nullable();
+            $table->date('join_date')->nullable();
+            $table->date('resign_date')->nullable();
+            $table->date('last_working_date')->nullable();
             $table->boolean('is_active')->default(true);
             $table->string('role')->default('employee');
             $table->timestamps();
@@ -124,9 +127,9 @@ class ClockinReminderTest extends TestCase
         return Company::firstOrCreate(['name' => 'PT Tessa']);
     }
 
-    private function makeEmployee(string $email, ?string $phone, ?int $templateId = null): Employee
+    private function makeEmployee(string $email, ?string $phone, ?int $templateId = null, array $attributes = []): Employee
     {
-        return Employee::create([
+        return Employee::create(array_merge([
             'employee_code' => 'EMP-'.substr(md5($email), 0, 8),
             'company_id' => $this->company()->id,
             'schedule_template_id' => $templateId,
@@ -135,7 +138,7 @@ class ClockinReminderTest extends TestCase
             'phone' => $phone,
             'is_active' => true,
             'role' => 'employee',
-        ]);
+        ], $attributes));
     }
 
     private function shift(bool $isOff = false, ?string $startTime = '08:00'): int
@@ -195,7 +198,7 @@ class ClockinReminderTest extends TestCase
 
         $first = ClockinReminderService::remindForNow(now());
 
-        $this->assertSame(1, $first['sent']);
+        $this->assertSame(1, $first['in_app']);
         Http::assertSentCount(1);
         $this->assertDatabaseHas('notifications', [
             'employee_id' => $a->id,
@@ -206,7 +209,7 @@ class ClockinReminderTest extends TestCase
         Carbon::setTestNow(Carbon::parse(self::DATE.' 07:46:00'));
         $second = ClockinReminderService::remindForNow(now());
 
-        $this->assertSame(0, $second['sent']);
+        $this->assertSame(0, $second['in_app']);
         Http::assertSentCount(1); // tetap 1
         $this->assertSame(1, Notification::where('type', 'clockin_reminder')->count());
     }
@@ -228,7 +231,7 @@ class ClockinReminderTest extends TestCase
 
         $result = ClockinReminderService::remindForNow(now());
 
-        $this->assertSame(0, $result['sent']); // sudah clock-in & libur → tak ada yang dikirim
+        $this->assertSame(0, $result['in_app']); // sudah clock-in & libur → tak ada yang dikirim
         Http::assertNothingSent();
     }
 
@@ -244,7 +247,7 @@ class ClockinReminderTest extends TestCase
 
         $result = ClockinReminderService::remindForNow(now());
 
-        $this->assertSame(0, $result['sent']);
+        $this->assertSame(0, $result['in_app']);
         Http::assertNothingSent();
     }
 
@@ -264,7 +267,7 @@ class ClockinReminderTest extends TestCase
 
         $result = ClockinReminderService::remindForNow(now());
 
-        $this->assertSame(1, $result['sent']);
+        $this->assertSame(1, $result['in_app']);
         Http::assertSentCount(1);
         $this->assertDatabaseHas('notifications', [
             'employee_id' => $a->id,
@@ -303,7 +306,131 @@ class ClockinReminderTest extends TestCase
 
         $result = ClockinReminderService::remindForNow(now());
 
-        $this->assertSame(0, $result['sent']);
+        $this->assertSame(0, $result['in_app']);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Template mingguan tak punya masa berlaku. Karyawan yang baru masuk minggu depan, tapi
+     * sudah di-assign template, TIDAK boleh diingatkan clock-in sebelum hari pertamanya.
+     */
+    public function test_skips_employee_who_has_not_joined_yet(): void
+    {
+        Http::fake(['*' => Http::response(['ok' => true], 200)]);
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 07:45:00'));
+        $this->enable(15);
+
+        $work = $this->shift(false, '08:00');
+        $template = $this->template($work);
+
+        $belumMasuk = $this->makeEmployee('baru@t.test', '08120000015', $template, ['join_date' => '2026-07-10']);
+        $sudahMasuk = $this->makeEmployee('lama@t.test', '08120000016', $template, ['join_date' => '2024-01-01']);
+
+        $result = ClockinReminderService::remindForNow(now());
+
+        $this->assertSame(1, $result['in_app']);
+        Http::assertSentCount(1);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $sudahMasuk->id, 'type' => 'clockin_reminder']);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => $belumMasuk->id, 'type' => 'clockin_reminder']);
+    }
+
+    /** Karyawan yang sudah lewat hari kerja terakhirnya juga tak diingatkan. */
+    public function test_skips_employee_past_last_working_date(): void
+    {
+        Http::fake(['*' => Http::response(['ok' => true], 200)]);
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 07:45:00'));
+        $this->enable(15);
+
+        $work = $this->shift(false, '08:00');
+        $keluar = $this->makeEmployee('keluar@t.test', '08120000017', $this->template($work), [
+            'join_date' => '2024-01-01', 'last_working_date' => '2026-07-02',
+        ]);
+
+        $result = ClockinReminderService::remindForNow(now());
+
+        $this->assertSame(0, $result['in_app']);
+        Http::assertNothingSent();
+        $this->assertDatabaseMissing('notifications', ['employee_id' => $keluar->id, 'type' => 'clockin_reminder']);
+    }
+
+    /**
+     * WA gagal → JANGAN catat notifikasi in-app. Baris itu penanda dedup harian; kalau
+     * dibuat, orangnya dianggap "sudah diingatkan" padahal tak ada pesan yang sampai, dan
+     * tak akan dicoba ulang hari itu.
+     */
+    public function test_whatsapp_failure_does_not_consume_daily_dedup(): void
+    {
+        // fakeSequence: panggilan pertama gagal (gateway mati), kedua berhasil.
+        // Http::fake() yang dipanggil dua kali justru MENAMBAH stub — yang pertama tetap menang.
+        Http::fakeSequence()
+            ->push(['error' => 'gateway mati'], 500)
+            ->push(['ok' => true], 200);
+
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 07:45:00'));
+        $this->enable(15);
+
+        $work = $this->shift(false, '08:00');
+        $a = $this->makeEmployee('a@t.test', '08120000001');
+        $this->assign($a->id, $work);
+
+        $gagal = ClockinReminderService::remindForNow(now());
+
+        $this->assertSame(1, $gagal['wa_failed'], 'HTTP 500 harus dihitung gagal, bukan sukses');
+        $this->assertSame(0, $gagal['wa_sent']);
+        $this->assertSame(0, $gagal['in_app'], 'notifikasi tak boleh dibuat saat WA gagal');
+        $this->assertSame(0, Notification::where('type', 'clockin_reminder')->count());
+
+        // Menit berikutnya gateway hidup → dicoba ulang dan berhasil.
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 07:46:00'));
+
+        $berhasil = ClockinReminderService::remindForNow(now());
+
+        $this->assertSame(1, $berhasil['wa_sent']);
+        $this->assertSame(1, $berhasil['in_app']);
+        $this->assertSame(1, Notification::where('type', 'clockin_reminder')->count());
+    }
+
+    /**
+     * Pengaman: kalau gateway mati sepanjang jendela, pada menit TERAKHIR notifikasi in-app
+     * tetap dibuat — kalau tidak, karyawan itu tak dapat apa pun sama sekali.
+     */
+    public function test_last_minute_of_window_still_records_in_app_notification(): void
+    {
+        Http::fake(['*' => Http::response([], 500)]);
+        $this->enable(15);
+
+        $work = $this->shift(false, '08:00');
+        $a = $this->makeEmployee('a@t.test', '08120000001');
+        $this->assign($a->id, $work);
+
+        // Jendela berakhir 08:30 (jam masuk + 30 menit toleransi).
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 08:00:00'));
+        $this->assertSame(0, ClockinReminderService::remindForNow(now())['in_app']);
+
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 08:29:30'));
+        $akhir = ClockinReminderService::remindForNow(now());
+
+        $this->assertSame(1, $akhir['wa_failed']);
+        $this->assertSame(1, $akhir['in_app'], 'menit terakhir harus tetap mencatat in-app');
+        $this->assertSame(1, Notification::where('type', 'clockin_reminder')->count());
+    }
+
+    /** Karyawan tanpa nomor HP: WA tak relevan, in-app tetap dicatat sekali. */
+    public function test_employee_without_phone_still_gets_in_app_notification(): void
+    {
+        Http::fake();
+        Carbon::setTestNow(Carbon::parse(self::DATE.' 07:45:00'));
+        $this->enable(15);
+
+        $work = $this->shift(false, '08:00');
+        $a = $this->makeEmployee('nohp@t.test', null);
+        $this->assign($a->id, $work);
+
+        $hasil = ClockinReminderService::remindForNow(now());
+
+        $this->assertSame(1, $hasil['in_app']);
+        $this->assertSame(0, $hasil['wa_sent']);
+        $this->assertSame(0, $hasil['wa_failed']);
         Http::assertNothingSent();
     }
 
@@ -327,7 +454,7 @@ class ClockinReminderTest extends TestCase
 
         $result = ClockinReminderService::remindForNow(now());
 
-        $this->assertSame(1, $result['sent']);
+        $this->assertSame(1, $result['in_app']);
         Http::assertSentCount(1);
         $this->assertDatabaseHas('notifications', ['employee_id' => $masuk->id, 'type' => 'clockin_reminder']);
         $this->assertDatabaseMissing('notifications', ['employee_id' => $libur->id, 'type' => 'clockin_reminder']);

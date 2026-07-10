@@ -1215,9 +1215,122 @@ class EmployeePortalTest extends TestCase
             ->get('/employee/approvals')
             ->assertOk()
             ->assertSee('approval-action-bar', false)
-            ->assertSee('Tambah catatan setuju')
-            ->assertSee('Tambah catatan tolak')
             ->assertDontSee('rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-3', false);
+    }
+
+    /**
+     * Satu kotak catatan untuk kedua keputusan. Dulu ada dua textarea `notes` terpisah
+     * (setuju & tolak) yang bisa terisi berbeda, dan hanya salah satu yang ikut terkirim.
+     */
+    public function test_employee_approval_uses_single_note_field_for_both_actions(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $html = $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'name="notes"'), 'harus tepat satu kotak catatan per pengajuan');
+        $this->assertStringNotContainsString('Tambah catatan setuju', $html);
+        $this->assertStringNotContainsString('Tambah catatan tolak', $html);
+
+        // Tombol Tolak mengarahkan form yang sama ke route reject lewat formaction.
+        $this->assertStringContainsString('formaction="'.route('employee.approvals.reject', ['overtime', 1]).'"', $html);
+        $this->assertStringContainsString('action="'.route('employee.approvals.approve', ['overtime', 1]).'"', $html);
+    }
+
+    /** Catatan tersimpan di approval_logs saat menolak. */
+    public function test_employee_approval_note_is_saved_on_reject(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $this->withSession(['employee_id' => 2])
+            ->post('/employee/approvals/overtime/1/reject', ['notes' => 'Kurang lampiran'])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertDatabaseHas('approval_logs', [
+            'approvable_id' => 1,
+            'approver_id' => 2,
+            'action' => 'rejected',
+            'notes' => 'Kurang lampiran',
+        ]);
+    }
+
+    /**
+     * Approver step terakhir harus tahu keputusannya final; approver di tengah harus tahu
+     * siapa berikutnya. Tanpa itu, "Step 1" tidak memberi tahu apa-apa.
+     */
+    public function test_employee_approval_card_shows_chain_position(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'nofi@example.test', 'full_name' => 'Nofiyanto Manager', 'role' => 'manager']);
+        $this->seedOvertimeApprovalForEmployee(1, [2, 3]);
+
+        // Step 1 dari 2 → belum final, ada approver berikutnya.
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('dari 2')
+            ->assertSee('Setelah Anda:')
+            ->assertSee('Nofiyanto Manager')
+            ->assertDontSee('Keputusan Anda final');
+
+        $this->withSession(['employee_id' => 2])
+            ->post('/employee/approvals/overtime/1/approve')
+            ->assertRedirect(route('employee.approvals.index'));
+
+        // Step 2 dari 2 → approver terakhir, keputusannya final.
+        $this->withSession(['employee_id' => 3])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('Keputusan Anda final')
+            ->assertDontSee('Setelah Anda:');
+    }
+
+    /** Umur pengajuan harus terlihat supaya yang menumpuk tidak tenggelam. */
+    public function test_employee_approval_card_shows_waiting_age(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        // Lewat query builder: `created_at` tidak fillable, jadi ->update() akan diabaikan.
+        \Illuminate\Support\Facades\DB::table('overtime_requests')
+            ->where('id', 1)
+            ->update(['created_at' => now()->subDays(5)]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('Menunggu')
+            ->assertSee('bg-red-50 text-red-700', false); // >72 jam → merah
+    }
+
+    /** Tab riwayat menampilkan keputusan approver ini beserta catatannya, tanpa tombol aksi. */
+    public function test_employee_approval_history_tab_lists_past_decisions(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $this->withSession(['employee_id' => 2])
+            ->post('/employee/approvals/overtime/1/approve', ['notes' => 'Disetujui, lembur wajar'])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals?tab=history')
+            ->assertOk()
+            ->assertSee('Disetujui')
+            ->assertSee('Catatan Anda:')
+            ->assertSee('Disetujui, lembur wajar')
+            ->assertSee('Step 1')
+            ->assertDontSee('formaction=', false);
     }
 
     public function test_employee_approver_can_approve_overtime_step_then_next_approver_final_approves(): void

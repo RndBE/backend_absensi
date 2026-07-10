@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ApprovalLog;
 use App\Models\AttendanceRequest;
 use App\Models\BudgetRequest;
+use App\Models\Department;
 use App\Models\Lpj;
 use App\Models\TravelReport;
 use App\Models\DataChangeRequest;
@@ -24,46 +25,119 @@ class ApprovalController extends Controller
     {
         $admin = Employee::find(session('admin_id'));
         $tab = $request->tab ?? 'leave';
+        $departmentId = $request->department_id ?: null;
+
+        // Manager hanya melihat departemennya sendiri — filter manual tak boleh menembusnya.
+        $scopedDept = \App\Support\AdminDataScope::departmentId($admin) ?: $departmentId;
+
+        $withEmployee = ['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name'];
+
+        $byDepartment = fn ($query) => $query->when(
+            $scopedDept,
+            fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('department_id', $scopedDept))
+        );
 
         // Show requests where the current approver in the chain is this admin
-        $leave = $this->getMyPendingRequests(LeaveRequest::class, $admin)
-            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'leaveType', 'attachments'])
+        $leave = $byDepartment($this->getMyPendingRequests(LeaveRequest::class, $admin))
+            ->with([...$withEmployee, 'leaveType', 'attachments'])
             ->orderBy('created_at', 'desc')->get();
 
-        $overtime = $this->getMyPendingRequests(OvertimeRequest::class, $admin)
-            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name'])
+        $overtime = $byDepartment($this->getMyPendingRequests(OvertimeRequest::class, $admin))
+            ->with($withEmployee)
             ->orderBy('created_at', 'desc')->get();
 
-        $attendance = $this->getMyPendingRequests(AttendanceRequest::class, $admin)
-            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name'])
+        $attendance = $byDepartment($this->getMyPendingRequests(AttendanceRequest::class, $admin))
+            ->with($withEmployee)
             ->orderBy('created_at', 'desc')->get();
 
         // Budget requests
-        $budget = $this->getMyPendingRequests(BudgetRequest::class, $admin)
-            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'items'])
+        $budget = $byDepartment($this->getMyPendingRequests(BudgetRequest::class, $admin))
+            ->with([...$withEmployee, 'items'])
             ->orderBy('created_at', 'desc')->get();
 
         // Travel Reports (LHP)
-        $travelReport = $this->getMyPendingRequests(TravelReport::class, $admin)
-            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name'])
+        $travelReport = $byDepartment($this->getMyPendingRequests(TravelReport::class, $admin))
+            ->with($withEmployee)
             ->orderBy('created_at', 'desc')->get();
 
         // LPJ
-        $lpj = $this->getMyPendingRequests(Lpj::class, $admin)
-            ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'budgetRequest:id,title'])
+        $lpj = $byDepartment($this->getMyPendingRequests(Lpj::class, $admin))
+            ->with([...$withEmployee, 'budgetRequest:id,title'])
             ->orderBy('created_at', 'desc')->get();
 
         // Data change requests: only visible to superadmin
         if ($admin->role === 'superadmin') {
-            $dataChange = DataChangeRequest::whereIn('status', ['pending', 'in_review'])
-                ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
-                ->with(['employee:id,full_name,photo,department_id,job_level', 'employee.department:id,name', 'attachments'])
+            $dataChange = $byDepartment(
+                DataChangeRequest::whereIn('status', ['pending', 'in_review'])
+                    ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            )
+                ->with([...$withEmployee, 'attachments'])
                 ->orderBy('created_at', 'desc')->get();
         } else {
             $dataChange = collect();
         }
 
-        return view('admin.approvals.index', compact('leave', 'overtime', 'attendance', 'budget', 'travelReport', 'lpj', 'dataChange', 'tab', 'admin'));
+        // Approver step aktif per pengajuan, di-batch agar tidak N+1.
+        $currentApprover = array_merge(
+            $this->currentApproverMap($leave, 'leave', 'leave'),
+            $this->currentApproverMap($overtime, 'overtime', 'overtime'),
+            $this->currentApproverMap($attendance, 'attendance', 'attendance'),
+            $this->currentApproverMap($budget, 'budget', 'budget'),
+            $this->currentApproverMap($travelReport, 'travel_report', 'travel_report'),
+            $this->currentApproverMap($lpj, 'lpj', 'lpj'),
+        );
+
+        $departments = Department::where('company_id', $admin->company_id)
+            ->orderBy('name')->get(['id', 'name']);
+
+        return view('admin.approvals.index', compact(
+            'leave', 'overtime', 'attendance', 'budget', 'travelReport', 'lpj', 'dataChange',
+            'tab', 'admin', 'departments', 'departmentId', 'currentApprover',
+        ));
+    }
+
+    /**
+     * Peta "siapa approver yang harus menyetujui SEKARANG" untuk tiap pengajuan,
+     * berikut posisi step-nya (mis. step 2 dari 3). Kunci: "{tipe}-{id pengajuan}".
+     *
+     * Di-batch: satu query untuk seluruh rantai + satu untuk seluruh approver, alih-alih
+     * dua query per baris seperti EmployeeApprover::getApproverAt().
+     *
+     * @return array<string, array{name:?string, position:?string, step:int, total:int}>
+     */
+    private function currentApproverMap(iterable $items, string $requestType, string $typeKey): array
+    {
+        $items = collect($items);
+        if ($items->isEmpty()) {
+            return [];
+        }
+
+        $chains = EmployeeApprover::whereIn('employee_id', $items->pluck('employee_id')->unique()->all())
+            ->where('request_type', $requestType)
+            ->orderBy('step_order')
+            ->get()
+            ->groupBy('employee_id');
+
+        $approvers = Employee::whereIn('id', $chains->flatten()->pluck('approver_id')->unique()->all())
+            ->get(['id', 'full_name', 'position'])
+            ->keyBy('id');
+
+        $map = [];
+        foreach ($items as $item) {
+            $chain = $chains->get($item->employee_id) ?? collect();
+            $step = (int) ($item->current_step ?? 1);
+            $record = $chain->firstWhere('step_order', $step);
+            $approver = $record ? $approvers->get($record->approver_id) : null;
+
+            $map["{$typeKey}-{$item->id}"] = [
+                'name' => $approver?->full_name,
+                'position' => $approver?->position,
+                'step' => $step,
+                'total' => $chain->count(),
+            ];
+        }
+
+        return $map;
     }
 
     public function approve(Request $request, $type, $id)
@@ -298,6 +372,14 @@ class ApprovalController extends Controller
         };
     }
 
+    /**
+     * Pengajuan yang menunggu persetujuan admin ini, yaitu yang approver step aktifnya = dia.
+     *
+     * Dulu ini memuat SELURUH pengajuan pending ke memori lalu menyaringnya satu per satu di
+     * PHP — pada halaman manager itu berbuntut ratusan query dan tumbuh seiring jumlah
+     * pengajuan. Sekarang ditegakkan lewat satu subquery, dan hasilnya tetap berupa builder
+     * sehingga pemanggil masih bisa merantai ->with()/->orderBy().
+     */
     private function getMyPendingRequests(string $modelClass, Employee $admin)
     {
         if ($admin->role === 'superadmin') {
@@ -305,36 +387,16 @@ class ApprovalController extends Controller
         }
 
         $requestType = $this->modelToRequestType($modelClass);
+        $table = (new $modelClass)->getTable();
 
-        // Find all employees where this admin is an approver for this request type
-        $employeeSteps = EmployeeApprover::where('approver_id', $admin->id)
-            ->where('request_type', $requestType)
-            ->get()
-            ->groupBy('employee_id');
-
-        $pending = $modelClass::whereIn('status', ['pending', 'in_review'])
-            ->get();
-
-        $myIds = [];
-
-        foreach ($pending as $req) {
-            if (isset($employeeSteps[$req->employee_id])) {
-                // Check if this admin is the approver at the current step
-                $steps = $employeeSteps[$req->employee_id];
-                foreach ($steps as $stepRecord) {
-                    if ($stepRecord->step_order === $req->current_step) {
-                        $myIds[] = $req->id;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (empty($myIds)) {
-            return $modelClass::whereRaw('1 = 0');
-        }
-
-        return $modelClass::whereIn('id', $myIds);
+        return $modelClass::whereIn('status', ['pending', 'in_review'])
+            ->whereExists(fn ($q) => $q
+                ->selectRaw('1')
+                ->from('employee_approvers')
+                ->whereColumn('employee_approvers.employee_id', "{$table}.employee_id")
+                ->whereColumn('employee_approvers.step_order', "{$table}.current_step")
+                ->where('employee_approvers.request_type', $requestType)
+                ->where('employee_approvers.approver_id', $admin->id));
     }
 
     private function onFinalApproval(string $modelClass, $item): void

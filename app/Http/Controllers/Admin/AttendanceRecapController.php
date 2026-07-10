@@ -35,7 +35,7 @@ class AttendanceRecapController extends Controller
         // Load employees with their templates
         $query = Employee::where('company_id', $admin->company_id)
             ->where('is_active', true)
-            ->with(['department:id,name', 'scheduleTemplate.days.shift']);
+            ->with(['department:id,name', ...Employee::scheduleTemplateEagerLoads()]);
 
         // Manager hanya melihat rekap departemennya sendiri.
         if ($managerDept = \App\Support\AdminDataScope::departmentId($admin)) {
@@ -93,11 +93,13 @@ class AttendanceRecapController extends Controller
             ];
 
             // Shift: manual override wins over holiday; template only applies on non-holidays.
+            // Template dijaga terhadap masa kerja karyawan, dan memakai template yang BERLAKU
+            // pada tanggal itu (riwayat), bukan yang terpasang sekarang.
             $override = $overrides->get($emp->id);
             if ($override) {
                 $row['shift'] = $override->shift;
-            } elseif (!$holiday && $emp->scheduleTemplate) {
-                $row['shift'] = $emp->scheduleTemplate->getShiftForDay($date->dayOfWeekIso);
+            } elseif (!$holiday && $emp->isEmployedOn($date)) {
+                $row['shift'] = $emp->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
             }
 
             $att = $attendances->get($emp->id);
@@ -765,7 +767,7 @@ class AttendanceRecapController extends Controller
             return false;
         }
 
-        $shift = $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
+        $shift = $employee->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
 
         if (! $shift || $shift->is_off || ! $shift->start_time) {
             return false;
@@ -778,21 +780,13 @@ class AttendanceRecapController extends Controller
     {
         $admin = Employee::find(session('admin_id'));
         $employee = Employee::where('company_id', $admin->company_id)
-            ->with(['department:id,name', 'scheduleTemplate.days.shift'])
+            ->with(['department:id,name', ...Employee::scheduleTemplateEagerLoads()])
             ->findOrFail($id);
 
         $period = $request->period ? Carbon::parse($request->period . '-01') : Carbon::today()->startOfMonth();
         $startOfMonth = $period->copy()->startOfMonth();
         $endOfMonth = $period->copy()->endOfMonth();
         $daysInMonth = $period->daysInMonth;
-
-        // Load template days
-        $templateDays = [];
-        if ($employee->scheduleTemplate) {
-            foreach ($employee->scheduleTemplate->days as $day) {
-                $templateDays[$day->day_of_week] = $day->shift;
-            }
-        }
 
         // Load overrides
         $overrides = ScheduleAssignment::with('shift')
@@ -835,9 +829,11 @@ class AttendanceRecapController extends Controller
             $att = $attendances[$dateStr] ?? null;
 
             // Manual override wins over holiday; template only applies on non-holidays.
+            // Template dijaga terhadap masa kerja, dan diresolusi PER TANGGAL karena jadwal
+            // seseorang bisa berubah di tengah bulan.
             $shift = isset($overrides[$dateStr]) ? $overrides[$dateStr]->shift : null;
-            if (!$shift && !$holiday) {
-                $shift = $templateDays[$dow] ?? null;
+            if (!$shift && !$holiday && $employee->isEmployedOn($date)) {
+                $shift = $employee->scheduleTemplateOn($date)?->getShiftForDay($dow);
             }
 
             // Check leave

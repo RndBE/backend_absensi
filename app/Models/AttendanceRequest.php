@@ -102,13 +102,10 @@ class AttendanceRequest extends Model
             return null;
         }
 
-        // 2. Template mingguan.
-        if ($employee->schedule_template_id) {
-            $employee->loadMissing('scheduleTemplate.days.shift');
-            $shift = $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
-            if ($shift && ! $shift->is_off) {
-                return $shift->start_time;
-            }
+        // 2. Template mingguan yang berlaku pada tanggal itu (riwayat).
+        $shift = $employee->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
+        if ($shift && ! $shift->is_off) {
+            return $shift->start_time;
         }
 
         // 3. Work schedule legacy.

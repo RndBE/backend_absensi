@@ -56,10 +56,18 @@ return [
     ],
 
     'whatsapp' => [
-        'endpoint' => env('WHATSAPP_ENDPOINT', 'http://72.60.78.159:3000/client/sendMessage/beacon'),
-        'api_key' => env('WHATSAPP_API_KEY'),
+        'endpoint' => env('WHATSAPP_ENDPOINT', 'https://whatsapp.beacontelemetry.com/tessa-wa/send/message'),
+        'username' => env('WHATSAPP_USERNAME', 'admin'),
+        'password' => env('WHATSAPP_PASSWORD'),
+        'device_id' => env('WHATSAPP_DEVICE_ID', '1a678778-afb5-479b-8894-f7bbc005841d'),
         'timeout' => env('WHATSAPP_TIMEOUT', 15),
     ],
+
+    // 'whatsapp' => [
+    //     'endpoint' => env('WHATSAPP_ENDPOINT', 'http://72.60.78.159:3000/client/sendMessage/beacon'),
+    //     'api_key' => env('WHATSAPP_API_KEY'),
+    //     'timeout' => env('WHATSAPP_TIMEOUT', 15),
+    // ],
 
     // Integrasi AI kantor "Tessa" — MENGIKUTI role HRIS.
     // Payroll/slip gaji TIDAK pernah diekspos ke Tessa (lihat middleware tessa.actor).

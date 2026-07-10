@@ -79,24 +79,33 @@ class ClockinReminderService
 
     /**
      * Kirim reminder clock-in untuk semua yang jatuh tempo pada $now — WhatsApp (gateway
-     * backend) + notifikasi in-app + push FCM. Dedup: satu reminder per karyawan per hari,
-     * sehingga aman dipanggil tiap menit oleh scheduler tanpa dobel.
+     * backend) + notifikasi in-app + push FCM. Aman dipanggil tiap menit oleh scheduler.
      *
-     * @return array{sent:int, skipped:int, wa_failed:int}
+     * URUTAN PENTING: WhatsApp dicoba LEBIH DULU, dan notifikasi in-app (yang sekaligus
+     * jadi penanda dedup harian) baru dibuat bila WA berhasil — atau bila karyawan memang
+     * tak punya nomor. Dulu sebaliknya: dedup tercatat lebih dulu, sehingga gateway yang
+     * mati sesaat membuat orang itu "sudah diingatkan" padahal tak ada pesan yang sampai,
+     * dan tak pernah dicoba ulang hari itu.
+     *
+     * Pengaman: pada menit terakhir jendela, notifikasi in-app tetap dibuat walau WA gagal —
+     * kalau tidak, gateway yang mati sepanjang jendela membuat karyawan tak dapat apa pun.
+     *
+     * @return array{in_app:int, wa_sent:int, wa_failed:int, skipped:int}
      */
     public static function remindForNow(Carbon $now, ?int $companyId = null): array
     {
         if (! self::isEnabled()) {
-            return ['sent' => 0, 'skipped' => 0, 'wa_failed' => 0];
+            return ['in_app' => 0, 'wa_sent' => 0, 'wa_failed' => 0, 'skipped' => 0];
         }
 
         $date = $now->copy()->startOfDay();
         $dateStr = $date->toDateString();
         $before = self::beforeMinutes();
 
-        $sent = 0;
-        $skipped = 0;
+        $inApp = 0;
+        $waSent = 0;
         $waFailed = 0;
+        $skipped = 0;
 
         foreach (self::candidates($date, $companyId) as $c) {
             $employee = $c['employee'];
@@ -116,9 +125,24 @@ class ClockinReminderService
             }
 
             $payload = self::payload($c);
+            $punyaNomor = filled($employee->phone);
 
-            // Notifikasi in-app (sekaligus penanda dedup). Jalur template tak punya assignment
-            // untuk dirujuk, jadi referensinya dikosongkan.
+            // 1. WhatsApp dulu — kanal utama, dan satu-satunya yang dilihat security.
+            $waBerhasil = true;
+            if ($punyaNomor) {
+                $waBerhasil = self::sendWhatsApp($employee->id, $employee->phone, $payload['message']);
+                $waBerhasil ? $waSent++ : $waFailed++;
+            }
+
+            // WA gagal & jendela masih panjang → jangan catat apa pun, coba lagi menit depan.
+            $kesempatanTerakhir = $now->gte($windowEnd->copy()->subMinute());
+            if (! $waBerhasil && ! $kesempatanTerakhir) {
+                $skipped++;
+                continue;
+            }
+
+            // 2. Notifikasi in-app (sekaligus penanda dedup). Jalur template tak punya
+            //    assignment untuk dirujuk, jadi referensinya dikosongkan.
             $notif = Notification::create([
                 'employee_id' => $employee->id,
                 'title' => $payload['title'],
@@ -127,31 +151,50 @@ class ClockinReminderService
                 'reference_type' => $c['assignment_id'] ? ScheduleAssignment::class : null,
                 'reference_id' => $c['assignment_id'],
             ]);
+            $inApp++;
 
-            // Push FCM ke aplikasi mobile (lewati diam-diam bila tak ada token).
+            // 3. Push FCM (lewati diam-diam bila tak ada token).
             FcmService::sendToEmployee($employee, $notif->title, $notif->message, [
                 'type' => 'clockin_reminder',
                 'reference_type' => 'attendance',
                 'reference_id' => (string) ($c['assignment_id'] ?? $employee->id),
             ]);
-
-            // WhatsApp (best-effort — kegagalan satu orang tak menggagalkan batch).
-            if (filled($employee->phone)) {
-                try {
-                    app(WhatsAppGatewayService::class)->sendText($employee->phone, $payload['message']);
-                } catch (\Throwable $e) {
-                    $waFailed++;
-                    Log::warning('Clock-in reminder WhatsApp gagal terkirim', [
-                        'employee_id' => $employee->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-
-            $sent++;
         }
 
-        return ['sent' => $sent, 'skipped' => $skipped, 'wa_failed' => $waFailed];
+        return ['in_app' => $inApp, 'wa_sent' => $waSent, 'wa_failed' => $waFailed, 'skipped' => $skipped];
+    }
+
+    /**
+     * True hanya bila gateway benar-benar menerima pesannya.
+     *
+     * Http::post() TIDAK melempar exception untuk respons 4xx/5xx — hanya untuk gagal
+     * koneksi. Tanpa memeriksa successful(), gateway yang menjawab 401 (API key salah) atau
+     * 500 akan terhitung sebagai berhasil.
+     */
+    private static function sendWhatsApp(int $employeeId, string $phone, string $message): bool
+    {
+        try {
+            $response = app(WhatsAppGatewayService::class)->sendText($phone, $message);
+
+            if ($response->successful()) {
+                return true;
+            }
+
+            Log::warning('Clock-in reminder WhatsApp ditolak gateway', [
+                'employee_id' => $employeeId,
+                'status' => $response->status(),
+                'body' => mb_substr($response->body(), 0, 300),
+            ]);
+
+            return false;
+        } catch (\Throwable $e) {
+            Log::warning('Clock-in reminder WhatsApp gagal terkirim', [
+                'employee_id' => $employeeId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     /**
@@ -203,14 +246,12 @@ class ClockinReminderService
         }
 
         // 2. Template mingguan, untuk yang tak punya override pada tanggal itu.
-        $dayOfWeek = $date->dayOfWeekIso;
-
         $templated = Employee::query()
             ->where('is_active', true)
-            ->whereNotNull('schedule_template_id')
+            ->whereNotNull('schedule_template_id') // penunjuk template yang berlaku sekarang
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
             ->when($overridden !== [], fn ($q) => $q->whereNotIn('id', array_keys($overridden)))
-            ->with('scheduleTemplate.days.shift')
+            ->with(Employee::scheduleTemplateEagerLoads())
             ->get();
 
         // Libur perusahaan pada tanggal itu — hanya membatalkan jalur template.
@@ -221,8 +262,9 @@ class ClockinReminderService
                 continue;
             }
 
-            $shift = $employee->scheduleTemplate?->getShiftForDay($dayOfWeek);
-            if (! $shift || $shift->is_off || ! $shift->start_time) {
+            // Menghormati riwayat template + masa kerja; null bila OFF / belum masuk / sudah keluar.
+            $shift = $employee->templateShiftOn($date);
+            if (! $shift || ! $shift->start_time) {
                 continue;
             }
 

@@ -16,6 +16,7 @@ use App\Services\FcmService;
 use App\Support\AdminPermission;
 use App\Support\AttendanceOpenShift;
 use App\Support\AttendanceLateExcuse;
+use App\Support\MonthlyAttendance;
 use App\Support\AttendanceLeaveSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -97,139 +98,9 @@ class AttendanceController extends Controller
         $period = $request->period ? Carbon::parse($request->period . '-01') : now();
         $employee = $request->user();
 
-        $startOfMonth = $period->copy()->startOfMonth();
-        $endOfMonth = $period->copy()->endOfMonth();
-        $daysInMonth = $period->daysInMonth;
-
-        // Load template days (keyed by day_of_week: 1=Mon..7=Sun)
-        $templateDays = [];
-        if ($employee->schedule_template_id) {
-            $employee->load('scheduleTemplate.days.shift');
-            if ($employee->scheduleTemplate) {
-                foreach ($employee->scheduleTemplate->days as $day) {
-                    $templateDays[$day->day_of_week] = $day->shift;
-                }
-            }
-        }
-
-        // Load overrides for month
-        $overrides = ScheduleAssignment::with('shift')
-            ->where('employee_id', $employee->id)
-            ->whereBetween('date', [$startOfMonth, $endOfMonth])
-            ->get()
-            ->keyBy(fn($o) => $o->date->format('Y-m-d'));
-
-        // Load attendances for month
-        $attendances = Attendance::where('employee_id', $employee->id)
-            ->whereBetween('date', [$startOfMonth, $endOfMonth])
-            ->get()
-            ->keyBy(fn($a) => $a->date->format('Y-m-d'));
-
-        // Load holidays
-        $holidays = Holiday::where('company_id', $employee->company_id)
-            ->whereBetween('date', [$startOfMonth, $endOfMonth])
-            ->get()
-            ->keyBy(fn($h) => $h->date->format('Y-m-d'));
-
-        // Load approved leaves for month
-        $leaves = LeaveRequest::with('leaveType')
-            ->where('employee_id', $employee->id)
-            ->where('status', 'approved')
-            ->where('start_date', '<=', $endOfMonth->format('Y-m-d'))
-            ->where('end_date', '>=', $startOfMonth->format('Y-m-d'))
-            ->get();
-
-        $dayNames = ['', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-
-        $days = [];
-        $stats = ['hadir' => 0, 'terlambat' => 0, 'alpha' => 0, 'cuti' => 0, 'off' => 0, 'libur' => 0];
-
-        for ($d = 1; $d <= $daysInMonth; $d++) {
-            $date = $startOfMonth->copy()->addDays($d - 1);
-            $dateStr = $date->format('Y-m-d');
-            $dow = $date->dayOfWeekIso; // 1=Mon..7=Sun
-
-            // Holiday check
-            $holiday = $holidays[$dateStr] ?? null;
-
-            // Leave check
-            $leave = AttendanceLateExcuse::firstForDate($leaves, $date);
-            $lateExcuse = AttendanceLateExcuse::isLateArrivalLeave($leave) ? $leave : null;
-            $earlyDeparture = AttendanceLateExcuse::isEarlyDepartureLeave($leave) ? $leave : null;
-            $partialDayLeave = $lateExcuse || $earlyDeparture;
-
-            // Manual override wins over holiday; template only applies on non-holidays.
-            $shift = null;
-            if (!$leave || $partialDayLeave) {
-                if (isset($overrides[$dateStr])) {
-                    $shift = $overrides[$dateStr]->shift;
-                } elseif (!$holiday && isset($templateDays[$dow])) {
-                    $shift = $templateDays[$dow];
-                }
-            }
-
-            // Attendance
-            $att = $attendances[$dateStr] ?? null;
-
-            // Calculate stats
-            if ($holiday && !$shift) {
-                $stats['libur']++;
-            } elseif ($leave && !$partialDayLeave) {
-                $stats['cuti']++;
-            } elseif ($shift && $shift->is_off) {
-                $stats['off']++;
-            } elseif ($att) {
-                if (! AttendanceLateExcuse::manualPermissionStatusLabel($att->status) && $att->is_late && !$lateExcuse) {
-                    $stats['terlambat']++;
-                }
-                $stats['hadir']++;
-            } elseif ($shift && !$shift->is_off && $date->lte(Carbon::today())) {
-                $stats['alpha']++;
-            }
-
-            $days[] = [
-                'date' => $dateStr,
-                'day' => $d,
-                'day_name' => $dayNames[$dow],
-                'is_today' => $date->isToday(),
-                'holiday' => $holiday ? $holiday->name : null,
-                'leave' => $leave && !$partialDayLeave ? [
-                    'type' => $leave->leaveType->name ?? 'Cuti',
-                ] : null,
-                'late_excuse' => $lateExcuse ? [
-                    'type' => $lateExcuse->leaveType->name ?? AttendanceLateExcuse::SHORT_LABEL,
-                ] : null,
-                'early_leave' => $earlyDeparture ? [
-                    'type' => $earlyDeparture->leaveType->name ?? AttendanceLateExcuse::EARLY_DEPARTURE_SHORT_LABEL,
-                ] : null,
-                'shift' => $shift ? [
-                    'name' => $shift->name,
-                    'start_time' => $shift->start_time ? substr($shift->start_time, 0, 5) : null,
-                    'end_time' => $shift->end_time ? substr($shift->end_time, 0, 5) : null,
-                    'color' => $shift->color,
-                    'is_off' => $shift->is_off,
-                ] : null,
-                'attendance' => $att ? [
-                    'id' => $att->id,
-                    'clock_in' => $att->clock_in,
-                    'clock_out' => $att->clock_out,
-                    'clock_in_photo' => $att->clock_in_photo,
-                    'clock_out_photo' => $att->clock_out_photo,
-                    'clock_in_lat' => $att->clock_in_lat,
-                    'clock_in_lng' => $att->clock_in_lng,
-                    'clock_out_lat' => $att->clock_out_lat,
-                    'clock_out_lng' => $att->clock_out_lng,
-                    'status' => $att->status,
-                    'is_late' => $att->is_late,
-                    'status_label' => AttendanceLateExcuse::manualPermissionStatusLabel($att->status)
-                        ?? ($att->is_late && $lateExcuse
-                            ? AttendanceLateExcuse::STATUS_LABEL
-                            : ($att->is_late ? 'Terlambat' : ($earlyDeparture ? AttendanceLateExcuse::EARLY_DEPARTURE_STATUS_LABEL : 'Hadir'))),
-                    'is_remote' => $att->is_remote,
-                    'remote_notes' => $att->remote_notes,
-                ] : null,
-            ];
-        }
+        // Aturan "hari ini dihitung apa" hidup di App\Support\MonthlyAttendance agar sama
+        // persis dengan tampilan rekap tim di portal.
+        ['stats' => $stats, 'days' => $days] = MonthlyAttendance::build($employee, $period);
 
         return response()->json([
             'success' => true,
@@ -983,13 +854,10 @@ class AttendanceController extends Controller
             return $override->shift->end_time;
         }
 
-        // 2. Fallback to schedule template
-        if ($employee->schedule_template_id) {
-            $employee->loadMissing('scheduleTemplate.days.shift');
-            $shift = $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
-            if ($shift && !$shift->is_off) {
-                return $shift->end_time;
-            }
+        // 2. Fallback ke template yang berlaku pada tanggal itu (riwayat).
+        $shift = $employee->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
+        if ($shift && !$shift->is_off) {
+            return $shift->end_time;
         }
 
         // 3. Fallback to work schedule

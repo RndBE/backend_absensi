@@ -41,6 +41,7 @@ use App\Http\Controllers\Api\TravelZoneController as ApiTravelZoneController;
 use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceController;
 use App\Http\Controllers\Employee\AttendanceRequestController as EmployeeAttendanceRequestController;
 use App\Http\Controllers\Employee\ApprovalController as EmployeeApprovalController;
+use App\Http\Controllers\Employee\TeamAttendanceController as EmployeeTeamAttendanceController;
 use App\Http\Controllers\Employee\AuthController as EmployeeAuthController;
 use App\Http\Controllers\Employee\BudgetRequestController as EmployeeBudgetRequestController;
 use App\Http\Controllers\Employee\DashboardController as EmployeeDashboardController;
@@ -119,6 +120,12 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/lpj/create', [EmployeeLpjController::class, 'create'])->name('lpj.create');
     Route::post('/lpj', [EmployeeLpjController::class, 'store'])->name('lpj.store');
     Route::get('/lpj/{id}', [EmployeeLpjController::class, 'show'])->name('lpj.show');
+    // Presensi tim — hanya manager (dijaga di dalam controller: role + departemen).
+    Route::get('/team-attendance', [EmployeeTeamAttendanceController::class, 'index'])->name('team-attendance.index');
+    Route::get('/team-attendance/{employee}', [EmployeeTeamAttendanceController::class, 'show'])
+        ->whereNumber('employee')
+        ->name('team-attendance.show');
+
     Route::get('/approvals', [EmployeeApprovalController::class, 'index'])->name('approvals.index');
     Route::get('/approvals/budget/{id}/print', [EmployeeApprovalController::class, 'printBudget'])->name('approvals.budget.print');
     Route::get('/approvals/travel-report/{id}/print', [EmployeeApprovalController::class, 'printTravelReport'])->name('approvals.travel_report.print');

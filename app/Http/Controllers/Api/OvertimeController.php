@@ -212,16 +212,12 @@ class OvertimeController extends Controller
             $startTime = $override->shift->start_time;
             $endTime = $override->shift->end_time;
             $isOff = (bool) $override->shift->is_off;
-        } elseif ($employee->schedule_template_id) {
-            // 2. Fallback to schedule template
-            $employee->loadMissing('scheduleTemplate.days.shift');
-            $shift = $employee->scheduleTemplate?->getShiftForDay($dayOfWeek);
-            if ($shift) {
-                $shiftName = $shift->name;
-                $startTime = $shift->start_time;
-                $endTime = $shift->end_time;
-                $isOff = (bool) $shift->is_off;
-            }
+        } elseif ($shift = $employee->scheduleTemplateOn($date)?->getShiftForDay($dayOfWeek)) {
+            // 2. Fallback ke template yang berlaku pada tanggal itu (riwayat).
+            $shiftName = $shift->name;
+            $startTime = $shift->start_time;
+            $endTime = $shift->end_time;
+            $isOff = (bool) $shift->is_off;
         } elseif ($employee->work_schedule_id) {
             // 3. Fallback to work schedule
             $employee->loadMissing('workSchedule');

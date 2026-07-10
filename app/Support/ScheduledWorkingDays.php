@@ -41,7 +41,7 @@ class ScheduledWorkingDays
         }
         $holidaySet = array_flip($holidayDates);
 
-        $employee->loadMissing('scheduleTemplate.days.shift', 'workSchedule');
+        $employee->loadMissing([...Employee::scheduleTemplateEagerLoads(), 'workSchedule']);
 
         $count = 0;
         $cursor = $start->copy()->startOfDay();
@@ -73,9 +73,11 @@ class ScheduledWorkingDays
             return 0;
         }
 
-        $employee->loadMissing('scheduleTemplate.days.shift', 'workSchedule');
+        $employee->loadMissing([...Employee::scheduleTemplateEagerLoads(), 'workSchedule']);
 
         // Pola berulang sudah mencakup sebulan penuh → hitung apa adanya.
+        // `schedule_template_id` tetap menjadi penunjuk "template yang berlaku sekarang",
+        // jadi cukup diperiksa itu — riwayat selalu punya penunjuk yang bersesuaian.
         if ($employee->schedule_template_id || $employee->work_schedule_id) {
             return self::count($employee, $start, $end, $holidayDates);
         }
@@ -192,10 +194,11 @@ class ScheduledWorkingDays
             return false;
         }
 
-        // 3. Template mingguan.
-        if ($employee->schedule_template_id && $employee->scheduleTemplate) {
-            $shift = $employee->scheduleTemplate->getShiftForDay($date->dayOfWeekIso);
-            return $shift && ! $shift->is_off;
+        // 3. Template mingguan YANG BERLAKU pada tanggal itu (bukan yang terpasang sekarang).
+        //    Sengaja TIDAK memakai isEmployedOn(): pembagi pro-rate payroll harus tetap
+        //    "hari kerja sebulan penuh", termasuk hari sebelum karyawan join.
+        if ($shift = $employee->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso)) {
+            return ! $shift->is_off;
         }
 
         // 4. Work schedule tetap (tanpa info hari off → dianggap kerja).

@@ -58,7 +58,7 @@ class ScheduleController extends Controller
 
         $query = Employee::where('company_id', $admin->company_id)
             ->where('is_active', true)
-            ->with(['department:id,name', 'scheduleTemplate.days.shift']);
+            ->with(['department:id,name', ...Employee::scheduleTemplateEagerLoads()]);
 
         if ($departmentId) {
             $query->where('department_id', $departmentId);

@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\HasApiTokens;
 
 class Employee extends Authenticatable
@@ -164,5 +166,224 @@ class Employee extends Authenticatable
         $diff = $this->join_date->diff(now());
 
         return "{$diff->y} Tahun {$diff->m} Bulan {$diff->d} Hari";
+    }
+
+    /**
+     * Apakah karyawan berstatus bekerja pada $date — yaitu di antara tanggal masuk dan
+     * tanggal kerja terakhir (inklusif). Dipakai untuk menjaga agar jadwal template mingguan
+     * (yang tidak punya masa berlaku) tidak berlaku surut ke tanggal sebelum ia bergabung
+     * atau setelah ia keluar.
+     *
+     * Tanggal yang belum diisi dianggap tidak membatasi (mis. `join_date` kosong → tak ada
+     * batas bawah), agar data lama tanpa tanggal tidak mendadak hilang dari rekap.
+     *
+     * CATATAN: sengaja TIDAK dipakai di App\Support\ScheduledWorkingDays — pembagi pro-rate
+     * payroll harus tetap "hari kerja sebulan penuh"; menyusutkannya membuat karyawan yang
+     * join di tengah bulan menerima gaji penuh.
+     */
+    public function isEmployedOn(Carbon|string $date): bool
+    {
+        $date = self::normalizeDate($date);
+
+        if ($this->join_date && $date->lt($this->join_date->copy()->startOfDay())) {
+            return false;
+        }
+
+        $exit = $this->last_working_date ?: $this->resign_date;
+
+        return ! ($exit && $date->gt(Carbon::parse($exit)->startOfDay()));
+    }
+
+    /** Riwayat template jadwal, terbaru dulu. */
+    public function scheduleTemplateHistory(): HasMany
+    {
+        return $this->hasMany(EmployeeScheduleTemplate::class)->orderByDesc('effective_from');
+    }
+
+    /**
+     * Tabel riwayat mungkin belum ada (migrasi belum jalan, atau test yang membangun skema
+     * minimal sendiri). Hasilnya di-cache di container — yang dibangun ulang tiap request dan
+     * tiap test — sehingga tidak jadi query berulang, tapi juga tidak basi antar test.
+     */
+    public static function hasScheduleTemplateHistory(): bool
+    {
+        $key = 'employee.schedule_template_history.table_exists';
+
+        if (! app()->bound($key)) {
+            app()->instance($key, Schema::hasTable('employee_schedule_templates'));
+        }
+
+        return (bool) app($key);
+    }
+
+    /**
+     * Relasi yang perlu di-eager-load untuk meresolusi template per tanggal.
+     * Dipakai di query yang memproses banyak karyawan/tanggal agar tidak N+1.
+     *
+     * @return array<int,string>
+     */
+    public static function scheduleTemplateEagerLoads(): array
+    {
+        return self::hasScheduleTemplateHistory()
+            ? ['scheduleTemplateHistory.template.days.shift', 'scheduleTemplate.days.shift']
+            : ['scheduleTemplate.days.shift'];
+    }
+
+    /**
+     * Template jadwal yang BERLAKU pada $date: baris riwayat dengan `effective_from` terbesar
+     * yang <= $date. Tanpa ini, template yang terpasang sekarang berlaku surut ke masa lalu —
+     * mis. karyawan yang pindah dari 6 hari kerja ke 5 hari kerja akan terlihat "kerja Sabtu"
+     * di seluruh bulan sebelumnya.
+     *
+     * Karyawan yang belum punya baris riwayat jatuh kembali ke `schedule_template_id`, agar
+     * data lama berperilaku persis seperti sebelumnya.
+     */
+    public function scheduleTemplateOn(Carbon|string $date): ?ScheduleTemplate
+    {
+        $date = self::normalizeDate($date);
+
+        if (self::hasScheduleTemplateHistory()) {
+            $this->loadMissing('scheduleTemplateHistory.template.days.shift');
+
+            if ($this->scheduleTemplateHistory->isNotEmpty()) {
+                // Baris berlaku dengan template_id NULL = "sejak tanggal ini tanpa template".
+                return $this->scheduleTemplateHistory
+                    ->first(fn (EmployeeScheduleTemplate $r) => $r->effective_from->copy()->startOfDay()->lte($date))
+                    ?->template;
+            }
+        }
+
+        $this->loadMissing('scheduleTemplate.days.shift');
+
+        return $this->scheduleTemplate;
+    }
+
+    /**
+     * Tetapkan template jadwal yang berlaku SEJAK $effectiveFrom, sekaligus menyegarkan
+     * penunjuk `schedule_template_id` bila perubahan itu berlaku hari ini.
+     *
+     * $templateId null = melepas template sejak tanggal itu. Tanpa ini, melepas template hanya
+     * mengosongkan penunjuk sementara riwayat lama tetap berlaku — penunjuk dan riwayat jadi
+     * bertentangan.
+     */
+    public function applyScheduleTemplate(?int $templateId, Carbon|string $effectiveFrom): EmployeeScheduleTemplate
+    {
+        $effectiveFrom = self::normalizeDate($effectiveFrom);
+
+        $this->seedScheduleTemplateBaseline();
+
+        // Dicocokkan dengan whereDate, bukan updateOrCreate: sebagian driver menyimpan
+        // `effective_from` sebagai "Y-m-d H:i:s" sehingga pencocokan string "Y-m-d" meleset
+        // dan menghasilkan baris ganda pada tanggal yang sama.
+        $row = EmployeeScheduleTemplate::where('employee_id', $this->id)
+            ->whereDate('effective_from', $effectiveFrom->toDateString())
+            ->first();
+
+        if ($row) {
+            $row->update(['template_id' => $templateId]);
+        } else {
+            $row = EmployeeScheduleTemplate::create([
+                'employee_id' => $this->id,
+                'template_id' => $templateId,
+                'effective_from' => $effectiveFrom->toDateString(),
+            ]);
+        }
+
+        $this->unsetRelation('scheduleTemplateHistory');
+        $this->pruneRedundantScheduleTemplateRows();
+
+        // Penunjuk selalu mencerminkan template yang berlaku HARI INI.
+        $this->update(['schedule_template_id' => $this->scheduleTemplateOn(now())?->id]);
+
+        return $row;
+    }
+
+    /**
+     * Buang baris riwayat yang tidak mengubah apa pun: template-nya sama dengan yang sudah
+     * berlaku sebelumnya. Tanpa ini, membolak-balik template atau mengoreksi tanggal yang
+     * salah meninggalkan baris usang — riwayatnya tetap menghasilkan jadwal yang benar,
+     * tapi jadi sulit dibaca dan tidak pernah kembali ke bentuk semula.
+     */
+    private function pruneRedundantScheduleTemplateRows(): void
+    {
+        if (! self::hasScheduleTemplateHistory()) {
+            return;
+        }
+
+        $rows = EmployeeScheduleTemplate::where('employee_id', $this->id)
+            ->orderBy('effective_from')
+            ->get();
+
+        $sebelumnya = null; // template yang berlaku sebelum baris ini; null = tak bertemplate
+        $buang = [];
+
+        foreach ($rows as $row) {
+            if ($row->template_id === $sebelumnya) {
+                $buang[] = $row->id;
+
+                continue;
+            }
+            $sebelumnya = $row->template_id;
+        }
+
+        if ($buang !== []) {
+            EmployeeScheduleTemplate::whereIn('id', $buang)->delete();
+            $this->unsetRelation('scheduleTemplateHistory');
+        }
+    }
+
+    /**
+     * Pastikan karyawan yang SUDAH bertemplate punya baris riwayat dasar sebelum pergantian
+     * pertamanya dicatat. Tanpa ini, mencatat "template baru sejak 18 Mei" membuat seluruh
+     * tanggal SEBELUM 18 Mei kehilangan template — padahal dulu ia memang punya.
+     *
+     * Normalnya baris dasar dibuat oleh backfill migrasi. Ini jaring pengaman untuk karyawan
+     * yang mendapat `schedule_template_id` lewat jalur lain (mis. dibuat setelah migrasi).
+     */
+    private function seedScheduleTemplateBaseline(): void
+    {
+        if (! self::hasScheduleTemplateHistory() || ! $this->schedule_template_id) {
+            return;
+        }
+
+        $this->loadMissing('scheduleTemplateHistory');
+        if ($this->scheduleTemplateHistory->isNotEmpty()) {
+            return;
+        }
+
+        EmployeeScheduleTemplate::create([
+            'employee_id' => $this->id,
+            'template_id' => $this->schedule_template_id,
+            'effective_from' => $this->join_date?->toDateString() ?? '1970-01-01',
+        ]);
+
+        $this->unsetRelation('scheduleTemplateHistory');
+    }
+
+    /**
+     * Shift KERJA dari template mingguan untuk $date — sudah menghormati riwayat template DAN
+     * masa kerja karyawan. Null bila belum masuk / sudah keluar / tak bertemplate / hari itu OFF.
+     *
+     * Override `schedule_assignments` dan hari libur TIDAK diperiksa di sini; pemanggil yang
+     * menentukan urutannya (override menang atas libur, libur menang atas template).
+     */
+    public function templateShiftOn(Carbon|string $date): ?Shift
+    {
+        $date = self::normalizeDate($date);
+
+        if (! $this->isEmployedOn($date)) {
+            return null;
+        }
+
+        $shift = $this->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
+
+        return $shift && ! $shift->is_off ? $shift : null;
+    }
+
+    private static function normalizeDate(Carbon|string $date): Carbon
+    {
+        return $date instanceof Carbon
+            ? $date->copy()->startOfDay()
+            : Carbon::parse($date)->startOfDay();
     }
 }

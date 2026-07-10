@@ -153,6 +153,18 @@
                 'color' => 'bg-amber-50 text-amber-600',
             ],
         ];
+
+        // Presensi tim hanya untuk manager yang punya departemen — sama seperti penjagaan
+        // di TeamAttendanceController, jadi pintasan ini tak pernah menuju halaman 403.
+        if ($employee->role === 'manager' && $employee->department_id) {
+            $shortcuts[] = [
+                'href' => route('employee.team-attendance.index'),
+                'icon' => 'groups',
+                'title' => 'Presensi Tim',
+                'description' => 'Rekap & riwayat',
+                'color' => 'bg-teal-50 text-teal-600',
+            ];
+        }
     @endphp
     <section class="employee-dashboard-shortcuts grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         @foreach($shortcuts as $shortcut)

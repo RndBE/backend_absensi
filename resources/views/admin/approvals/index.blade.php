@@ -5,6 +5,21 @@
 @php
     $adminPermission = app(\App\Support\AdminPermission::class);
     $canActOnApproval = $adminPermission->can($currentAdmin, 'approvals.action');
+    $deptScoped = \App\Support\AdminDataScope::isDepartmentScoped($admin);
+
+    // Badge "menunggu approver siapa" — dipakai di semua tab.
+    $approverBadge = function (string $key) use ($currentApprover) {
+        $ca = $currentApprover[$key] ?? null;
+        if (! $ca) {
+            return '';
+        }
+        if (! $ca['name']) {
+            return '<div class="text-[10.5px] text-amber-600 mt-0.5">Belum ada approver di step '.$ca['step'].'</div>';
+        }
+        $langkah = $ca['total'] > 1 ? ' <span class="text-gray-400">(step '.$ca['step'].'/'.$ca['total'].')</span>' : '';
+        return '<div class="text-[10.5px] text-gray-500 mt-0.5">Menunggu: <span class="font-semibold text-indigo-600">'
+            .e($ca['name']).'</span>'.$langkah.'</div>';
+    };
 @endphp
 @if(!$canActOnApproval)
 <style>
@@ -15,50 +30,70 @@
 </style>
 @endif
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
-    <div class="px-5 py-4 border-b border-gray-100">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
         <h3 class="text-[15px] font-bold text-gray-900"><span class="material-symbols-outlined text-[18px] align-text-bottom">task_alt</span> Persetujuan Pengajuan</h3>
+
+        @if($deptScoped)
+            <span class="text-[11px] text-gray-400">Dibatasi ke departemen Anda</span>
+        @else
+            <form method="GET" action="{{ route('admin.approvals.index') }}" class="flex items-center gap-2">
+                <input type="hidden" name="tab" value="{{ $tab }}">
+                <label class="text-[11px] font-semibold text-gray-500">Departemen</label>
+                <select name="department_id" onchange="this.form.submit()"
+                    class="px-3 py-1.5 text-[12.5px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500">
+                    <option value="">Semua departemen</option>
+                    @foreach($departments as $dept)
+                        <option value="{{ $dept->id }}" {{ (string) $departmentId === (string) $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
+                    @endforeach
+                </select>
+                @if($departmentId)
+                    <a href="{{ route('admin.approvals.index', ['tab' => $tab]) }}"
+                       class="text-[11px] font-semibold text-gray-400 hover:text-gray-600 underline">Reset</a>
+                @endif
+            </form>
+        @endif
     </div>
     <div class="p-5">
         {{-- Tabs --}}
         <div class="flex gap-0 border-b-2 border-gray-200 mb-5">
-            <a href="{{ route('admin.approvals.index', ['tab' => 'leave']) }}"
+            <a href="{{ route('admin.approvals.index', ['department_id' => $departmentId, 'tab' => 'leave']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
                       {{ $tab === 'leave' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
                 Cuti
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'leave' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $leave->count() }}</span>
             </a>
-            <a href="{{ route('admin.approvals.index', ['tab' => 'overtime']) }}"
+            <a href="{{ route('admin.approvals.index', ['department_id' => $departmentId, 'tab' => 'overtime']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
                       {{ $tab === 'overtime' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
                 Lembur
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'overtime' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $overtime->count() }}</span>
             </a>
-            <a href="{{ route('admin.approvals.index', ['tab' => 'attendance']) }}"
+            <a href="{{ route('admin.approvals.index', ['department_id' => $departmentId, 'tab' => 'attendance']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
                       {{ $tab === 'attendance' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
                 Presensi
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'attendance' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $attendance->count() }}</span>
             </a>
-            <a href="{{ route('admin.approvals.index', ['tab' => 'budget']) }}"
+            <a href="{{ route('admin.approvals.index', ['department_id' => $departmentId, 'tab' => 'budget']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
                       {{ $tab === 'budget' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
                 Anggaran
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'budget' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $budget->count() }}</span>
             </a>
-            <a href="{{ route('admin.approvals.index', ['tab' => 'travel_report']) }}"
+            <a href="{{ route('admin.approvals.index', ['department_id' => $departmentId, 'tab' => 'travel_report']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
                       {{ $tab === 'travel_report' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
                 LHP
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'travel_report' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $travelReport->count() }}</span>
             </a>
-            <a href="{{ route('admin.approvals.index', ['tab' => 'lpj']) }}"
+            <a href="{{ route('admin.approvals.index', ['department_id' => $departmentId, 'tab' => 'lpj']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
                       {{ $tab === 'lpj' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
                 LPJ
                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full {{ $tab === 'lpj' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600' }}">{{ $lpj->count() }}</span>
             </a>
             @if($admin->role === 'superadmin')
-            <a href="{{ route('admin.approvals.index', ['tab' => 'data-change']) }}"
+            <a href="{{ route('admin.approvals.index', ['department_id' => $departmentId, 'tab' => 'data-change']) }}"
                class="px-5 py-2.5 text-[13.5px] font-semibold border-b-2 -mb-[2px] transition-all duration-200 flex items-center gap-2
                       {{ $tab === 'data-change' ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
                 Perubahan Data
@@ -91,6 +126,7 @@
                                 <div>
                                     <div class="text-[13px] font-semibold text-gray-800">{{ $lr->employee->full_name ?? '-' }}</div>
                                     <div class="text-[11px] text-gray-400">{{ $lr->employee->department->name ?? '' }}</div>
+                                    {!! $approverBadge('leave-' . $lr->id) !!}
                                 </div>
                             </div>
                         </td>
@@ -150,6 +186,7 @@
                                 <div>
                                     <div class="text-[13px] font-semibold text-gray-800">{{ $ot->employee->full_name ?? '-' }}</div>
                                     <div class="text-[11px] text-gray-400">{{ $ot->employee->department->name ?? '' }}</div>
+                                    {!! $approverBadge('overtime-' . $ot->id) !!}
                                 </div>
                             </div>
                         </td>
@@ -276,6 +313,7 @@
                                 <div>
                                     <div class="text-[13px] font-semibold text-gray-800">{{ $ar->employee->full_name ?? '-' }}</div>
                                     <div class="text-[11px] text-gray-400">{{ $ar->employee->department->name ?? '' }}</div>
+                                    {!! $approverBadge('attendance-' . $ar->id) !!}
                                 </div>
                             </div>
                         </td>
@@ -320,6 +358,7 @@
                                 <div>
                                     <div class="text-[13px] font-semibold text-gray-800">{{ $br->employee->full_name ?? '-' }}</div>
                                     <div class="text-[11px] text-gray-400">{{ $br->employee->department->name ?? '' }}</div>
+                                    {!! $approverBadge('budget-' . $br->id) !!}
                                 </div>
                             </div>
                         </td>
@@ -377,6 +416,7 @@
                                 <div>
                                     <div class="text-[13px] font-semibold text-gray-800">{{ $tr->employee->full_name ?? '-' }}</div>
                                     <div class="text-[10.5px] text-gray-400">{{ $tr->employee->department->name ?? '-' }}</div>
+                                    {!! $approverBadge('travel_report-' . $tr->id) !!}
                                 </div>
                             </div>
                         </td>
@@ -438,6 +478,7 @@
                                 <div>
                                     <div class="text-[13px] font-semibold text-gray-800">{{ $l->employee->full_name ?? '-' }}</div>
                                     <div class="text-[11px] text-gray-400">{{ $l->employee->department->name ?? '' }}</div>
+                                    {!! $approverBadge('lpj-' . $l->id) !!}
                                 </div>
                             </div>
                         </td>

@@ -51,13 +51,11 @@ class AttendanceOpenShift
         }
 
         if (
-            $employee->schedule_template_id
-            && Schema::hasTable('schedule_templates')
+            Schema::hasTable('schedule_templates')
             && Schema::hasTable('schedule_template_days')
         ) {
-            $employee->loadMissing('scheduleTemplate.days.shift');
-
-            return $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
+            // Template yang berlaku pada tanggal itu (riwayat), bukan yang terpasang sekarang.
+            return $employee->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
         }
 
         return null;

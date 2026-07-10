@@ -134,11 +134,14 @@
                             $isFromTemplate = false;
 
                             // Di hari libur pun tetap load assignment (untuk karyawan jaga/satpam)
+                            // Template: pakai yang BERLAKU pada tanggal itu (riwayat), dan hanya
+                            // selama karyawan memang bekerja — sebelum masuk / sesudah keluar
+                            // tidak ada jadwal sama sekali.
                             if ($assignment) {
                                 $shift = $assignment->shift;
                                 $isOverride = true;
-                            } elseif (!$holiday && $emp->scheduleTemplate) {
-                                $shift = $emp->scheduleTemplate->getShiftForDay($date->dayOfWeekIso);
+                            } elseif (!$holiday && $emp->isEmployedOn($date)) {
+                                $shift = $emp->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
                                 $isFromTemplate = $shift !== null;
                             }
                         @endphp

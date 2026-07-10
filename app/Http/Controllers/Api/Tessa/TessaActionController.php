@@ -303,9 +303,13 @@ class TessaActionController extends Controller
         $request->validate([
             'template_id' => 'required|integer',
             'employees' => 'required|array|min:1|max:500',
+            'effective_from' => 'nullable|date',
         ]);
 
         $this->requirePermission('schedule.master.manage');
+        $effectiveFrom = $request->filled('effective_from')
+            ? Carbon::parse($request->input('effective_from'))->startOfDay()
+            : now()->startOfDay();
         $companyId = $this->companyId($request);
         $template = ScheduleTemplate::query()
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
@@ -329,7 +333,9 @@ class TessaActionController extends Controller
 
                 continue;
             }
-            $employee->update(['schedule_template_id' => $template->id]);
+            // Dicatat sebagai riwayat bertanggal, bukan menimpa kolom — jadwal sebelum
+            // $effectiveFrom tidak berubah.
+            $employee->applyScheduleTemplate($template->id, $effectiveFrom);
             $results[] = ['index' => $i, 'success' => true, 'employee' => $employee->full_name];
             $assigned++;
         }

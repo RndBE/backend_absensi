@@ -8,12 +8,14 @@ use App\Models\AttendanceRequest;
 use App\Models\BudgetRequest;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
+use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\Lpj;
 use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Support\LeaveQuota;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -43,10 +45,45 @@ class ApprovalController extends Controller
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
 
+        $tab = $request->query('tab') === 'history' ? 'history' : 'pending';
+        $items = $this->pendingFor($employee);
+
         return view('employee.approvals.index', [
             'employee' => $employee,
-            'items' => $this->pendingFor($employee),
+            'tab' => $tab,
+            'items' => $items,
+            'pendingCount' => $items->count(),
+            'history' => $tab === 'history' ? $this->historyFor($employee) : null,
+            'historyCount' => $this->historyCountFor($employee),
+            'typeLabels' => $this->typeLabels,
         ]);
+    }
+
+    /**
+     * Riwayat keputusan approver ini: apa yang pernah ia setujui/tolak, di step berapa,
+     * beserta catatannya. Diambil dari approval_logs, bukan dari status pengajuan — sebuah
+     * pengajuan bisa melewati beberapa approver, dan masing-masing hanya melihat langkahnya.
+     */
+    private function historyFor(Employee $approver)
+    {
+        $types = array_values($this->typeMap);
+
+        return ApprovalLog::query()
+            ->where('approver_id', $approver->id)
+            ->whereIn('approvable_type', $types)
+            ->with(['approvable' => fn (MorphTo $morphTo) => $morphTo->morphWith(
+                array_fill_keys($types, ['employee:id,full_name,photo,department_id', 'employee.department:id,name'])
+            )])
+            ->orderByDesc('created_at')
+            ->paginate(15)
+            ->withQueryString();
+    }
+
+    private function historyCountFor(Employee $approver): int
+    {
+        return ApprovalLog::where('approver_id', $approver->id)
+            ->whereIn('approvable_type', array_values($this->typeMap))
+            ->count();
     }
 
     public function printBudget(Request $request, int $id)
@@ -233,23 +270,71 @@ class ApprovalController extends Controller
                     ->orderBy('created_at', 'desc')
                     ->get();
 
-                return $items
-                    ->filter(function ($item) use ($employeeSteps) {
-                        $steps = $employeeSteps->get($item->employee_id);
-                        if (! $steps) {
-                            return false;
-                        }
+                $mine = $items->filter(function ($item) use ($employeeSteps) {
+                    $steps = $employeeSteps->get($item->employee_id);
+                    if (! $steps) {
+                        return false;
+                    }
 
-                        return $steps->contains(fn ($step) => (int) $step->step_order === (int) ($item->current_step ?? 1));
-                    })
-                    ->map(fn ($item) => [
+                    return $steps->contains(fn ($step) => (int) $step->step_order === (int) ($item->current_step ?? 1));
+                });
+
+                if ($mine->isEmpty()) {
+                    return collect();
+                }
+
+                $chains = $this->chainsFor($mine->pluck('employee_id')->unique()->all(), $type);
+                $balances = $type === 'leave' ? $this->leaveBalancesFor($mine) : collect();
+
+                return $mine->map(function ($item) use ($type, $chains, $balances) {
+                    $chain = $chains->get($item->employee_id) ?? collect();
+                    $step = (int) ($item->current_step ?? 1);
+
+                    return [
                         'type' => $type,
                         'type_label' => $this->typeLabels[$type],
                         'model' => $item,
-                    ]);
+                        'step' => $step,
+                        'total_steps' => $chain->count(),
+                        // Approver berikutnya; null berarti keputusan approver ini yang final.
+                        'next_approver' => $chain->firstWhere('step_order', $step + 1)?->approver?->full_name,
+                        // Sisa kuota cuti, hanya untuk jenis berkuota (Cuti Tahunan & WFH).
+                        'balance' => $balances->get($item->employee_id.'-'.$item->leave_type_id),
+                    ];
+                });
             })
             ->sortByDesc(fn ($row) => $row['model']->created_at)
             ->values();
+    }
+
+    /** Rantai approver lengkap per karyawan — dipakai untuk "step X dari Y" dan siapa berikutnya. */
+    private function chainsFor(array $employeeIds, string $type): Collection
+    {
+        return EmployeeApprover::whereIn('employee_id', $employeeIds)
+            ->where('request_type', $type)
+            ->orderBy('step_order')
+            ->with('approver:id,full_name')
+            ->get()
+            ->groupBy('employee_id');
+    }
+
+    /**
+     * Saldo cuti tahun berjalan, dikunci ke pasangan karyawan+jenis cuti. Approver perlu tahu
+     * sisa kuota SEBELUM menyetujui — bukan setelahnya saat saldo sudah terpotong.
+     */
+    private function leaveBalancesFor(Collection $items): Collection
+    {
+        $berkuota = $items->filter(fn ($item) => LeaveQuota::tracksBalance($item->leaveType));
+
+        if ($berkuota->isEmpty()) {
+            return collect();
+        }
+
+        return LeaveBalance::whereIn('employee_id', $berkuota->pluck('employee_id')->unique()->all())
+            ->whereIn('leave_type_id', $berkuota->pluck('leave_type_id')->unique()->all())
+            ->where('year', now()->year)
+            ->get()
+            ->keyBy(fn ($b) => $b->employee_id.'-'.$b->leave_type_id);
     }
 
     private function canActOn(Employee $approver, string $type, Model $item): bool

@@ -39,13 +39,12 @@ class AttendanceLate
             return null;
         }
 
-        // 3. Template jadwal mingguan.
-        if ($employee->schedule_template_id) {
-            $employee->loadMissing('scheduleTemplate.days.shift');
-            $shift = $employee->scheduleTemplate?->getShiftForDay($date->dayOfWeekIso);
-            if ($shift && ! $shift->is_off) {
-                return $shift->start_time;
-            }
+        // 3. Template jadwal mingguan YANG BERLAKU pada tanggal itu — jam masuk seseorang
+        //    bisa berubah (mis. 09:00 → 08:00), dan keterlambatan lampau harus dinilai
+        //    terhadap jadwal yang berlaku saat itu, bukan yang terpasang sekarang.
+        $shift = $employee->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso);
+        if ($shift && ! $shift->is_off) {
+            return $shift->start_time;
         }
 
         // 4. Work schedule tetap.

@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
  */
 class RemindClockin extends Command
 {
-    protected $signature = 'clockin:remind';
+    protected $signature = 'clockin:remind {--show-empty : Tetap cetak ringkasan walau tak ada yang dikirim}';
 
     protected $description = 'Kirim pengingat clock-in (WA + in-app + FCM) menjelang jam masuk shift bagi yang belum clock-in';
 
@@ -20,12 +20,22 @@ class RemindClockin extends Command
     {
         $result = ClockinReminderService::remindForNow(now());
 
-        $this->info(sprintf(
-            'Clock-in reminder — terkirim: %d, dilewati: %d, WA gagal: %d',
-            $result['sent'],
-            $result['skipped'],
-            $result['wa_failed'],
-        ));
+        // Dijadwalkan tiap menit. Kalau tak ada yang jatuh tempo, DIAM — kalau tidak, log
+        // menumpuk ~1.440 baris "terkirim: 0" per hari tanpa memberi informasi apa pun.
+        $adaKejadian = $result['in_app'] > 0 || $result['wa_sent'] > 0 || $result['wa_failed'] > 0;
+
+        if ($adaKejadian || $this->option('show-empty')) {
+            $baris = sprintf(
+                '[%s] Clock-in reminder — WA terkirim: %d, WA gagal: %d, in-app: %d, dilewati: %d',
+                now()->format('Y-m-d H:i'),
+                $result['wa_sent'],
+                $result['wa_failed'],
+                $result['in_app'],
+                $result['skipped'],
+            );
+
+            $result['wa_failed'] > 0 ? $this->warn($baris) : $this->info($baris);
+        }
 
         return Command::SUCCESS;
     }
