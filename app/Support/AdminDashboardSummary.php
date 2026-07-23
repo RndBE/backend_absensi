@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class AdminDashboardSummary
 {
@@ -54,12 +55,21 @@ class AdminDashboardSummary
         $pendingStatuses = ['pending', 'in_review'];
         $pendingLeave = LeaveRequest::whereHas('employee', $scopeEmployee)
             ->whereIn('status', $pendingStatuses)
+            ->when(
+                Schema::hasColumn('leave_requests', 'start_date') && Schema::hasColumn('leave_requests', 'end_date'),
+                fn ($q) => $q->whereDate('start_date', '<=', $todayDate)
+                    ->whereDate('end_date', '>=', $todayDate)
+            )
             ->count();
         $pendingOvertime = OvertimeRequest::whereHas('employee', $scopeEmployee)
             ->whereIn('status', $pendingStatuses)
             ->count();
         $pendingAttendance = AttendanceRequest::whereHas('employee', $scopeEmployee)
             ->whereIn('status', $pendingStatuses)
+            ->when(
+                Schema::hasColumn('attendance_requests', 'date'),
+                fn ($q) => $q->whereDate('date', $todayDate)
+            )
             ->count();
 
         $contractWindowEnd = $today->copy()->addDays(60);

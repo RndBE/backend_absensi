@@ -51,9 +51,16 @@ class AdminDashboardSummaryTest extends TestCase
         });
 
         foreach (['leave_requests', 'overtime_requests', 'attendance_requests'] as $tableName) {
-            Schema::create($tableName, function (Blueprint $table) {
+            Schema::create($tableName, function (Blueprint $table) use ($tableName) {
                 $table->id();
                 $table->foreignId('employee_id')->constrained('employees')->cascadeOnDelete();
+                if ($tableName === 'leave_requests') {
+                    $table->date('start_date')->nullable();
+                    $table->date('end_date')->nullable();
+                }
+                if ($tableName === 'attendance_requests') {
+                    $table->date('date')->nullable();
+                }
                 $table->string('status')->default('pending');
                 $table->timestamps();
             });
@@ -84,15 +91,17 @@ class AdminDashboardSummaryTest extends TestCase
         ]);
 
         DB::table('leave_requests')->insert([
-            ['employee_id' => 2, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
-            ['employee_id' => 5, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 2, 'start_date' => '2026-05-26', 'end_date' => '2026-05-26', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 3, 'start_date' => '2026-05-27', 'end_date' => '2026-05-27', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 5, 'start_date' => '2026-05-26', 'end_date' => '2026-05-26', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::table('overtime_requests')->insert([
             ['employee_id' => 3, 'status' => 'in_review', 'created_at' => now(), 'updated_at' => now()],
             ['employee_id' => 5, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::table('attendance_requests')->insert([
-            ['employee_id' => 2, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 2, 'date' => '2026-05-26', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
+            ['employee_id' => 3, 'date' => '2026-05-25', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()],
         ]);
 
         $summary = app(AdminDashboardSummary::class)->forAdmin(Employee::findOrFail(1));

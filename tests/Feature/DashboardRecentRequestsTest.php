@@ -45,6 +45,20 @@ class DashboardRecentRequestsTest extends TestCase
         $this->assertFalse($recentRequests->contains(fn ($request) => $request['employee_name'] === 'Other Company'));
     }
 
+    public function test_dashboard_pending_leave_and_attendance_details_are_today_only(): void
+    {
+        $this->seedRecentRequestData();
+        session(['admin_id' => 1]);
+
+        $view = app(DashboardController::class)->index(app(AdminDashboardSummary::class));
+        $details = $view->getData()['dashboardDetails'];
+
+        $this->assertCount(1, $details['pending_leave']['items']);
+        $this->assertStringContainsString('09/06/2026', $details['pending_leave']['items'][0]['detail']);
+        $this->assertCount(1, $details['pending_attendance']['items']);
+        $this->assertStringContainsString('09/06/2026', $details['pending_attendance']['items'][0]['detail']);
+    }
+
     private function seedRecentRequestData(): void
     {
         DB::table('employees')->insert([
@@ -58,11 +72,13 @@ class DashboardRecentRequestsTest extends TestCase
         ]);
 
         DB::table('leave_requests')->insert([
-            ['employee_id' => 2, 'leave_type_id' => 1, 'start_date' => '2026-06-10', 'end_date' => '2026-06-10', 'total_days' => 1, 'reason' => 'Sakit', 'status' => 'pending', 'current_step' => 1, 'created_at' => '2026-06-09 08:00:00', 'updated_at' => now()],
+            ['employee_id' => 2, 'leave_type_id' => 1, 'start_date' => '2026-06-09', 'end_date' => '2026-06-09', 'total_days' => 1, 'reason' => 'Sakit', 'status' => 'pending', 'current_step' => 1, 'created_at' => '2026-06-09 08:00:00', 'updated_at' => now()],
+            ['employee_id' => 2, 'leave_type_id' => 1, 'start_date' => '2026-06-11', 'end_date' => '2026-06-11', 'total_days' => 1, 'reason' => 'Besok', 'status' => 'pending', 'current_step' => 1, 'created_at' => '2026-06-09 08:05:00', 'updated_at' => now()],
         ]);
 
         DB::table('attendance_requests')->insert([
             ['employee_id' => 2, 'date' => '2026-06-09', 'clock_in' => '08:00:00', 'clock_out' => null, 'reason' => 'Lupa clock in', 'status' => 'pending', 'current_step' => 1, 'created_at' => '2026-06-09 08:30:00', 'updated_at' => now()],
+            ['employee_id' => 2, 'date' => '2026-06-08', 'clock_in' => '08:00:00', 'clock_out' => null, 'reason' => 'Kemarin', 'status' => 'pending', 'current_step' => 1, 'created_at' => '2026-06-09 07:00:00', 'updated_at' => now()],
         ]);
 
         DB::table('budget_requests')->insert([

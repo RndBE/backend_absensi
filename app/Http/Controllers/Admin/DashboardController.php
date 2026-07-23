@@ -69,9 +69,9 @@ class DashboardController extends Controller
 
     private function dashboardDetails(Employee $admin, Carbon $today, ?int $departmentId): array
     {
-        $pendingLeave = $this->pendingLeaveDetails($admin, $departmentId);
+        $pendingLeave = $this->pendingLeaveDetails($admin, $departmentId, $today);
         $pendingOvertime = $this->pendingOvertimeDetails($admin, $departmentId);
-        $pendingAttendance = $this->pendingAttendanceDetails($admin, $departmentId);
+        $pendingAttendance = $this->pendingAttendanceDetails($admin, $departmentId, $today);
 
         return [
             'total_employees' => [
@@ -96,8 +96,8 @@ class DashboardController extends Controller
             ],
             'total_pending' => [
                 'title' => 'Menunggu Persetujuan',
-                'subtitle' => 'Gabungan cuti, lembur, dan koreksi presensi yang masih pending/diproses.',
-                'items' => $pendingLeave->merge($pendingOvertime)->merge($pendingAttendance)
+                'subtitle' => 'Gabungan cuti hari ini, lembur pending, dan koreksi presensi hari ini.',
+                'items' => collect($pendingLeave)->merge($pendingOvertime)->merge($pendingAttendance)
                     ->sortByDesc('sort_at')
                     ->values()
                     ->map(fn ($item) => collect($item)->except('sort_at')->all())
@@ -110,7 +110,7 @@ class DashboardController extends Controller
             ],
             'pending_leave' => [
                 'title' => 'Cuti Pending',
-                'subtitle' => 'Pengajuan cuti yang masih pending/diproses.',
+                'subtitle' => 'Pengajuan cuti pending/diproses yang berlangsung hari ini.',
                 'items' => $pendingLeave->map(fn ($item) => collect($item)->except('sort_at')->all())->all(),
             ],
             'pending_overtime' => [
@@ -120,7 +120,7 @@ class DashboardController extends Controller
             ],
             'pending_attendance' => [
                 'title' => 'Presensi Pending',
-                'subtitle' => 'Pengajuan koreksi presensi yang masih pending/diproses.',
+                'subtitle' => 'Pengajuan koreksi presensi pending/diproses untuk hari ini.',
                 'items' => $pendingAttendance->map(fn ($item) => collect($item)->except('sort_at')->all())->all(),
             ],
             'resigned_this_month' => [
@@ -198,11 +198,16 @@ class DashboardController extends Controller
             });
     }
 
-    private function pendingLeaveDetails(Employee $admin, ?int $departmentId): Collection
+    private function pendingLeaveDetails(Employee $admin, ?int $departmentId, Carbon $today): Collection
     {
         return LeaveRequest::with(array_merge($this->employeeEagerLoad(), ['leaveType:id,name']))
             ->whereHas('employee', fn ($q) => $this->applyEmployeeScope($q, $admin, $departmentId))
             ->whereIn('status', ['pending', 'in_review'])
+            ->when(
+                Schema::hasColumn('leave_requests', 'start_date') && Schema::hasColumn('leave_requests', 'end_date'),
+                fn ($q) => $q->whereDate('start_date', '<=', $today->toDateString())
+                    ->whereDate('end_date', '>=', $today->toDateString())
+            )
             ->latest()
             ->get()
             ->map(fn (LeaveRequest $request) => $this->requestDetail(
@@ -230,11 +235,15 @@ class DashboardController extends Controller
             ));
     }
 
-    private function pendingAttendanceDetails(Employee $admin, ?int $departmentId): Collection
+    private function pendingAttendanceDetails(Employee $admin, ?int $departmentId, Carbon $today): Collection
     {
         return AttendanceRequest::with($this->employeeEagerLoad())
             ->whereHas('employee', fn ($q) => $this->applyEmployeeScope($q, $admin, $departmentId))
             ->whereIn('status', ['pending', 'in_review'])
+            ->when(
+                Schema::hasColumn('attendance_requests', 'date'),
+                fn ($q) => $q->whereDate('date', $today->toDateString())
+            )
             ->latest()
             ->get()
             ->map(fn (AttendanceRequest $request) => $this->requestDetail(
