@@ -25,7 +25,7 @@
 
         <div class="px-5 py-4 bg-gray-50 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <p class="text-[12px] text-gray-500">Form akan terbuka di tab baru.</p>
-            <a href="https://tinyurl.com/PELAPORAN-PELANGGARAN-ATC" target="_blank" rel="noopener noreferrer"
+            <a href="{{ route('employee.violation-report.open') }}" target="_blank" rel="noopener noreferrer"
                onclick="this.querySelector('[data-default-label]').classList.add('hidden'); this.querySelector('[data-loading-label]').classList.remove('hidden'); setTimeout(() => { this.querySelector('[data-loading-label]').classList.add('hidden'); this.querySelector('[data-default-label]').classList.remove('hidden'); }, 1600);"
                class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-[12px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all">
                 <span class="material-symbols-outlined text-[17px]">open_in_new</span>

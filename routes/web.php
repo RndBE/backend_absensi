@@ -53,6 +53,7 @@ use App\Http\Controllers\Employee\OvertimeController as EmployeeOvertimeControll
 use App\Http\Controllers\Employee\PayslipController as EmployeePayslipController;
 use App\Http\Controllers\Employee\ProfileController as EmployeeProfileController;
 use App\Http\Controllers\Employee\TravelReportController as EmployeeTravelReportController;
+use App\Http\Controllers\Employee\ViolationReportController as EmployeeViolationReportController;
 use App\Http\Controllers\Employee\LpjController as EmployeeLpjController;
 use App\Http\Controllers\Admin\LpjController;
 use App\Http\Middleware\AdminActivityLogger;
@@ -79,7 +80,8 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/company-info', [EmployeeCompanyInfoController::class, 'index'])->name('company-info.index');
     Route::get('/company-info/regulations/{regulation}/download', [EmployeeCompanyInfoController::class, 'download'])->name('company-info.regulations.download');
     Route::get('/company-info/regulations/{regulation}/attachments/{attachment}/download', [EmployeeCompanyInfoController::class, 'downloadAttachment'])->name('company-info.regulations.attachments.download');
-    Route::view('/violation-report', 'employee.violation-report.index')->name('violation-report.index');
+    Route::get('/violation-report', [EmployeeViolationReportController::class, 'index'])->name('violation-report.index');
+    Route::get('/violation-report/open', [EmployeeViolationReportController::class, 'open'])->name('violation-report.open');
     Route::post('/profile/photo', [EmployeeProfileController::class, 'updatePhoto'])->name('profile.photo.update');
     Route::delete('/profile/photo', [EmployeeProfileController::class, 'destroyPhoto'])->name('profile.photo.destroy');
     Route::get('/profile/personal', [EmployeeProfileController::class, 'personal'])->name('profile.personal');

@@ -55,6 +55,10 @@ return [
         'internal_secret' => env('DAILY_INTERNAL_SECRET'),
     ],
 
+    'violation_report' => [
+        'form_url' => env('VIOLATION_REPORT_FORM_URL', 'https://tinyurl.com/PELAPORAN-PELANGGARAN-ATC'),
+    ],
+
     'whatsapp' => [
         'endpoint' => env('WHATSAPP_ENDPOINT', 'http://127.0.0.1:3000/client/sendMessage/beacon'),
         'api_key' => env('WHATSAPP_API_KEY'),
