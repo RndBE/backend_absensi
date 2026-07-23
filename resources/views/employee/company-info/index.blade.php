@@ -91,18 +91,18 @@
                             $regulationAttachments = $regulation->attachments;
                         @endphp
                         <li class="p-4">
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                <div class="flex items-center gap-3 min-w-0">
+                            <div class="space-y-3">
+                                <div class="flex items-start gap-3 min-w-0">
                                     <span class="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center text-[12px] font-black shrink-0">{{ $loop->iteration }}</span>
-                                    <h4 class="text-[14px] font-black text-gray-900 company-info-text-wrap min-w-0">{{ $regulation->title }}</h4>
+                                    <h4 class="text-[14px] leading-5 font-black text-gray-900 company-info-text-wrap min-w-0 flex-1">{{ $regulation->title }}</h4>
                                 </div>
                                 @if($regulationAttachments->isNotEmpty())
-                                    <div class="flex flex-wrap items-center gap-2 sm:justify-end sm:shrink-0">
+                                    <div class="ml-10 grid grid-cols-1 lg:grid-cols-2 gap-2">
                                         @foreach($regulationAttachments as $attachment)
                                             <a href="{{ route('employee.company-info.regulations.attachments.download', [$regulation, $attachment]) }}"
-                                                class="inline-flex max-w-full items-center justify-center gap-2 px-3 py-2 text-[12px] font-bold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition">
+                                                class="inline-flex w-full min-w-0 items-center gap-2 px-3 py-2 text-[12px] font-bold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition">
                                                 <span class="material-symbols-outlined text-[16px] shrink-0">download</span>
-                                                <span class="truncate">{{ $attachment->file_name ?: 'Lampiran ' . $loop->iteration }}</span>
+                                                <span class="min-w-0 flex-1 truncate text-left">{{ $loop->iteration }}. {{ $attachment->file_name ?: 'Lampiran ' . $loop->iteration }}</span>
                                             </a>
                                         @endforeach
                                     </div>
