@@ -81,4 +81,31 @@ class AdminAuditLogMiddlewareTest extends TestCase
             'path' => 'admin/employees',
         ]);
     }
+
+    public function test_admin_activity_logger_skips_configured_superadmin_email(): void
+    {
+        DB::table('employees')->insert([
+            'id' => 35,
+            'company_id' => 9,
+            'email' => 'superadmin@gmail.com',
+            'password' => 'secret',
+            'full_name' => 'Superadmin',
+            'role' => 'superadmin',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Route::post('/admin/roles', fn () => new Response('', 302))->name('admin.roles.store');
+
+        session(['admin_id' => 35]);
+        $request = Request::create('/admin/roles', 'POST', ['name' => 'Role Baru']);
+        $request->setLaravelSession(app('session.store'));
+        $request->headers->set('user-agent', 'FeatureTest');
+        $request->setRouteResolver(fn () => Route::getRoutes()->match($request));
+
+        (new AdminActivityLogger())->handle($request, fn () => new Response('', 302));
+
+        $this->assertDatabaseCount('admin_activity_logs', 0);
+    }
 }

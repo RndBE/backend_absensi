@@ -12,6 +12,7 @@ use Symfony\Component\HttpFoundation\Response;
 class AdminActivityLogger
 {
     private const WRITE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
+    private const EXCLUDED_EMAILS = ['superadmin@gmail.com'];
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -35,7 +36,7 @@ class AdminActivityLogger
     private function log(Request $request): void
     {
         $admin = Employee::find(session('admin_id'));
-        if (!$admin) {
+        if (! $admin || $this->isExcludedAdmin($admin)) {
             return;
         }
 
@@ -69,5 +70,10 @@ class AdminActivityLogger
         }
 
         return ['admin', strtolower($request->method())];
+    }
+
+    private function isExcludedAdmin(Employee $admin): bool
+    {
+        return in_array(strtolower(trim((string) $admin->email)), self::EXCLUDED_EMAILS, true);
     }
 }
