@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CompanyRegulation extends Model
 {
@@ -32,6 +33,11 @@ class CompanyRegulation extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(CompanyRegulationAttachment::class);
     }
 
     public function scopeActive(Builder $query): Builder

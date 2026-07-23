@@ -80,7 +80,7 @@
 </style>
 
 @php
-    $showCreateRegulation = $errors->has('title') || $errors->has('attachment');
+    $showCreateRegulation = $errors->has('title') || $errors->has('attachment') || $errors->has('attachments') || $errors->has('attachments.*');
     $showImportRegulation = $errors->has('import_file');
     $selectedCreateStatus = old('is_active', '1');
 @endphp
@@ -197,6 +197,9 @@
 
         <div id="regulationListPanel" class="{{ $showCreateRegulation || $showImportRegulation ? 'hidden' : '' }} divide-y divide-gray-100">
             @forelse($regulations as $regulation)
+                @php
+                    $regulationAttachments = $regulation->attachments;
+                @endphp
                 <article class="p-5">
                     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                         <div class="min-w-0">
@@ -206,21 +209,34 @@
                                     {{ $regulation->is_active ? 'Aktif' : 'Draft' }}
                                 </span>
                             </div>
-                            @if($regulation->effective_date || $regulation->file_path)
+                            @if($regulation->effective_date || $regulationAttachments->isNotEmpty())
                                 <div class="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-gray-500">
                                     @if($regulation->effective_date)
                                         <span>Berlaku {{ $regulation->effective_date->format('d/m/Y') }}</span>
                                     @endif
-                                    @if($regulation->effective_date && $regulation->file_path)
+                                    @if($regulation->effective_date && $regulationAttachments->isNotEmpty())
                                         <span>&bull;</span>
                                     @endif
-                                    @if($regulation->file_path)
-                                        <a href="{{ route('admin.company.regulations.download', $regulation) }}" class="font-semibold text-indigo-600 hover:text-indigo-700">{{ $regulation->file_name ?: 'Download lampiran' }}</a>
+                                    @if($regulationAttachments->isNotEmpty())
+                                        <span>{{ $regulationAttachments->count() }} lampiran</span>
                                     @endif
                                 </div>
                             @endif
                             @if($regulation->content)
                                 <p class="mt-3 text-[13px] leading-6 text-gray-600 whitespace-pre-line">{{ $regulation->content }}</p>
+                            @endif
+                            @if($regulationAttachments->isNotEmpty())
+                                <div class="mt-3 flex flex-col gap-2">
+                                    @foreach($regulationAttachments as $attachment)
+                                        <a href="{{ route('admin.company.regulations.attachments.download', [$regulation, $attachment]) }}" class="inline-flex max-w-full items-center gap-2 text-[12px] font-semibold text-indigo-600 hover:text-indigo-700">
+                                            <span class="material-symbols-outlined text-[16px] shrink-0">description</span>
+                                            <span class="truncate">{{ $attachment->file_name ?: 'Lampiran ' . $loop->iteration }}</span>
+                                            @if($attachment->file_size)
+                                                <span class="text-gray-400 shrink-0">({{ number_format($attachment->file_size / 1024 / 1024, 2) }} MB)</span>
+                                            @endif
+                                        </a>
+                                    @endforeach
+                                </div>
                             @endif
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
@@ -258,39 +274,51 @@
                             <textarea name="content" rows="4" class="w-full px-3 py-2 rounded-lg border border-gray-300 text-[13px] outline-none focus:border-indigo-500 bg-white resize-y">{{ $regulation->content }}</textarea>
                         </div>
                         <div>
-                            <label class="block text-[11px] font-bold text-gray-500 uppercase mb-1">Ganti Lampiran</label>
-                            @if($regulation->file_path)
-                                <div class="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-indigo-100 bg-white px-3 py-2.5">
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase mb-1">Lampiran</label>
+                            @if($regulationAttachments->isNotEmpty())
+                                <div class="mb-3 space-y-2">
+                                    @foreach($regulationAttachments as $attachment)
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-indigo-100 bg-white px-3 py-2.5" data-existing-attachment-row>
                                     <div class="flex items-center gap-2 min-w-0">
+                                        <input type="hidden" name="delete_attachments[]" value="{{ $attachment->id }}" disabled data-existing-attachment-delete-input>
                                         <span class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
                                             <span class="material-symbols-outlined text-[18px]">description</span>
                                         </span>
                                         <div class="min-w-0">
-                                            <p class="text-[12px] font-bold text-gray-900 truncate">{{ $regulation->file_name ?: 'Lampiran peraturan' }}</p>
-                                            <p class="text-[11px] text-gray-400">Lampiran saat ini{{ $regulation->file_size ? ' • ' . number_format($regulation->file_size / 1024 / 1024, 2) . ' MB' : '' }}</p>
+                                            <p class="text-[12px] font-bold text-gray-900 truncate">{{ $attachment->file_name ?: 'Lampiran peraturan' }}</p>
+                                            <p class="text-[11px] text-gray-400">Lampiran saat ini{{ $attachment->file_size ? ' - ' . number_format($attachment->file_size / 1024 / 1024, 2) . ' MB' : '' }}</p>
                                         </div>
                                     </div>
-                                    <a href="{{ route('admin.company.regulations.download', $regulation) }}" class="inline-flex items-center justify-center gap-2 px-3 py-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition">
+                                    <div class="flex items-center gap-2">
+                                    <a href="{{ route('admin.company.regulations.attachments.download', [$regulation, $attachment]) }}" class="inline-flex items-center justify-center gap-2 px-3 py-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition">
                                         <span class="material-symbols-outlined text-[15px]">download</span>
                                         Download
                                     </a>
+                                    <button type="button" class="inline-flex items-center justify-center gap-1 px-3 py-1.5 text-[11px] font-bold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition" data-existing-attachment-delete>
+                                        <span class="material-symbols-outlined text-[14px]">close</span>
+                                        Hapus
+                                    </button>
+                                    </div>
+                                    </div>
+                                    @endforeach
                                 </div>
                             @endif
-                            <input type="file" name="attachment" accept=".pdf,.doc,.docx" class="block w-full text-[12px] text-gray-600 file:mr-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-white file:text-indigo-700 file:font-semibold">
+                            <input type="file" name="attachments[]" accept=".pdf,.doc,.docx" multiple data-regulation-file-input data-file-list="regulationEditFiles{{ $regulation->id }}" class="block w-full text-[12px] text-gray-600 file:mr-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-white file:text-indigo-700 file:font-semibold">
+                            <div id="regulationEditFiles{{ $regulation->id }}" class="hidden mt-2 space-y-2"></div>
+                            <p class="text-[11px] text-gray-400 mt-1">Pilih satu atau beberapa PDF/DOC/DOCX untuk ditambahkan.</p>
                         </div>
                         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                            <div class="flex flex-wrap items-center gap-4">
-                                @if($regulation->file_path)
-                                    <label class="inline-flex items-center gap-2 text-[12px] font-semibold text-red-600">
-                                        <input type="checkbox" name="remove_attachment" value="1" class="w-4 h-4 accent-red-600">
-                                        Hapus lampiran
-                                    </label>
-                                @endif
+                            <div></div>
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+                                <button type="button" onclick="toggleRegulationEdit('regulationEdit{{ $regulation->id }}')" class="inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition cursor-pointer">
+                                    <span class="material-symbols-outlined text-[16px]">close</span>
+                                    Tutup
+                                </button>
+                                <button type="submit" class="inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition cursor-pointer">
+                                    <span class="material-symbols-outlined text-[16px]">save</span>
+                                    Perbarui
+                                </button>
                             </div>
-                            <button type="submit" class="inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition cursor-pointer">
-                                <span class="material-symbols-outlined text-[16px]">save</span>
-                                Perbarui
-                            </button>
                         </div>
                     </form>
                 </article>
@@ -348,12 +376,18 @@
 
             <div>
                 <label class="block text-xs font-semibold text-gray-600 mb-1.5">Lampiran</label>
-                <input type="file" name="attachment" accept=".pdf,.doc,.docx"
+                <input type="file" name="attachments[]" accept=".pdf,.doc,.docx" multiple data-regulation-file-input data-file-list="regulationCreateFiles"
                     class="block w-full text-[12px] text-gray-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700 file:font-semibold hover:file:bg-indigo-100">
-                <p class="text-[11px] text-gray-400 mt-1">PDF/DOC/DOCX, maks 25MB. Lampiran boleh diisi tanpa isi peraturan.</p>
-                @error('attachment')
+                <div id="regulationCreateFiles" class="hidden mt-2 space-y-2"></div>
+                <p class="text-[11px] text-gray-400 mt-1">PDF/DOC/DOCX, maks 25MB per file. Bisa pilih lebih dari satu lampiran.</p>
+                @error('attachments')
                     <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
                 @enderror
+                @foreach($errors->get('attachments.*') as $messages)
+                    @foreach($messages as $message)
+                        <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                    @endforeach
+                @endforeach
             </div>
 
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-1">
@@ -457,5 +491,97 @@ function switchRegulationTab(tab) {
 function toggleRegulationEdit(targetId) {
     document.getElementById(targetId)?.classList.toggle('hidden');
 }
+
+function initRegulationFileInputs() {
+    document.querySelectorAll('[data-regulation-file-input]').forEach((input) => {
+        if (input.dataset.fileInputReady === '1') {
+            return;
+        }
+
+        input.dataset.fileInputReady = '1';
+        let selectedFiles = [];
+
+        const syncInputFiles = () => {
+            const transfer = new DataTransfer();
+            selectedFiles.forEach((file) => transfer.items.add(file));
+            input.files = transfer.files;
+        };
+
+        const fileKey = (file) => [file.name, file.size, file.lastModified].join('|');
+
+        const renderSelectedFiles = () => {
+            const list = document.getElementById(input.dataset.fileList);
+
+            if (!list) {
+                return;
+            }
+
+            list.innerHTML = '';
+            list.classList.toggle('hidden', selectedFiles.length === 0);
+
+            selectedFiles.forEach((file, index) => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between gap-3 rounded-lg border border-indigo-100 bg-white px-3 py-2';
+
+                const name = document.createElement('span');
+                name.className = 'min-w-0 truncate text-[12px] font-semibold text-gray-700';
+                name.textContent = file.name;
+
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'inline-flex items-center justify-center gap-1 px-2 py-1 text-[11px] font-bold text-red-600 bg-red-50 rounded-md hover:bg-red-100 transition';
+                removeButton.innerHTML = '<span class="material-symbols-outlined text-[14px]">close</span>Hapus';
+                removeButton.addEventListener('click', () => {
+                    selectedFiles.splice(index, 1);
+                    syncInputFiles();
+                    renderSelectedFiles();
+                });
+
+                row.append(name, removeButton);
+                list.appendChild(row);
+            });
+        };
+
+        input.addEventListener('change', () => {
+            const existing = new Set(selectedFiles.map(fileKey));
+
+            Array.from(input.files).forEach((file) => {
+                const key = fileKey(file);
+
+                if (!existing.has(key)) {
+                    selectedFiles.push(file);
+                    existing.add(key);
+                }
+            });
+
+            syncInputFiles();
+            renderSelectedFiles();
+        });
+    });
+}
+
+function initExistingAttachmentDeleteButtons() {
+    document.querySelectorAll('[data-existing-attachment-delete]').forEach((button) => {
+        if (button.dataset.deleteButtonReady === '1') {
+            return;
+        }
+
+        button.dataset.deleteButtonReady = '1';
+        button.addEventListener('click', () => {
+            const row = button.closest('[data-existing-attachment-row]');
+            const input = row?.querySelector('[data-existing-attachment-delete-input]');
+
+            if (!row || !input) {
+                return;
+            }
+
+            input.disabled = false;
+            row.classList.add('hidden');
+        });
+    });
+}
+
+initRegulationFileInputs();
+initExistingAttachmentDeleteButtons();
 </script>
 @endsection

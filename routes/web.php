@@ -78,6 +78,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/profile', [EmployeeProfileController::class, 'show'])->name('profile.show');
     Route::get('/company-info', [EmployeeCompanyInfoController::class, 'index'])->name('company-info.index');
     Route::get('/company-info/regulations/{regulation}/download', [EmployeeCompanyInfoController::class, 'download'])->name('company-info.regulations.download');
+    Route::get('/company-info/regulations/{regulation}/attachments/{attachment}/download', [EmployeeCompanyInfoController::class, 'downloadAttachment'])->name('company-info.regulations.attachments.download');
     Route::view('/violation-report', 'employee.violation-report.index')->name('violation-report.index');
     Route::post('/profile/photo', [EmployeeProfileController::class, 'updatePhoto'])->name('profile.photo.update');
     Route::delete('/profile/photo', [EmployeeProfileController::class, 'destroyPhoto'])->name('profile.photo.destroy');
@@ -332,6 +333,7 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::put('/company/regulations/{regulation}', [CompanyRegulationController::class, 'update'])->name('company.regulations.update');
     Route::delete('/company/regulations/{regulation}', [CompanyRegulationController::class, 'destroy'])->name('company.regulations.destroy');
     Route::get('/company/regulations/{regulation}/download', [CompanyRegulationController::class, 'download'])->name('company.regulations.download');
+    Route::get('/company/regulations/{regulation}/attachments/{attachment}/download', [CompanyRegulationController::class, 'downloadAttachment'])->name('company.regulations.attachments.download');
 
     // Attendance Settings
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');

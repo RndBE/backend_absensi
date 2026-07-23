@@ -17,6 +17,7 @@ class CompanyRegulationPortalTest extends TestCase
         parent::setUp();
         $this->withoutVite();
 
+        Schema::dropIfExists('company_regulation_attachments');
         Schema::dropIfExists('company_regulations');
         Schema::dropIfExists('employees');
         Schema::dropIfExists('companies');
@@ -54,6 +55,16 @@ class CompanyRegulationPortalTest extends TestCase
             $table->date('effective_date')->nullable();
             $table->boolean('is_active')->default(true);
             $table->string('file_path')->nullable();
+            $table->string('file_name')->nullable();
+            $table->unsignedInteger('file_size')->nullable();
+            $table->string('file_mime')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('company_regulation_attachments', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_regulation_id');
+            $table->string('file_path');
             $table->string('file_name')->nullable();
             $table->unsignedInteger('file_size')->nullable();
             $table->string('file_mime')->nullable();
@@ -151,6 +162,120 @@ class CompanyRegulationPortalTest extends TestCase
         $this->assertNull($regulation->category);
         $this->assertNotNull($regulation->file_path);
         Storage::disk('local')->assertExists($regulation->file_path);
+        $this->assertDatabaseHas('company_regulation_attachments', [
+            'company_regulation_id' => $regulation->id,
+            'file_name' => 'PERATURAN PERUSAHAAN 2025.pdf',
+        ]);
+    }
+
+    public function test_admin_can_upload_multiple_company_regulation_attachments(): void
+    {
+        Storage::fake('local');
+
+        $this->withSession(['admin_id' => 1])
+            ->post(route('admin.company.regulations.store'), [
+                'title' => 'Pedoman Karyawan',
+                'content' => 'Baca semua lampiran.',
+                'is_active' => '1',
+                'attachments' => [
+                    UploadedFile::fake()->create('bab-1.pdf', 100, 'application/pdf'),
+                    UploadedFile::fake()->create('bab-2.docx', 120, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+                ],
+            ])
+            ->assertRedirect(route('admin.company.index'));
+
+        $regulation = DB::table('company_regulations')
+            ->where('title', 'Pedoman Karyawan')
+            ->first();
+
+        $this->assertNotNull($regulation);
+        $this->assertDatabaseHas('company_regulation_attachments', [
+            'company_regulation_id' => $regulation->id,
+            'file_name' => 'bab-1.pdf',
+        ]);
+        $this->assertDatabaseHas('company_regulation_attachments', [
+            'company_regulation_id' => $regulation->id,
+            'file_name' => 'bab-2.docx',
+        ]);
+        $this->assertSame(2, DB::table('company_regulation_attachments')->where('company_regulation_id', $regulation->id)->count());
+
+        $this->withSession(['admin_id' => 1])
+            ->get(route('admin.company.index'))
+            ->assertOk()
+            ->assertSee('2 lampiran')
+            ->assertSee('bab-1.pdf')
+            ->assertSee('bab-2.docx');
+    }
+
+    public function test_admin_can_delete_and_add_company_regulation_attachments_on_update(): void
+    {
+        Storage::fake('local');
+
+        $regulationId = DB::table('company_regulations')->insertGetId([
+            'company_id' => 1,
+            'title' => 'Pedoman Update',
+            'category' => null,
+            'content' => 'Versi awal.',
+            'effective_date' => null,
+            'is_active' => true,
+            'file_path' => 'company-regulations/lama-a.pdf',
+            'file_name' => 'lama-a.pdf',
+            'file_size' => 1024,
+            'file_mime' => 'application/pdf',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Storage::disk('local')->put('company-regulations/lama-a.pdf', 'a');
+        Storage::disk('local')->put('company-regulations/lama-b.pdf', 'b');
+
+        $deletedAttachmentId = DB::table('company_regulation_attachments')->insertGetId([
+            'company_regulation_id' => $regulationId,
+            'file_path' => 'company-regulations/lama-a.pdf',
+            'file_name' => 'lama-a.pdf',
+            'file_size' => 1024,
+            'file_mime' => 'application/pdf',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('company_regulation_attachments')->insert([
+            'company_regulation_id' => $regulationId,
+            'file_path' => 'company-regulations/lama-b.pdf',
+            'file_name' => 'lama-b.pdf',
+            'file_size' => 2048,
+            'file_mime' => 'application/pdf',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['admin_id' => 1])
+            ->put(route('admin.company.regulations.update', $regulationId), [
+                'title' => 'Pedoman Update',
+                'content' => 'Versi baru.',
+                'is_active' => '1',
+                'delete_attachments' => [$deletedAttachmentId],
+                'attachments' => [
+                    UploadedFile::fake()->create('baru.pdf', 100, 'application/pdf'),
+                ],
+            ])
+            ->assertRedirect(route('admin.company.index'));
+
+        $this->assertDatabaseMissing('company_regulation_attachments', [
+            'id' => $deletedAttachmentId,
+            'file_name' => 'lama-a.pdf',
+        ]);
+        $this->assertDatabaseHas('company_regulation_attachments', [
+            'company_regulation_id' => $regulationId,
+            'file_name' => 'lama-b.pdf',
+        ]);
+        $this->assertDatabaseHas('company_regulation_attachments', [
+            'company_regulation_id' => $regulationId,
+            'file_name' => 'baru.pdf',
+        ]);
+        Storage::disk('local')->assertMissing('company-regulations/lama-a.pdf');
+        Storage::disk('local')->assertExists('company-regulations/lama-b.pdf');
+        $this->assertSame(2, DB::table('company_regulation_attachments')->where('company_regulation_id', $regulationId)->count());
     }
 
     public function test_employee_company_info_only_shows_active_company_regulations(): void
@@ -161,12 +286,24 @@ class CompanyRegulationPortalTest extends TestCase
             ['company_id' => 2, 'title' => 'Aturan Company Lain', 'category' => 'Umum', 'content' => 'Tidak untuk company ini.', 'effective_date' => null, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
         ]);
 
+        $activeRegulationId = DB::table('company_regulations')->where('title', 'Jam Kerja')->value('id');
+        DB::table('company_regulation_attachments')->insert([
+            'company_regulation_id' => $activeRegulationId,
+            'file_path' => 'company-regulations/jam-kerja.pdf',
+            'file_name' => 'jam-kerja.pdf',
+            'file_size' => 1024,
+            'file_mime' => 'application/pdf',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $this->withSession(['employee_id' => 2])
             ->get(route('employee.company-info.index'))
             ->assertOk()
             ->assertSee('PT Beacon Satu')
             ->assertSee('Peraturan Perusahaan')
             ->assertSee('Jam Kerja')
+            ->assertSee('jam-kerja.pdf')
             ->assertSee('Jam kerja dimulai pukul 08.00.')
             ->assertDontSee('Draft Rahasia')
             ->assertDontSee('Aturan Company Lain');

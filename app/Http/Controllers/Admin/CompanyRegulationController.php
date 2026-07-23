@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\CompanyRegulation;
+use App\Models\CompanyRegulationAttachment;
 use App\Models\Employee;
 use App\Support\SimpleSpreadsheetReader;
 use Carbon\Carbon;
@@ -20,16 +21,16 @@ class CompanyRegulationController extends Controller
         $validated = $this->validateRegulation($request);
         $companyId = $this->companyId($request);
 
-        $regulation = new CompanyRegulation($validated);
-        $regulation->company_id = $companyId;
-        $regulation->category = null;
-        $regulation->is_active = $request->boolean('is_active');
+        DB::transaction(function () use ($validated, $companyId, $request) {
+            $regulation = new CompanyRegulation($this->regulationAttributes($validated));
+            $regulation->company_id = $companyId;
+            $regulation->category = null;
+            $regulation->is_active = $request->boolean('is_active');
+            $regulation->save();
 
-        if ($request->hasFile('attachment')) {
-            $this->fillAttachment($regulation, $request);
-        }
-
-        $regulation->save();
+            $this->storeAttachments($regulation, $this->uploadedAttachments($request));
+            $this->syncLegacyAttachmentFields($regulation);
+        });
 
         return redirect()->route('admin.company.index')
             ->with('success', 'Peraturan perusahaan berhasil ditambahkan.');
@@ -115,26 +116,22 @@ class CompanyRegulationController extends Controller
         $this->authorizeCompanyRegulation($request, $regulation);
 
         $validated = $this->validateRegulation($request);
-        $regulation->fill($validated);
+        $regulation->fill($this->regulationAttributes($validated));
         $regulation->category = null;
         $regulation->is_active = $request->boolean('is_active');
 
-        if ($request->boolean('remove_attachment')) {
-            $this->deleteAttachment($regulation);
-            $regulation->forceFill([
-                'file_path' => null,
-                'file_name' => null,
-                'file_size' => null,
-                'file_mime' => null,
-            ]);
-        }
+        DB::transaction(function () use ($request, $regulation) {
+            $regulation->save();
 
-        if ($request->hasFile('attachment')) {
-            $this->deleteAttachment($regulation);
-            $this->fillAttachment($regulation, $request);
-        }
+            if ($request->boolean('remove_attachment')) {
+                $this->deleteAllAttachments($regulation);
+            } else {
+                $this->deleteSelectedAttachments($regulation, $request->input('delete_attachments', []));
+            }
 
-        $regulation->save();
+            $this->storeAttachments($regulation, $this->uploadedAttachments($request));
+            $this->syncLegacyAttachmentFields($regulation);
+        });
 
         return redirect()->route('admin.company.index')
             ->with('success', 'Peraturan perusahaan berhasil diperbarui.');
@@ -143,7 +140,7 @@ class CompanyRegulationController extends Controller
     public function destroy(Request $request, CompanyRegulation $regulation)
     {
         $this->authorizeCompanyRegulation($request, $regulation);
-        $this->deleteAttachment($regulation);
+        $this->deleteAllAttachments($regulation);
         $regulation->delete();
 
         return redirect()->route('admin.company.index')
@@ -154,9 +151,24 @@ class CompanyRegulationController extends Controller
     {
         $this->authorizeCompanyRegulation($request, $regulation);
 
+        $attachment = $regulation->attachments()->oldest()->first();
+
+        if ($attachment) {
+            return $this->downloadAttachmentFile($attachment);
+        }
+
         abort_unless($regulation->file_path && Storage::disk('local')->exists($regulation->file_path), 404);
 
         return Storage::disk('local')->download($regulation->file_path, $regulation->file_name);
+    }
+
+    public function downloadAttachment(Request $request, CompanyRegulation $regulation, CompanyRegulationAttachment $attachment)
+    {
+        $this->authorizeCompanyRegulation($request, $regulation);
+
+        abort_unless($attachment->company_regulation_id === $regulation->id, 404);
+
+        return $this->downloadAttachmentFile($attachment);
     }
 
     private function validateRegulation(Request $request): array
@@ -166,11 +178,18 @@ class CompanyRegulationController extends Controller
             'content' => ['nullable', 'string', 'max:10000'],
             'effective_date' => ['nullable', 'date'],
             'attachment' => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:25600'],
+            'attachments' => ['nullable', 'array'],
+            'attachments.*' => ['file', 'mimes:pdf,doc,docx', 'max:25600'],
+            'delete_attachments' => ['nullable', 'array'],
+            'delete_attachments.*' => ['integer'],
         ], [], [
             'title' => 'judul',
             'content' => 'isi peraturan',
             'effective_date' => 'tanggal berlaku',
             'attachment' => 'lampiran',
+            'attachments' => 'lampiran',
+            'attachments.*' => 'lampiran',
+            'delete_attachments' => 'lampiran yang dihapus',
         ]);
     }
 
@@ -183,8 +202,9 @@ class CompanyRegulationController extends Controller
             'is_active' => true,
         ]);
         $regulation->company_id = $this->companyId($request);
-        $this->fillAttachmentFromFile($regulation, $file);
         $regulation->save();
+        $this->storeAttachments($regulation, [$file]);
+        $this->syncLegacyAttachmentFields($regulation);
 
         return redirect()->route('admin.company.index')
             ->with('success', 'PDF peraturan perusahaan berhasil diimport sebagai dokumen aktif.');
@@ -298,25 +318,99 @@ class CompanyRegulationController extends Controller
         abort_unless($regulation->company_id === $this->companyId($request), 403);
     }
 
-    private function fillAttachment(CompanyRegulation $regulation, Request $request): void
+    private function regulationAttributes(array $validated): array
     {
-        $this->fillAttachmentFromFile($regulation, $request->file('attachment'));
+        return array_intersect_key($validated, array_flip([
+            'title',
+            'content',
+            'effective_date',
+        ]));
     }
 
-    private function fillAttachmentFromFile(CompanyRegulation $regulation, UploadedFile $file): void
+    private function uploadedAttachments(Request $request): array
     {
-        $path = $file->store('company-regulations', 'local');
+        $files = [];
 
-        $regulation->file_path = $path;
-        $regulation->file_name = $file->getClientOriginalName();
-        $regulation->file_size = $file->getSize();
-        $regulation->file_mime = $file->getClientMimeType();
+        if ($request->hasFile('attachment')) {
+            $files[] = $request->file('attachment');
+        }
+
+        if ($request->hasFile('attachments')) {
+            foreach ((array) $request->file('attachments') as $file) {
+                if ($file instanceof UploadedFile) {
+                    $files[] = $file;
+                }
+            }
+        }
+
+        return $files;
     }
 
-    private function deleteAttachment(CompanyRegulation $regulation): void
+    /**
+     * @param array<int, UploadedFile> $files
+     */
+    private function storeAttachments(CompanyRegulation $regulation, array $files): void
     {
+        foreach ($files as $file) {
+            $regulation->attachments()->create($this->storedAttachmentAttributes($file));
+        }
+    }
+
+    private function storedAttachmentAttributes(UploadedFile $file): array
+    {
+        return [
+            'file_path' => $file->store('company-regulations', 'local'),
+            'file_name' => $file->getClientOriginalName(),
+            'file_size' => $file->getSize(),
+            'file_mime' => $file->getClientMimeType(),
+        ];
+    }
+
+    private function deleteSelectedAttachments(CompanyRegulation $regulation, array $attachmentIds): void
+    {
+        if ($attachmentIds === []) {
+            return;
+        }
+
+        $regulation->attachments()
+            ->whereIn('id', array_map('intval', $attachmentIds))
+            ->get()
+            ->each(function (CompanyRegulationAttachment $attachment) {
+                Storage::disk('local')->delete($attachment->file_path);
+                $attachment->delete();
+            });
+    }
+
+    private function deleteAllAttachments(CompanyRegulation $regulation): void
+    {
+        $regulation->attachments()
+            ->get()
+            ->each(function (CompanyRegulationAttachment $attachment) {
+                Storage::disk('local')->delete($attachment->file_path);
+                $attachment->delete();
+            });
+
         if ($regulation->file_path) {
             Storage::disk('local')->delete($regulation->file_path);
         }
+    }
+
+    private function syncLegacyAttachmentFields(CompanyRegulation $regulation): void
+    {
+        $attachment = $regulation->attachments()->oldest()->first();
+
+        $regulation->forceFill([
+            'file_path' => $attachment?->file_path,
+            'file_name' => $attachment?->file_name,
+            'file_size' => $attachment?->file_size,
+            'file_mime' => $attachment?->file_mime,
+        ])->save();
+    }
+
+    private function downloadAttachmentFile(CompanyRegulationAttachment $attachment)
+    {
+        abort_unless(Storage::disk('local')->exists($attachment->file_path), 404);
+
+        return Storage::disk('local')->download($attachment->file_path, $attachment->file_name);
     }
 }

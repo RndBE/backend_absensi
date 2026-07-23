@@ -16,6 +16,7 @@ class CompanyController extends Controller
         $companyId = $this->companyId();
         $company = Company::whereKey($companyId)->first() ?: Company::first();
         $regulations = CompanyRegulation::query()
+            ->with('attachments')
             ->where('company_id', $company?->id ?: $companyId)
             ->orderByDesc('effective_date')
             ->orderBy('title')
