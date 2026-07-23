@@ -13,6 +13,7 @@ use App\Models\TravelReport;
 use App\Support\AdminDashboardSummary;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -35,6 +36,7 @@ class DashboardController extends Controller
         $resignedThisMonth = $summary['hr']['resigned_this_month'];
         $contractsEndingSoonCount = $summary['hr']['contracts_expiring_soon'];
         $contractWindowEnd = $today->copy()->addDays($summary['hr']['contract_window_days']);
+        $dashboardDetails = $this->dashboardDetails($admin, $today, $dept);
 
         $contractsEndingSoon = Employee::where('company_id', $admin->company_id)
             ->when($dept, fn ($q, $d) => $q->where('department_id', $d))
@@ -60,8 +62,283 @@ class DashboardController extends Controller
             'totalEmployees', 'presentToday', 'lateToday', 'absentToday',
             'totalPending', 'pendingLeave', 'pendingOvertime', 'pendingAttendance',
             'lateThisMonth', 'resignedThisMonth', 'contractsEndingSoonCount',
-            'contractsEndingSoon', 'recentAttendance', 'recentRequests', 'summary'
+            'contractsEndingSoon', 'recentAttendance', 'recentRequests', 'summary',
+            'dashboardDetails'
         ));
+    }
+
+    private function dashboardDetails(Employee $admin, Carbon $today, ?int $departmentId): array
+    {
+        $pendingLeave = $this->pendingLeaveDetails($admin, $departmentId);
+        $pendingOvertime = $this->pendingOvertimeDetails($admin, $departmentId);
+        $pendingAttendance = $this->pendingAttendanceDetails($admin, $departmentId);
+
+        return [
+            'total_employees' => [
+                'title' => 'Total Karyawan',
+                'subtitle' => 'Karyawan aktif dalam scope dashboard.',
+                'items' => $this->activeEmployeeDetails($admin, $departmentId)->all(),
+            ],
+            'present_today' => [
+                'title' => 'Hadir Hari Ini',
+                'subtitle' => 'Karyawan yang sudah clock in dan tidak terlambat.',
+                'items' => $this->attendanceDetails($admin, $departmentId, $today, 'present_today')->all(),
+            ],
+            'late_today' => [
+                'title' => 'Terlambat Hari Ini',
+                'subtitle' => 'Karyawan yang tercatat terlambat hari ini.',
+                'items' => $this->attendanceDetails($admin, $departmentId, $today, 'late_today')->all(),
+            ],
+            'absent_today' => [
+                'title' => 'Tidak Hadir',
+                'subtitle' => 'Karyawan aktif yang belum memiliki clock in hari ini.',
+                'items' => $this->absentEmployeeDetails($admin, $departmentId, $today)->all(),
+            ],
+            'total_pending' => [
+                'title' => 'Menunggu Persetujuan',
+                'subtitle' => 'Gabungan cuti, lembur, dan koreksi presensi yang masih pending/diproses.',
+                'items' => $pendingLeave->merge($pendingOvertime)->merge($pendingAttendance)
+                    ->sortByDesc('sort_at')
+                    ->values()
+                    ->map(fn ($item) => collect($item)->except('sort_at')->all())
+                    ->all(),
+            ],
+            'late_this_month' => [
+                'title' => 'Terlambat Bulan Ini',
+                'subtitle' => 'Seluruh kejadian terlambat pada bulan berjalan.',
+                'items' => $this->attendanceDetails($admin, $departmentId, $today, 'late_month')->all(),
+            ],
+            'pending_leave' => [
+                'title' => 'Cuti Pending',
+                'subtitle' => 'Pengajuan cuti yang masih pending/diproses.',
+                'items' => $pendingLeave->map(fn ($item) => collect($item)->except('sort_at')->all())->all(),
+            ],
+            'pending_overtime' => [
+                'title' => 'Lembur Pending',
+                'subtitle' => 'Pengajuan lembur yang masih pending/diproses.',
+                'items' => $pendingOvertime->map(fn ($item) => collect($item)->except('sort_at')->all())->all(),
+            ],
+            'pending_attendance' => [
+                'title' => 'Presensi Pending',
+                'subtitle' => 'Pengajuan koreksi presensi yang masih pending/diproses.',
+                'items' => $pendingAttendance->map(fn ($item) => collect($item)->except('sort_at')->all())->all(),
+            ],
+            'resigned_this_month' => [
+                'title' => 'Resign Bulan Ini',
+                'subtitle' => 'Karyawan dengan tanggal resign pada bulan berjalan.',
+                'items' => $this->resignedEmployeeDetails($admin, $departmentId, $today)->all(),
+            ],
+        ];
+    }
+
+    private function activeEmployeeDetails(Employee $admin, ?int $departmentId): Collection
+    {
+        return $this->scopedEmployeeQuery($admin, $departmentId)
+            ->where('is_active', true)
+            ->orderBy('full_name')
+            ->get($this->employeeColumns())
+            ->map(fn (Employee $employee) => $this->employeeDetail($employee, 'Aktif', 'Karyawan aktif'));
+    }
+
+    private function absentEmployeeDetails(Employee $admin, ?int $departmentId, Carbon $today): Collection
+    {
+        $attendedEmployeeIds = $this->attendanceBaseQuery($admin, $departmentId, $today)
+            ->whereNotNull('clock_in')
+            ->pluck('employee_id');
+
+        return $this->scopedEmployeeQuery($admin, $departmentId)
+            ->where('is_active', true)
+            ->whereNotIn('id', $attendedEmployeeIds)
+            ->orderBy('full_name')
+            ->get($this->employeeColumns())
+            ->map(fn (Employee $employee) => $this->employeeDetail($employee, 'Belum hadir', 'Belum ada clock in hari ini'));
+    }
+
+    private function resignedEmployeeDetails(Employee $admin, ?int $departmentId, Carbon $today): Collection
+    {
+        return $this->scopedEmployeeQuery($admin, $departmentId)
+            ->whereBetween('resign_date', [$today->copy()->startOfMonth()->toDateString(), $today->copy()->endOfMonth()->toDateString()])
+            ->orderBy('resign_date')
+            ->get($this->employeeColumns())
+            ->map(fn (Employee $employee) => $this->employeeDetail(
+                $employee,
+                'Resign',
+                'Tanggal resign '.$this->formatDate($employee->resign_date)
+            ));
+    }
+
+    private function attendanceDetails(Employee $admin, ?int $departmentId, Carbon $today, string $type): Collection
+    {
+        $query = $this->attendanceBaseQuery($admin, $departmentId, $today, $type !== 'late_month')
+            ->with($this->employeeEagerLoad());
+
+        if ($type === 'present_today') {
+            $query->whereNotNull('clock_in')->where('is_late', false);
+        } elseif ($type === 'late_today') {
+            $query->where('is_late', true);
+        } elseif ($type === 'late_month') {
+            $query->whereBetween('date', [$today->copy()->startOfMonth()->toDateString(), $today->copy()->endOfMonth()->toDateString()])
+                ->where('is_late', true);
+        }
+
+        return $query
+            ->orderByDesc('date')
+            ->orderBy('clock_in')
+            ->get()
+            ->map(function (Attendance $attendance) use ($type) {
+                $date = $attendance->date ? $this->formatDate($attendance->date) : '-';
+                $time = 'Masuk '.($attendance->clock_in ?: '-').' | Pulang '.($attendance->clock_out ?: '-');
+                $detail = $type === 'late_month' ? "{$date} - {$time}" : $time;
+
+                return $this->employeeDetail(
+                    $attendance->employee,
+                    $attendance->is_late ? 'Terlambat' : 'Hadir',
+                    $detail
+                );
+            });
+    }
+
+    private function pendingLeaveDetails(Employee $admin, ?int $departmentId): Collection
+    {
+        return LeaveRequest::with(array_merge($this->employeeEagerLoad(), ['leaveType:id,name']))
+            ->whereHas('employee', fn ($q) => $this->applyEmployeeScope($q, $admin, $departmentId))
+            ->whereIn('status', ['pending', 'in_review'])
+            ->latest()
+            ->get()
+            ->map(fn (LeaveRequest $request) => $this->requestDetail(
+                $request->employee,
+                'Cuti',
+                ($request->leaveType->name ?? 'Cuti').' | '.$this->formatDate($request->start_date).' - '.$this->formatDate($request->end_date),
+                route('admin.approvals.index', ['tab' => 'leave']),
+                $request->created_at
+            ));
+    }
+
+    private function pendingOvertimeDetails(Employee $admin, ?int $departmentId): Collection
+    {
+        return OvertimeRequest::with($this->employeeEagerLoad())
+            ->whereHas('employee', fn ($q) => $this->applyEmployeeScope($q, $admin, $departmentId))
+            ->whereIn('status', ['pending', 'in_review'])
+            ->latest()
+            ->get()
+            ->map(fn (OvertimeRequest $request) => $this->requestDetail(
+                $request->employee,
+                'Lembur',
+                $this->formatDate($request->date).' | '.$request->total_duration_formatted,
+                route('admin.approvals.index', ['tab' => 'overtime']),
+                $request->created_at
+            ));
+    }
+
+    private function pendingAttendanceDetails(Employee $admin, ?int $departmentId): Collection
+    {
+        return AttendanceRequest::with($this->employeeEagerLoad())
+            ->whereHas('employee', fn ($q) => $this->applyEmployeeScope($q, $admin, $departmentId))
+            ->whereIn('status', ['pending', 'in_review'])
+            ->latest()
+            ->get()
+            ->map(fn (AttendanceRequest $request) => $this->requestDetail(
+                $request->employee,
+                'Koreksi Presensi',
+                $this->formatDate($request->date).' | '.$this->attendanceRequestType($request),
+                route('admin.approvals.index', ['tab' => 'attendance']),
+                $request->created_at
+            ));
+    }
+
+    private function requestDetail(?Employee $employee, string $badge, string $detail, string $url, $createdAt): array
+    {
+        return array_merge($this->employeeDetail($employee, $badge, $detail, $url), [
+            'sort_at' => Carbon::parse($createdAt)->timestamp,
+        ]);
+    }
+
+    private function employeeDetail(?Employee $employee, string $badge, string $detail, ?string $url = null): array
+    {
+        $name = $employee?->full_name ?: '-';
+
+        return [
+            'name' => $name,
+            'initial' => strtoupper(substr($name, 0, 1)),
+            'code' => $employee?->employee_code ?: '-',
+            'department' => $employee?->relationLoaded('department') ? ($employee->department->name ?? '-') : '-',
+            'position' => $employee?->position ?: '-',
+            'badge' => $badge,
+            'detail' => $detail,
+            'url' => $url ?: ($employee ? route('admin.employees.show', $employee->id) : null),
+        ];
+    }
+
+    private function scopedEmployeeQuery(Employee $admin, ?int $departmentId)
+    {
+        $query = Employee::query();
+
+        $this->applyEmployeeScope($query, $admin, $departmentId);
+
+        if (Schema::hasTable('departments') && Schema::hasColumn('employees', 'department_id')) {
+            $query->with('department:id,name');
+        }
+
+        return $query;
+    }
+
+    private function attendanceBaseQuery(Employee $admin, ?int $departmentId, Carbon $today, bool $onlyToday = true)
+    {
+        $query = Attendance::whereHas('employee', fn ($q) => $this->applyEmployeeScope($q, $admin, $departmentId));
+
+        if ($onlyToday) {
+            $query->where('date', $today->toDateString());
+        }
+
+        if (Schema::hasColumn('attendances', 'review_status')) {
+            $query->where(fn ($q) => $q->whereNull('review_status')->orWhere('review_status', 'approved'));
+        }
+
+        return $query;
+    }
+
+    private function applyEmployeeScope($query, Employee $admin, ?int $departmentId): void
+    {
+        $query->where('company_id', $admin->company_id);
+
+        if ($departmentId && Schema::hasColumn('employees', 'department_id')) {
+            $query->where('department_id', $departmentId);
+        }
+    }
+
+    private function employeeEagerLoad(): array
+    {
+        $columns = implode(',', $this->employeeColumns());
+
+        return [
+            'employee:'.$columns,
+            ...(
+                Schema::hasTable('departments') && Schema::hasColumn('employees', 'department_id')
+                    ? ['employee.department:id,name']
+                    : []
+            ),
+        ];
+    }
+
+    private function employeeColumns(): array
+    {
+        return collect([
+            'id',
+            'employee_code',
+            'company_id',
+            'department_id',
+            'full_name',
+            'position',
+            'employment_status',
+            'join_date',
+            'resign_date',
+            'contract_end_date',
+        ])->filter(fn ($column) => Schema::hasColumn('employees', $column))->values()->all();
+    }
+
+    private function formatDate($date): string
+    {
+        return $date ? Carbon::parse($date)->format('d/m/Y') : '-';
     }
 
     private function getRecentRequests(int $companyId): Collection

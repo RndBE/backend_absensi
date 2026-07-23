@@ -39,6 +39,25 @@ class DashboardViewTest extends TestCase
         $this->assertStringContainsString('$resignedThisMonth', $view);
     }
 
+    public function test_dashboard_stat_cards_open_person_detail_modal(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/dashboard.blade.php'));
+
+        $this->assertSame(10, substr_count($view, '<button type="button" data-dashboard-detail-trigger'));
+        $this->assertStringContainsString('data-detail-key="total_employees"', $view);
+        $this->assertStringContainsString('data-detail-key="present_today"', $view);
+        $this->assertStringContainsString('data-detail-key="late_today"', $view);
+        $this->assertStringContainsString('data-detail-key="absent_today"', $view);
+        $this->assertStringContainsString('data-detail-key="total_pending"', $view);
+        $this->assertStringContainsString('data-detail-key="late_this_month"', $view);
+        $this->assertStringContainsString('data-detail-key="pending_leave"', $view);
+        $this->assertStringContainsString('data-detail-key="pending_overtime"', $view);
+        $this->assertStringContainsString('data-detail-key="pending_attendance"', $view);
+        $this->assertStringContainsString('data-detail-key="resigned_this_month"', $view);
+        $this->assertStringContainsString('id="dashboardDetailModal"', $view);
+        $this->assertStringContainsString('@js($dashboardDetails)', $view);
+    }
+
     public function test_dashboard_uses_contract_table_layout(): void
     {
         $view = file_get_contents(resource_path('views/admin/dashboard.blade.php'));

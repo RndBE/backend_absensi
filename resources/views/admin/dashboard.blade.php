@@ -4,80 +4,80 @@
 @section('content')
 {{-- Stat Cards --}}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-7">
-    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-blue animate-fade-in-up delay-1">
+    <button type="button" data-dashboard-detail-trigger data-detail-key="total_employees" class="text-left bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-blue animate-fade-in-up delay-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
         <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">group</span></div>
         <div>
             <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $totalEmployees }}</div>
             <div class="text-[13px] text-gray-500 font-medium">Total Karyawan</div>
         </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-green animate-fade-in-up delay-2">
+    </button>
+    <button type="button" data-dashboard-detail-trigger data-detail-key="present_today" class="text-left bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-green animate-fade-in-up delay-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-200">
         <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">check_circle</span></div>
         <div>
             <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $presentToday }}</div>
             <div class="text-[13px] text-gray-500 font-medium">Hadir Hari Ini</div>
         </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-yellow animate-fade-in-up delay-3">
+    </button>
+    <button type="button" data-dashboard-detail-trigger data-detail-key="late_today" class="text-left bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-yellow animate-fade-in-up delay-3 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-200">
         <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">schedule</span></div>
         <div>
             <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $lateToday }}</div>
             <div class="text-[13px] text-gray-500 font-medium">Terlambat</div>
         </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-red animate-fade-in-up delay-4">
+    </button>
+    <button type="button" data-dashboard-detail-trigger data-detail-key="absent_today" class="text-left bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-red animate-fade-in-up delay-4 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-200">
         <div class="w-12 h-12 rounded-xl bg-red-50 text-red-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">cancel</span></div>
         <div>
             <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $absentToday }}</div>
             <div class="text-[13px] text-gray-500 font-medium">Tidak Hadir</div>
         </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-purple animate-fade-in-up delay-5">
+    </button>
+    <button type="button" data-dashboard-detail-trigger data-detail-key="total_pending" class="text-left bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 stat-border-purple animate-fade-in-up delay-5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-200">
         <div class="w-12 h-12 rounded-xl bg-violet-50 text-violet-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[24px]">pending_actions</span></div>
         <div>
             <div class="text-[28px] font-extrabold text-gray-900 leading-none mb-1 tracking-tight">{{ $totalPending }}</div>
             <div class="text-[13px] text-gray-500 font-medium">Menunggu Persetujuan</div>
         </div>
-    </div>
+    </button>
 </div>
 
 {{-- Monthly HR & Attendance Summary --}}
 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-7">
-    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+    <button type="button" data-dashboard-detail-trigger data-detail-key="late_this_month" class="text-left bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-200">
         <div class="w-10 h-10 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">running_with_errors</span></div>
         <div>
             <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $lateThisMonth }}</div>
             <div class="text-[12.5px] text-gray-500 font-medium">Terlambat Bulan Ini</div>
         </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+    </button>
+    <button type="button" data-dashboard-detail-trigger data-detail-key="pending_leave" class="text-left bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200">
         <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">event_busy</span></div>
         <div>
             <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $pendingLeave }}</div>
             <div class="text-[12.5px] text-gray-500 font-medium">Cuti Pending</div>
         </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+    </button>
+    <button type="button" data-dashboard-detail-trigger data-detail-key="pending_overtime" class="text-left bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-200">
         <div class="w-10 h-10 rounded-lg bg-violet-50 text-violet-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">more_time</span></div>
         <div>
             <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $pendingOvertime }}</div>
             <div class="text-[12.5px] text-gray-500 font-medium">Lembur Pending</div>
         </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+    </button>
+    <button type="button" data-dashboard-detail-trigger data-detail-key="pending_attendance" class="text-left bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-200">
         <div class="w-10 h-10 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">fact_check</span></div>
         <div>
             <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $pendingAttendance }}</div>
             <div class="text-[12.5px] text-gray-500 font-medium">Presensi Pending</div>
         </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+    </button>
+    <button type="button" data-dashboard-detail-trigger data-detail-key="resigned_this_month" class="text-left bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-rose-200">
         <div class="w-10 h-10 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[22px]">person_remove</span></div>
         <div>
             <div class="text-[24px] font-extrabold text-gray-900 leading-none mb-1">{{ $resignedThisMonth }}</div>
             <div class="text-[12.5px] text-gray-500 font-medium">Resign Bulan Ini</div>
         </div>
-    </div>
+    </button>
 </div>
 
 {{-- Contract Watch --}}
@@ -250,4 +250,102 @@
         </div>
     </div>
 </div>
+
+<div id="dashboardDetailModal" class="fixed inset-0 z-[80] hidden" aria-hidden="true">
+    <div data-dashboard-detail-close class="absolute inset-0 bg-gray-900/40 backdrop-blur-[1px]"></div>
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-2xl bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <h3 id="dashboardDetailTitle" class="text-[16px] font-black text-gray-900">Detail</h3>
+                    <p id="dashboardDetailSubtitle" class="mt-1 text-[12.5px] text-gray-500"></p>
+                </div>
+                <button type="button" data-dashboard-detail-close class="w-9 h-9 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 flex items-center justify-center shrink-0">
+                    <span class="material-symbols-outlined text-[18px]">close</span>
+                </button>
+            </div>
+            <div class="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <span class="text-[12px] font-semibold text-gray-500">Daftar person/detail</span>
+                <span id="dashboardDetailCount" class="inline-flex items-center px-2.5 py-1 rounded-full bg-white border border-gray-200 text-[11.5px] font-bold text-gray-700">0 data</span>
+            </div>
+            <div id="dashboardDetailList" class="max-h-[65vh] overflow-y-auto divide-y divide-gray-100"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const details = @js($dashboardDetails);
+    const modal = document.getElementById('dashboardDetailModal');
+    const title = document.getElementById('dashboardDetailTitle');
+    const subtitle = document.getElementById('dashboardDetailSubtitle');
+    const count = document.getElementById('dashboardDetailCount');
+    const list = document.getElementById('dashboardDetailList');
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, function (char) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[char];
+        });
+    }
+
+    function itemTemplate(item) {
+        const content = `
+            <div class="flex items-start gap-3 min-w-0">
+                <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500 text-white flex items-center justify-center text-[12px] font-black shrink-0">${escapeHtml(item.initial || '?')}</div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="text-[13.5px] font-bold text-gray-900 truncate">${escapeHtml(item.name || '-')}</div>
+                        <span class="inline-flex px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10.5px] font-bold">${escapeHtml(item.badge || '-')}</span>
+                    </div>
+                    <div class="mt-1 text-[11.5px] text-gray-400">${escapeHtml(item.code || '-')} | ${escapeHtml(item.department || '-')} | ${escapeHtml(item.position || '-')}</div>
+                    <div class="mt-1.5 text-[12.5px] text-gray-600">${escapeHtml(item.detail || '-')}</div>
+                </div>
+                ${item.url ? '<span class="material-symbols-outlined text-[18px] text-gray-300 shrink-0">chevron_right</span>' : ''}
+            </div>
+        `;
+
+        if (!item.url) {
+            return `<div class="p-4">${content}</div>`;
+        }
+
+        return `<a href="${escapeHtml(item.url)}" class="block p-4 hover:bg-gray-50 transition-colors">${content}</a>`;
+    }
+
+    function openDetail(key) {
+        const detail = details[key] || {title: 'Detail', subtitle: '', items: []};
+        const items = detail.items || [];
+
+        title.textContent = detail.title || 'Detail';
+        subtitle.textContent = detail.subtitle || '';
+        count.textContent = `${items.length} data`;
+        list.innerHTML = items.length
+            ? items.map(itemTemplate).join('')
+            : '<div class="px-5 py-10 text-center text-[13px] text-gray-400">Tidak ada data untuk kategori ini.</div>';
+
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeDetail() {
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.querySelectorAll('[data-dashboard-detail-trigger]').forEach(function (trigger) {
+        trigger.addEventListener('click', function () {
+            openDetail(trigger.dataset.detailKey);
+        });
+    });
+
+    document.querySelectorAll('[data-dashboard-detail-close]').forEach(function (trigger) {
+        trigger.addEventListener('click', closeDetail);
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeDetail();
+        }
+    });
+});
+</script>
 @endsection
