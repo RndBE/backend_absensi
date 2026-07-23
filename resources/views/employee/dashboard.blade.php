@@ -152,6 +152,20 @@
                 'description' => 'Setujui tim',
                 'color' => 'bg-amber-50 text-amber-600',
             ],
+            [
+                'href' => route('employee.company-info.index'),
+                'icon' => 'domain',
+                'title' => 'Info Perusahaan',
+                'description' => 'Peraturan & kontak',
+                'color' => 'bg-blue-50 text-blue-600',
+            ],
+            [
+                'href' => route('employee.violation-report.index'),
+                'icon' => 'report',
+                'title' => 'Aduan Pelanggaran',
+                'description' => 'Form resmi',
+                'color' => 'bg-red-50 text-red-600',
+            ],
         ];
 
         // Presensi tim hanya untuk manager yang punya departemen — sama seperti penjagaan
@@ -168,13 +182,20 @@
     @endphp
     <section class="employee-dashboard-shortcuts grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         @foreach($shortcuts as $shortcut)
-            <a href="{{ $shortcut['href'] }}" class="min-h-[96px] bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 hover:-translate-y-0.5 hover:shadow-md transition-all">
+            <a href="{{ $shortcut['href'] }}"
+               @if(!empty($shortcut['external'])) target="_blank" rel="noopener noreferrer" @endif
+               class="min-h-[96px] bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 hover:-translate-y-0.5 hover:shadow-md transition-all">
                 <div class="flex h-full flex-col justify-between gap-3">
                     <div class="w-9 h-9 rounded-lg {{ $shortcut['color'] }} flex items-center justify-center">
                         <span class="material-symbols-outlined text-[19px]">{{ $shortcut['icon'] }}</span>
                     </div>
                     <div class="min-w-0">
-                        <div class="text-[13px] font-black text-gray-900 leading-tight truncate">{{ $shortcut['title'] }}</div>
+                        <div class="text-[13px] font-black text-gray-900 leading-tight truncate flex items-center gap-1">
+                            <span class="truncate">{{ $shortcut['title'] }}</span>
+                            @if(!empty($shortcut['external']))
+                                <span class="material-symbols-outlined text-[13px] text-gray-300 shrink-0">open_in_new</span>
+                            @endif
+                        </div>
                         <div class="text-[11px] text-gray-500 mt-1 leading-tight truncate">{{ $shortcut['description'] }}</div>
                     </div>
                 </div>
@@ -184,7 +205,7 @@
 
     <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 stat-border-blue">
-            <div class="flex items-center gap-2 text-[12px] font-bold text-gra y-500 uppercase tracking-wide">
+            <div class="flex items-center gap-2 text-[12px] font-bold text-gray-500 uppercase tracking-wide">
                 <span class="material-symbols-outlined text-[17px] text-blue-500">calendar_month</span>
                 Jadwal Hari Ini
             </div>

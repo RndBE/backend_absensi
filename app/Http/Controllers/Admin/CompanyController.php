@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
+use App\Models\CompanyRegulation;
+use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -11,8 +13,15 @@ class CompanyController extends Controller
 {
     public function index()
     {
-        $company = Company::first();
-        return view('admin.company.index', compact('company'));
+        $companyId = $this->companyId();
+        $company = Company::whereKey($companyId)->first() ?: Company::first();
+        $regulations = CompanyRegulation::query()
+            ->where('company_id', $company?->id ?: $companyId)
+            ->orderByDesc('effective_date')
+            ->orderBy('title')
+            ->get();
+
+        return view('admin.company.index', compact('company', 'regulations'));
     }
 
     public function update(Request $request)
@@ -26,10 +35,11 @@ class CompanyController extends Controller
             'logo' => 'nullable|image|max:2048',
         ]);
 
-        $company = Company::first();
+        $company = Company::whereKey($this->companyId())->first() ?: Company::first();
 
         if (!$company) {
             $company = new Company();
+            $company->id = $this->companyId();
         }
 
         $company->name = $request->name;
@@ -48,5 +58,12 @@ class CompanyController extends Controller
         $company->save();
 
         return redirect()->route('admin.company.index')->with('success', 'Info perusahaan berhasil diperbarui');
+    }
+
+    private function companyId(): int
+    {
+        $admin = Employee::find(session('admin_id'));
+
+        return (int) ($admin?->company_id ?: Company::query()->value('id') ?: 1);
     }
 }

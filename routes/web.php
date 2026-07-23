@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BudgetPaymentController;
 use App\Http\Controllers\Admin\BudgetRequestController;
 use App\Http\Controllers\Admin\CompanyController;
+use App\Http\Controllers\Admin\CompanyRegulationController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\EmployeeApproverController;
@@ -44,6 +45,7 @@ use App\Http\Controllers\Employee\ApprovalController as EmployeeApprovalControll
 use App\Http\Controllers\Employee\TeamAttendanceController as EmployeeTeamAttendanceController;
 use App\Http\Controllers\Employee\AuthController as EmployeeAuthController;
 use App\Http\Controllers\Employee\BudgetRequestController as EmployeeBudgetRequestController;
+use App\Http\Controllers\Employee\CompanyInfoController as EmployeeCompanyInfoController;
 use App\Http\Controllers\Employee\DashboardController as EmployeeDashboardController;
 use App\Http\Controllers\Employee\FacePhotoController as EmployeeFacePhotoController;
 use App\Http\Controllers\Employee\LeaveController as EmployeeLeaveController;
@@ -74,6 +76,9 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     // Cek status sesi (JSON) → dipakai heartbeat untuk auto-redirect ke login saat sesi habis.
     Route::get('/session/check', fn () => response()->json(['ok' => true]))->name('session.check');
     Route::get('/profile', [EmployeeProfileController::class, 'show'])->name('profile.show');
+    Route::get('/company-info', [EmployeeCompanyInfoController::class, 'index'])->name('company-info.index');
+    Route::get('/company-info/regulations/{regulation}/download', [EmployeeCompanyInfoController::class, 'download'])->name('company-info.regulations.download');
+    Route::view('/violation-report', 'employee.violation-report.index')->name('violation-report.index');
     Route::post('/profile/photo', [EmployeeProfileController::class, 'updatePhoto'])->name('profile.photo.update');
     Route::delete('/profile/photo', [EmployeeProfileController::class, 'destroyPhoto'])->name('profile.photo.destroy');
     Route::get('/profile/personal', [EmployeeProfileController::class, 'personal'])->name('profile.personal');
@@ -322,6 +327,11 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Company Settings
     Route::get('/company', [CompanyController::class, 'index'])->name('company.index');
     Route::put('/company', [CompanyController::class, 'update'])->name('company.update');
+    Route::post('/company/regulations', [CompanyRegulationController::class, 'store'])->name('company.regulations.store');
+    Route::post('/company/regulations/import', [CompanyRegulationController::class, 'import'])->name('company.regulations.import');
+    Route::put('/company/regulations/{regulation}', [CompanyRegulationController::class, 'update'])->name('company.regulations.update');
+    Route::delete('/company/regulations/{regulation}', [CompanyRegulationController::class, 'destroy'])->name('company.regulations.destroy');
+    Route::get('/company/regulations/{regulation}/download', [CompanyRegulationController::class, 'download'])->name('company.regulations.download');
 
     // Attendance Settings
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');

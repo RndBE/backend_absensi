@@ -19,6 +19,11 @@ class Company extends Model
         return $this->hasMany(Employee::class);
     }
 
+    public function regulations(): HasMany
+    {
+        return $this->hasMany(CompanyRegulation::class);
+    }
+
     public function workSchedules(): HasMany
     {
         return $this->hasMany(WorkSchedule::class);

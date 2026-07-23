@@ -142,6 +142,9 @@
                     <button onclick="toggleAccordion('nav-{{ $group['key'] }}')" class="nav-group-toggle {{ $isGroupActive ? 'open' : '' }} w-full flex items-center gap-3 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[1.5px] transition-all duration-200 cursor-pointer {{ $isGroupActive ? 'text-white/80 bg-white/[0.05]' : 'text-white/35 hover:text-white/50 hover:bg-white/[0.03]' }}" id="toggle-{{ $group['key'] }}">
                         <span class="material-symbols-outlined text-[16px]">{{ $group['icon'] }}</span>
                         <span class="flex-1 text-left">{{ $group['label'] }}</span>
+                        @if($group['key'] === 'approval' && $pendingCount > 0)
+                            <span class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ $pendingCount }}</span>
+                        @endif
                         <span class="acc-arrow material-symbols-outlined text-[14px]">expand_more</span>
                     </button>
                     <div class="nav-group-items {{ $isGroupActive ? 'open' : '' }}" id="nav-{{ $group['key'] }}">
