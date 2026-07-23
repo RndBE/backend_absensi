@@ -9,12 +9,16 @@ use Illuminate\Http\Request;
 
 class AuditLogController extends Controller
 {
+    private const EXCLUDED_ACTIVITY_LOG_EMAILS = ['superadmin@gmail.com'];
+
     public function index(Request $request)
     {
         $admin = Employee::find(session('admin_id'));
 
         $query = AdminActivityLog::with('employee:id,full_name,employee_code,role')
             ->orderByDesc('created_at');
+
+        $this->excludeHiddenAdmins($query);
 
         if ($admin->role !== 'superadmin') {
             $query->where('company_id', $admin->company_id);
@@ -41,13 +45,26 @@ class AuditLogController extends Controller
         }
 
         $logs = $query->paginate(25)->withQueryString();
-        $modules = AdminActivityLog::query()->select('module')->distinct()->orderBy('module')->pluck('module');
-        $actions = AdminActivityLog::query()->select('action')->distinct()->orderBy('action')->pluck('action');
+        $modulesQuery = AdminActivityLog::query()->select('module')->distinct()->orderBy('module');
+        $actionsQuery = AdminActivityLog::query()->select('action')->distinct()->orderBy('action');
+        $this->excludeHiddenAdmins($modulesQuery);
+        $this->excludeHiddenAdmins($actionsQuery);
+
+        $modules = $modulesQuery->pluck('module');
+        $actions = $actionsQuery->pluck('action');
         $admins = Employee::whereIn('role', ['superadmin', 'admin', 'manager'])
+            ->whereNotIn('email', self::EXCLUDED_ACTIVITY_LOG_EMAILS)
             ->when($admin->role !== 'superadmin', fn ($q) => $q->where('company_id', $admin->company_id))
             ->orderBy('full_name')
             ->get(['id', 'full_name', 'employee_code']);
 
         return view('admin.audit-logs.index', compact('logs', 'modules', 'actions', 'admins'));
+    }
+
+    private function excludeHiddenAdmins($query): void
+    {
+        $query->whereDoesntHave('employee', function ($employeeQuery) {
+            $employeeQuery->whereIn('email', self::EXCLUDED_ACTIVITY_LOG_EMAILS);
+        });
     }
 }

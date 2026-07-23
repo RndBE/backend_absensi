@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class AuthController extends Controller
 {
+    private const EXCLUDED_ACTIVITY_LOG_EMAILS = ['superadmin@gmail.com'];
+
     public function showLogin()
     {
         if (session('admin_id')) {
@@ -57,7 +59,7 @@ class AuthController extends Controller
 
     private function logAuthActivity(Employee $employee, string $action, Request $request): void
     {
-        if (!Schema::hasTable('admin_activity_logs')) {
+        if (! Schema::hasTable('admin_activity_logs') || $this->isExcludedFromActivityLog($employee)) {
             return;
         }
 
@@ -73,5 +75,10 @@ class AuthController extends Controller
             'user_agent' => substr((string) $request->userAgent(), 0, 1000),
             'metadata' => null,
         ]);
+    }
+
+    private function isExcludedFromActivityLog(Employee $employee): bool
+    {
+        return in_array(strtolower(trim((string) $employee->email)), self::EXCLUDED_ACTIVITY_LOG_EMAILS, true);
     }
 }
