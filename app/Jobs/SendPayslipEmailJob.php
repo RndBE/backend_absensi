@@ -5,10 +5,9 @@ namespace App\Jobs;
 use App\Mail\PayslipPublishedMail;
 use App\Models\Company;
 use App\Models\PayrollRunDetail;
-use App\Services\BpjsCalculator;
+use App\Support\PayslipBpjsData;
 use App\Support\PayslipLoanSummary;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -71,23 +70,6 @@ class SendPayslipEmailJob implements ShouldQueue
 
     private function buildBpjsData(PayrollRunDetail $detail): array
     {
-        $payroll = $detail->employee->activePayroll;
-        if (! $payroll) {
-            return ['items' => [], 'total' => 0];
-        }
-
-        $periodDate = Carbon::parse($detail->payrollRun->period.'-01');
-        $bpjs = (new BpjsCalculator($periodDate->format('Y-m-d')))->calculate((float) $payroll->basic_salary);
-        $bpjs = \App\Support\PayrollBpjs::applyEligibility($bpjs, $payroll, $periodDate);
-        // Karyawan resign: JKK/JKM/JHT tetap DITAMPILKAN sebagai Rp 0 (bukan disembunyikan).
-        $resigned = \App\Support\PayrollBpjs::isResignedInMonth($detail->employee, $periodDate);
-
-        $items = \App\Support\PayrollBpjs::benefitItems($bpjs, $resigned);
-
-        return [
-            'raw' => $bpjs,
-            'items' => $items,
-            'total' => collect($items)->sum('amount'),
-        ];
+        return PayslipBpjsData::fromDetail($detail);
     }
 }

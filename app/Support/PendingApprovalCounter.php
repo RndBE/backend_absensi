@@ -32,6 +32,10 @@ class PendingApprovalCounter
 
     private function countPersonalPending(Employee $approver): int
     {
+        if (! Schema::hasTable('employee_approvers')) {
+            return 0;
+        }
+
         $total = 0;
 
         foreach (self::REQUEST_TABLES as $requestType => $tableName) {

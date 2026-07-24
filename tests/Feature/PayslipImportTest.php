@@ -60,6 +60,7 @@ class PayslipImportTest extends TestCase
 
         Schema::create('payroll_runs', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('company_id')->nullable();
             $table->string('period', 7);
             $table->string('status')->default('draft');
             $table->decimal('total_earning', 18, 2)->default(0);
@@ -118,6 +119,7 @@ class PayslipImportTest extends TestCase
         $response->assertSessionHas('success', 'Import payslip selesai: 2 berhasil, 0 dilewati.');
 
         $run = PayrollRun::where('period', '2026-06')->first();
+        $this->assertSame(1, (int) $run->company_id);
         $this->assertSame('published', $run->status);
         $this->assertEquals(9900000.0, (float) $run->total_earning);
         $this->assertEquals(845000.0, (float) $run->total_deduction);
@@ -221,14 +223,205 @@ class PayslipImportTest extends TestCase
         $this->assertEquals(370000.0, (float) $manualInfo['amount']);
     }
 
+    public function test_payslip_import_replace_period_removes_old_company_details_not_in_new_file(): void
+    {
+        DB::table('companies')->insert([
+            'id' => 2,
+            'name' => 'PT Other Company',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('employees')->insert([
+            'id' => 4,
+            'employee_code' => 'OTH001',
+            'company_id' => 2,
+            'full_name' => 'Other Employee',
+            'email' => 'other@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $run = PayrollRun::create([
+            'company_id' => 1,
+            'period' => '2026-06',
+            'status' => 'published',
+            'published_at' => now(),
+            'created_by' => 1,
+        ]);
+
+        foreach ([2, 3, 4] as $employeeId) {
+            PayrollRunDetail::create([
+                'payroll_run_id' => $run->id,
+                'employee_id' => $employeeId,
+                'basic_salary' => 1000000,
+                'total_earning' => 1000000,
+                'total_deduction' => 0,
+                'net_salary' => 1000000,
+                'components' => [],
+                'is_manual_edited' => true,
+            ]);
+        }
+
+        $file = $this->uploadedCsv(implode("\n", [
+            'employee_code,basic_salary,Tunjangan Makan',
+            'EMP001,5000000,300000',
+        ]));
+
+        $response = $this->withoutMiddleware()
+            ->withSession(['admin_id' => 1])
+            ->post(route('admin.payslips.import'), [
+                'period' => '2026-06',
+                'payslip_file' => $file,
+                'replace_period' => '1',
+            ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success', 'Import payslip selesai: 1 berhasil, 0 dilewati. Replace periode menghapus 2 payslip lama.');
+
+        $this->assertDatabaseHas('payroll_run_details', [
+            'payroll_run_id' => $run->id,
+            'employee_id' => 2,
+            'basic_salary' => 5000000,
+        ]);
+        $this->assertDatabaseMissing('payroll_run_details', [
+            'payroll_run_id' => $run->id,
+            'employee_id' => 3,
+        ]);
+        $this->assertDatabaseHas('payroll_run_details', [
+            'payroll_run_id' => $run->id,
+            'employee_id' => 4,
+            'basic_salary' => 1000000,
+        ]);
+
+        $run->refresh();
+        $this->assertEquals(6300000.0, (float) $run->total_earning);
+        $this->assertEquals(0.0, (float) $run->total_deduction);
+        $this->assertEquals(6300000.0, (float) $run->total_net);
+    }
+
     public function test_payslip_index_exposes_component_import_form(): void
     {
         $view = file_get_contents(resource_path('views/admin/payslips/index.blade.php'));
 
         $this->assertStringContainsString("route('admin.payslips.import')", $view);
+        $this->assertStringContainsString("route('admin.payslips.update'", $view);
+        $this->assertStringContainsString("route('admin.payslips.destroy'", $view);
+        $this->assertStringContainsString('openPayslipEdit', $view);
+        $this->assertStringContainsString('data-payslip-edit-form', $view);
+        $this->assertStringContainsString('Hapus Payslip', $view);
+        $this->assertStringContainsString('data-summary-net', $view);
+        $this->assertStringContainsString('Belum ada komponen manual', $view);
+        $this->assertStringContainsString('Basic Salary', $view);
         $this->assertStringContainsString('name="period"', $view);
         $this->assertStringContainsString('name="payslip_file"', $view);
+        $this->assertStringContainsString('name="replace_period"', $view);
+        $this->assertStringContainsString('Replace periode', $view);
         $this->assertStringContainsString('employee_code,basic_salary,Tunjangan Makan,Lembur,BPJS Kesehatan', $view);
+    }
+
+    public function test_admin_can_update_published_imported_payslip_from_payslip_page(): void
+    {
+        $run = PayrollRun::create([
+            'company_id' => 1,
+            'period' => '2026-03',
+            'status' => 'published',
+            'published_at' => now(),
+            'created_by' => 1,
+        ]);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => 2,
+            'basic_salary' => 5000000,
+            'total_earning' => 5300000,
+            'total_deduction' => 100000,
+            'net_salary' => 5200000,
+            'components' => [
+                ['id' => 1, 'name' => 'Tunjangan Makan', 'type' => 'earning', 'category' => 'recurring', 'amount' => 300000, 'is_taxable' => true],
+                ['id' => 3, 'name' => 'BPJS Kesehatan', 'type' => 'deduction', 'category' => 'recurring', 'amount' => 100000, 'is_taxable' => false],
+            ],
+            'is_manual_edited' => true,
+        ]);
+
+        $response = $this->withoutMiddleware()
+            ->withSession(['admin_id' => 1])
+            ->put(route('admin.payslips.update', $detail->id), [
+                'basic_salary' => 6000000,
+                'components' => [
+                    ['id' => 1, 'name' => 'Tunjangan Makan', 'type' => 'earning', 'category' => 'recurring', 'amount' => 200000, 'is_taxable' => 1],
+                    ['id' => 3, 'name' => 'BPJS Kesehatan', 'type' => 'deduction', 'category' => 'recurring', 'amount' => 50000, 'is_taxable' => 0],
+                    ['id' => null, 'name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'category' => 'info', 'amount' => 0, 'is_taxable' => 0],
+                ],
+            ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success', 'Payslip berhasil diperbarui.');
+
+        $detail->refresh();
+        $this->assertEquals(6000000.0, (float) $detail->basic_salary);
+        $this->assertEquals(6200000.0, (float) $detail->total_earning);
+        $this->assertEquals(50000.0, (float) $detail->total_deduction);
+        $this->assertEquals(6150000.0, (float) $detail->net_salary);
+        $this->assertTrue((bool) $detail->is_manual_edited);
+        $this->assertSame('published', $run->fresh()->status);
+        $this->assertEquals(6200000.0, (float) $run->fresh()->total_earning);
+        $this->assertEquals(50000.0, (float) $run->fresh()->total_deduction);
+        $this->assertEquals(6150000.0, (float) $run->fresh()->total_net);
+    }
+
+    public function test_admin_can_delete_one_published_imported_payslip_from_payslip_page(): void
+    {
+        $run = PayrollRun::create([
+            'company_id' => 1,
+            'period' => '2026-01',
+            'status' => 'published',
+            'published_at' => now(),
+            'created_by' => 1,
+        ]);
+        $detailToDelete = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => 2,
+            'basic_salary' => 5000000,
+            'total_earning' => 5300000,
+            'total_deduction' => 100000,
+            'net_salary' => 5200000,
+            'components' => [],
+            'is_manual_edited' => true,
+        ]);
+        PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => 3,
+            'basic_salary' => 4500000,
+            'total_earning' => 4700000,
+            'total_deduction' => 50000,
+            'net_salary' => 4650000,
+            'components' => [],
+            'is_manual_edited' => true,
+        ]);
+        $run->update([
+            'total_earning' => 10000000,
+            'total_deduction' => 150000,
+            'total_net' => 9850000,
+        ]);
+
+        $response = $this->withoutMiddleware()
+            ->withSession(['admin_id' => 1])
+            ->delete(route('admin.payslips.destroy', $detailToDelete->id));
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+        $this->assertDatabaseMissing('payroll_run_details', ['id' => $detailToDelete->id]);
+        $this->assertDatabaseHas('payroll_run_details', [
+            'payroll_run_id' => $run->id,
+            'employee_id' => 3,
+        ]);
+
+        $run->refresh();
+        $this->assertEquals(4700000.0, (float) $run->total_earning);
+        $this->assertEquals(50000.0, (float) $run->total_deduction);
+        $this->assertEquals(4650000.0, (float) $run->total_net);
     }
 
     private function uploadedCsv(string $contents): UploadedFile

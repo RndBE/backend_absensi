@@ -225,6 +225,9 @@ class PayrollComponentController extends Controller
         ]);
 
         $amount = $request->amount ?? $component->default_amount;
+        $startDate = $request->filled('start_date')
+            ? Carbon::parse($request->start_date)->toDateString()
+            : now()->toDateString();
         $added  = 0;
         $skipped = 0;
 
@@ -242,7 +245,7 @@ class PayrollComponentController extends Controller
                 'payroll_component_id' => $id,
                 'employee_id'          => $empId,
                 'amount'               => $amount,
-                'start_date'           => $request->start_date,
+                'start_date'           => $startDate,
                 'is_active'            => true,
             ]);
             $added++;

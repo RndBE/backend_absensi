@@ -175,7 +175,7 @@
                         @if($canManagePayrollMaster)
                         {{-- Inline edit form --}}
                         <form action="{{ route('admin.payroll-components.update-assignment', [$component->id, $assign->id]) }}"
-                              method="POST" class="flex items-center gap-1.5 edit-form hidden" id="edit-{{ $assign->id }}">
+                              method="POST" class="flex flex-wrap items-center justify-end gap-1.5 edit-form hidden" id="edit-{{ $assign->id }}">
                             @csrf @method('PUT')
                             <div class="relative">
                                 <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">Rp</span>
@@ -186,6 +186,9 @@
                                     data-raw="raw-{{ $assign->id }}"
                                     class="inline-fmt pl-6 pr-2 py-1.5 text-[12px] border border-indigo-300 rounded-lg w-32 focus:ring-2 focus:ring-indigo-300 outline-none">
                             </div>
+                            <input type="date" name="start_date" value="{{ optional($assign->start_date)->format('Y-m-d') }}"
+                                title="Tanggal mulai"
+                                class="px-2 py-1.5 text-[12px] border border-indigo-300 rounded-lg w-36 focus:ring-2 focus:ring-indigo-300 outline-none">
                             <input type="hidden" name="is_active" value="{{ $assign->is_active ? 1 : 0 }}">
                             <button type="submit" class="px-2.5 py-1.5 text-[11px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
                                 Simpan
@@ -197,9 +200,14 @@
                         </form>
 
                         {{-- Display amount --}}
-                        <span class="amount-display text-[13px] font-bold {{ $component->type === 'earning' ? 'text-emerald-600' : 'text-red-500' }}" id="amt-{{ $assign->id }}">
-                            Rp {{ number_format($assign->amount, 0, ',', '.') }}
-                        </span>
+                        <div class="amount-display text-right" id="amt-{{ $assign->id }}">
+                            <div class="text-[13px] font-bold {{ $component->type === 'earning' ? 'text-emerald-600' : 'text-red-500' }}">
+                                Rp {{ number_format($assign->amount, 0, ',', '.') }}
+                            </div>
+                            <div class="text-[10.5px] text-gray-400">
+                                Mulai {{ optional($assign->start_date)->format('d/m/Y') ?? '-' }}
+                            </div>
+                        </div>
 
                         {{-- Edit button --}}
                         <button onclick="openEdit({{ $assign->id }})"
@@ -230,9 +238,14 @@
                             </button>
                         </form>
                         @else
-                        <span class="text-[13px] font-bold {{ $component->type === 'earning' ? 'text-emerald-600' : 'text-red-500' }}">
-                            Rp {{ number_format($assign->amount, 0, ',', '.') }}
-                        </span>
+                        <div class="text-right">
+                            <div class="text-[13px] font-bold {{ $component->type === 'earning' ? 'text-emerald-600' : 'text-red-500' }}">
+                                Rp {{ number_format($assign->amount, 0, ',', '.') }}
+                            </div>
+                            <div class="text-[10.5px] text-gray-400">
+                                Mulai {{ optional($assign->start_date)->format('d/m/Y') ?? '-' }}
+                            </div>
+                        </div>
                         @endif
                     </div>
                 </div>

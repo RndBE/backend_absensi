@@ -5,11 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\PayrollRunDetail;
-use App\Services\BpjsCalculator;
+use App\Support\PayslipBpjsData;
 use App\Support\PayslipFilename;
 use App\Support\PayslipLoanSummary;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class PayslipController extends Controller
@@ -144,23 +143,6 @@ class PayslipController extends Controller
 
     private function buildBpjsData(PayrollRunDetail $detail): array
     {
-        $payroll = $detail->employee->activePayroll;
-        if (! $payroll) {
-            return ['items' => [], 'total' => 0];
-        }
-
-        $periodDate = Carbon::parse($detail->payrollRun->period . '-01');
-        $bpjs = (new BpjsCalculator($periodDate->format('Y-m-d')))->calculate((float) $payroll->basic_salary);
-        $bpjs = \App\Support\PayrollBpjs::applyEligibility($bpjs, $payroll, $periodDate);
-        // Karyawan resign: JKK/JKM/JHT tetap DITAMPILKAN sebagai Rp 0 (bukan disembunyikan).
-        $resigned = \App\Support\PayrollBpjs::isResignedInMonth($detail->employee, $periodDate);
-
-        $items = \App\Support\PayrollBpjs::benefitItems($bpjs, $resigned);
-
-        return [
-            'raw' => $bpjs,
-            'items' => $items,
-            'total' => collect($items)->sum('amount'),
-        ];
+        return PayslipBpjsData::fromDetail($detail);
     }
 }

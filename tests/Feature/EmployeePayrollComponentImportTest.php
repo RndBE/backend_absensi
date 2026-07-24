@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Support\SimpleXlsxExporter;
+use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,8 @@ class EmployeePayrollComponentImportTest extends TestCase
 
     protected function tearDown(): void
     {
+        Carbon::setTestNow();
+
         foreach ($this->tempPaths as $path) {
             if (is_file($path)) {
                 unlink($path);
@@ -217,6 +220,37 @@ class EmployeePayrollComponentImportTest extends TestCase
 
         $this->assertStringNotContainsString("route('admin.employee-payrolls.import-components')", $view);
         $this->assertStringNotContainsString('data-component-import-open', $view);
+    }
+
+    public function test_assignment_edit_form_exposes_start_date_field(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/payroll-components/employees.blade.php'));
+
+        $this->assertStringContainsString('name="start_date"', $view);
+        $this->assertStringContainsString("optional(\$assign->start_date)->format('Y-m-d')", $view);
+        $this->assertStringContainsString('Tanggal mulai', $view);
+    }
+
+    public function test_assign_employee_defaults_start_date_to_today_when_empty(): void
+    {
+        Carbon::setTestNow('2026-07-24 09:00:00');
+
+        $response = $this->withoutMiddleware()
+            ->withSession(['admin_id' => 1])
+            ->post(route('admin.payroll-components.assign-employee', 20), [
+                'employee_ids' => [2],
+                'amount' => 150000,
+            ]);
+
+        $response->assertRedirect();
+
+        $this->assertDatabaseHas('employee_payroll_components', [
+            'employee_id' => 2,
+            'payroll_component_id' => 20,
+            'amount' => 150000,
+            'start_date' => '2026-07-24 00:00:00',
+            'is_active' => true,
+        ]);
     }
 
     private function uploadedSalaryMasterXlsx(array $rows): UploadedFile

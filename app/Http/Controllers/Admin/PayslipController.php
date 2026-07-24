@@ -8,13 +8,15 @@ use App\Models\PayrollComponent;
 use App\Models\PayrollRunDetail;
 use App\Models\PayrollRun;
 use App\Models\Company;
-use App\Services\BpjsCalculator;
+use App\Support\AdminPermission;
+use App\Support\PayslipBpjsData;
 use App\Support\PayslipFilename;
 use App\Support\PayslipLoanSummary;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Schema;
 use ZipArchive;
 
 class PayslipController extends Controller
@@ -29,6 +31,8 @@ class PayslipController extends Controller
             'payrollRun:id,period,status',
         ])->whereHas('payrollRun', function ($q) {
             $q->whereIn('status', ['published', 'locked']);
+        })->when(Schema::hasColumn('payroll_runs', 'company_id'), function ($query) use ($admin) {
+            $query->whereHas('payrollRun', fn ($q) => $q->where('company_id', $admin->company_id));
         })->whereHas('employee', function ($q) use ($admin) {
             $q->where('company_id', $admin->company_id);
         });
@@ -42,6 +46,7 @@ class PayslipController extends Controller
         $payslips = $query->orderByDesc('id')->get();
 
         $periods = PayrollRun::whereIn('status', ['published', 'locked'])
+            ->when(Schema::hasColumn('payroll_runs', 'company_id'), fn ($q) => $q->where('company_id', $admin->company_id))
             ->distinct()
             ->orderByDesc('period')
             ->pluck('period');
@@ -54,10 +59,12 @@ class PayslipController extends Controller
         $request->validate([
             'period' => ['required', 'date_format:Y-m'],
             'payslip_file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:5120'],
+            'replace_period' => ['nullable', 'boolean'],
         ]);
 
         $admin = Employee::find(session('admin_id'));
         $period = $request->period;
+        $replacePeriod = $request->boolean('replace_period');
         $import = $this->preparePayslipImportRows($this->readImportRows($request->file('payslip_file')));
         $rows = $import['rows'];
         $dataStartLine = $import['data_start_line'];
@@ -75,21 +82,38 @@ class PayslipController extends Controller
         $componentsByHeader = $this->payrollComponentsByHeader();
         $componentColumns = $this->componentColumns($headers, $rawHeaders);
 
-        $run = PayrollRun::firstOrNew(['period' => $period]);
+        $runAttributes = ['period' => $period];
+        if (Schema::hasColumn('payroll_runs', 'company_id')) {
+            $runAttributes['company_id'] = $admin->company_id;
+        }
+
+        $run = PayrollRun::firstOrNew($runAttributes);
         if ($run->exists && $run->status === 'locked') {
             return back()->with('error', 'Import dibatalkan. Payslip periode ini sudah locked.');
         }
 
-        $run->fill([
+        $runValues = [
             'status' => 'published',
             'published_at' => now(),
             'created_by' => $admin?->id,
-        ]);
+        ];
+        if (Schema::hasColumn('payroll_runs', 'company_id')) {
+            $runValues['company_id'] = $admin->company_id;
+        }
+
+        $run->fill($runValues);
         $run->save();
 
         $imported = 0;
         $skipped = 0;
+        $deleted = 0;
         $warnings = [];
+
+        if ($replacePeriod) {
+            $deleted = PayrollRunDetail::where('payroll_run_id', $run->id)
+                ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+                ->delete();
+        }
 
         foreach ($rows as $index => $row) {
             $lineNumber = $index + $dataStartLine;
@@ -170,11 +194,90 @@ class PayslipController extends Controller
         ]);
 
         $message = "Import payslip selesai: {$imported} berhasil, {$skipped} dilewati.";
+        if ($replacePeriod) {
+            $message .= " Replace periode menghapus {$deleted} payslip lama.";
+        }
         if ($warnings) {
             $message .= ' ' . implode(' ', array_slice($warnings, 0, 5));
         }
 
         return back()->with($imported > 0 ? 'success' : 'error', $message);
+    }
+
+    public function update(Request $request, $id, AdminPermission $permissions)
+    {
+        $admin = Employee::find(session('admin_id'));
+        abort_unless($admin && $permissions->can($admin, 'payroll.runs.update'), 403);
+
+        $detail = PayrollRunDetail::with(['employee', 'payrollRun'])
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
+
+        if ($detail->payrollRun?->status === 'locked') {
+            return back()->with('error', 'Payslip periode ini sudah locked dan tidak bisa diedit.');
+        }
+
+        $request->validate([
+            'basic_salary' => ['required', 'numeric', 'min:0'],
+            'components' => ['nullable', 'array'],
+            'components.*.id' => ['nullable'],
+            'components.*.name' => ['required', 'string'],
+            'components.*.type' => ['required', 'in:earning,deduction,info'],
+            'components.*.category' => ['nullable', 'string'],
+            'components.*.amount' => ['required', 'numeric'],
+            'components.*.is_taxable' => ['nullable', 'boolean'],
+            'components.*.is_auto' => ['nullable', 'boolean'],
+            'components.*.detail' => ['nullable', 'string'],
+        ]);
+
+        $basicSalary = (float) $request->input('basic_salary', 0);
+        $components = $this->normalizePayslipComponents($request->input('components', []), $detail->components ?? []);
+        $totalEarning = $basicSalary;
+        $totalDeduction = 0.0;
+
+        foreach ($components as $component) {
+            if ($component['type'] === 'earning') {
+                $totalEarning += (float) $component['amount'];
+            } elseif ($component['type'] === 'deduction') {
+                $totalDeduction += (float) $component['amount'];
+            }
+        }
+
+        $detail->update([
+            'basic_salary' => $basicSalary,
+            'components' => $components,
+            'total_earning' => $totalEarning,
+            'total_deduction' => $totalDeduction,
+            'net_salary' => $totalEarning - $totalDeduction,
+            'is_manual_edited' => true,
+        ]);
+
+        $this->recalculateRunTotals($detail->payrollRun);
+
+        return back()->with('success', 'Payslip berhasil diperbarui.');
+    }
+
+    public function destroy($id, AdminPermission $permissions)
+    {
+        $admin = Employee::find(session('admin_id'));
+        abort_unless($admin && $permissions->can($admin, 'payroll.runs.update'), 403);
+
+        $detail = PayrollRunDetail::with(['employee', 'payrollRun'])
+            ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
+            ->findOrFail($id);
+
+        $run = $detail->payrollRun;
+        if ($run?->status === 'locked') {
+            return back()->with('error', 'Payslip periode ini sudah locked dan tidak bisa dihapus.');
+        }
+
+        $employeeName = $detail->employee?->full_name ?? 'karyawan';
+        $period = $run?->period;
+
+        $detail->delete();
+        $this->recalculateRunTotals($run);
+
+        return back()->with('success', "Payslip {$employeeName}".($period ? " periode {$period}" : '').' berhasil dihapus.');
     }
 
     public function show($id)
@@ -296,23 +399,60 @@ class PayslipController extends Controller
      */
     private function buildBpjsData(PayrollRunDetail $detail): array
     {
-        $payroll = $detail->employee->activePayroll;
-        if (!$payroll) return ['items' => [], 'total' => 0];
+        return PayslipBpjsData::fromDetail($detail);
+    }
 
-        $periodDate = Carbon::parse($detail->payrollRun->period . '-01');
-        $calc       = new BpjsCalculator($periodDate->format('Y-m-d'));
-        $bpjs       = $calc->calculate((float) $payroll->basic_salary);
-        $bpjs       = \App\Support\PayrollBpjs::applyEligibility($bpjs, $payroll, $periodDate);
-        // Karyawan resign: JKK/JKM/JHT tetap DITAMPILKAN sebagai Rp 0 (bukan disembunyikan).
-        $resigned   = \App\Support\PayrollBpjs::isResignedInMonth($detail->employee, $periodDate);
+    private function normalizePayslipComponents(mixed $components, mixed $existingComponents = []): array
+    {
+        if (! is_array($components)) {
+            return [];
+        }
 
-        $items = \App\Support\PayrollBpjs::benefitItems($bpjs, $resigned);
+        $existingComponents = is_array($existingComponents)
+            ? array_values($existingComponents)
+            : [];
 
-        return [
-            'raw'   => $bpjs,
-            'items' => $items,
-            'total' => collect($items)->sum('amount'),
-        ];
+        return collect($components)
+            ->map(function (array $component, int $index) use ($existingComponents) {
+                $normalized = [
+                    'id' => $component['id'] ?? null,
+                    'name' => trim((string) ($component['name'] ?? '')),
+                    'type' => $component['type'] ?? 'earning',
+                    'category' => $component['category'] ?? 'manual',
+                    'amount' => round((float) ($component['amount'] ?? 0), 2),
+                    'is_taxable' => filter_var($component['is_taxable'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                ];
+
+                if (array_key_exists('is_auto', $component)) {
+                    $normalized['is_auto'] = filter_var($component['is_auto'], FILTER_VALIDATE_BOOLEAN);
+                }
+
+                if (($component['detail'] ?? '') !== '') {
+                    $normalized['detail'] = trim((string) $component['detail']);
+                }
+
+                if (empty($normalized['lines']) && ! empty($existingComponents[$index]['lines'])) {
+                    $normalized['lines'] = $existingComponents[$index]['lines'];
+                }
+
+                return $normalized;
+            })
+            ->filter(fn (array $component) => $component['name'] !== '')
+            ->values()
+            ->all();
+    }
+
+    private function recalculateRunTotals(?PayrollRun $run): void
+    {
+        if (! $run) {
+            return;
+        }
+
+        $run->update([
+            'total_earning' => $run->details()->sum('total_earning'),
+            'total_deduction' => $run->details()->sum('total_deduction'),
+            'total_net' => $run->details()->sum('net_salary'),
+        ]);
     }
 
     private function readImportRows(UploadedFile $file): array

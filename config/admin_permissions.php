@@ -229,6 +229,8 @@ return [
         'admin.payroll-runs.regenerate' => 'payroll.runs.update',
         'admin.payroll-runs.inject-bpjs' => 'payroll.runs.update',
         'admin.payroll-runs.destroy' => 'payroll.runs.delete',
+        'admin.payslips.update' => 'payroll.runs.update',
+        'admin.payslips.destroy' => 'payroll.runs.update',
         'admin.payslips.*' => 'payslips.view',
         'admin.loan-requests.index' => 'payroll.loans.view',
         'admin.loan-requests.show' => 'payroll.loans.view',

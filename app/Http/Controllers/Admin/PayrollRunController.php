@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class PayrollRunController extends Controller
 {
@@ -69,10 +70,15 @@ class PayrollRunController extends Controller
 
         $admin = Employee::find(session('admin_id'));
 
-        $run = PayrollRun::create([
+        $runData = [
             'period' => $request->period,
             'created_by' => $admin->id,
-        ]);
+        ];
+        if (Schema::hasColumn('payroll_runs', 'company_id')) {
+            $runData['company_id'] = $admin->company_id;
+        }
+
+        $run = PayrollRun::create($runData);
 
         $this->generateDetails($run, $request->employee_ids);
         $this->logAction($run, 'created', $admin->id, 'Payroll run dibuat untuk '.count($request->employee_ids).' karyawan');
@@ -89,6 +95,8 @@ class PayrollRunController extends Controller
             ->with(['employee:id,full_name,employee_code,department_id,position', 'employee.department:id,name'])
             ->orderBy('net_salary', 'desc')
             ->get();
+
+        $details->each(fn (PayrollRunDetail $detail) => $this->attachOvertimeLines($detail, $run));
 
         return view('admin.payroll-runs.show', compact('run', 'details'));
     }
@@ -111,7 +119,16 @@ class PayrollRunController extends Controller
             'components.*.amount' => 'required|numeric',
         ]);
 
+        $existingComponents = is_array($detail->components)
+            ? $detail->components
+            : (json_decode((string) $detail->components, true) ?: []);
         $components = $request->components;
+        foreach ($components as $index => &$component) {
+            if (empty($component['lines']) && ! empty($existingComponents[$index]['lines'])) {
+                $component['lines'] = $existingComponents[$index]['lines'];
+            }
+        }
+        unset($component);
         $totalEarning = $detail->basic_salary;
         $totalDeduction = 0;
 
@@ -665,6 +682,7 @@ class PayrollRunController extends Controller
                         'is_taxable' => true,
                         'is_auto' => true,
                         'detail' => $overtimeData['detail'],
+                        'lines' => $overtimeData['lines'],
                     ];
                     $totalEarning += $overtimeData['total_amount'];
                 }
@@ -975,6 +993,92 @@ class PayrollRunController extends Controller
 
         return str_contains($name, 'tax allowance')
             || str_contains($name, 'tunjangan pajak');
+    }
+
+    private function attachOvertimeLines(PayrollRunDetail $detail, PayrollRun $run): void
+    {
+        $components = is_array($detail->components)
+            ? $detail->components
+            : (json_decode((string) $detail->components, true) ?: []);
+
+        $changed = false;
+        foreach ($components as &$component) {
+            if (($component['name'] ?? '') !== 'Lembur') {
+                continue;
+            }
+
+            if (! empty($component['lines']) && is_array($component['lines'])) {
+                continue;
+            }
+
+            $component['lines'] = $this->fallbackOvertimeLinesForDetail($detail, $run);
+            $changed = true;
+        }
+        unset($component);
+
+        if ($changed) {
+            $detail->setAttribute('components', $components);
+        }
+    }
+
+    private function fallbackOvertimeLinesForDetail(PayrollRunDetail $detail, PayrollRun $run): array
+    {
+        if (! Schema::hasTable('overtime_requests')) {
+            return [];
+        }
+
+        $periodStart = Carbon::parse($run->period.'-01')->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+        $canLoadSchedules = Schema::hasTable('work_schedules')
+            && Schema::hasTable('schedule_templates')
+            && Schema::hasTable('schedule_template_days')
+            && Schema::hasTable('shifts');
+        $employee = $canLoadSchedules
+            ? Employee::with(['workSchedule', 'scheduleTemplate.days.shift'])->find($detail->employee_id)
+            : Employee::find($detail->employee_id);
+        $workDaysPerWeek = $employee?->workSchedule?->work_days ?? 5;
+        $multiplier = Schema::hasTable('employee_payrolls') && Schema::hasColumn('employee_payrolls', 'is_active')
+            ? (float) (EmployeePayroll::where('employee_id', $detail->employee_id)->where('is_active', true)->value('overtime_multiplier') ?? 1)
+            : 1.0;
+        $baseRate = ((float) $detail->basic_salary / 173) * $multiplier;
+        $holidayDates = Schema::hasTable('holidays')
+            ? Holiday::whereBetween('date', [$periodStart, $periodEnd])
+                ->pluck('date')
+                ->map(fn ($date) => Carbon::parse($date)->format('Y-m-d'))
+                ->toArray()
+            : [];
+        $workingDates = Schema::hasTable('schedule_assignments') && Schema::hasTable('shifts')
+            ? ScheduleAssignment::where('employee_id', $detail->employee_id)
+                ->whereBetween('date', [$periodStart, $periodEnd])
+                ->whereHas('shift', fn ($q) => $q->where('is_off', false))
+                ->pluck('date')
+                ->map(fn ($date) => Carbon::parse($date)->format('Y-m-d'))
+                ->toArray()
+            : [];
+
+        return OvertimeRequest::where('employee_id', $detail->employee_id)
+            ->whereBetween('date', [$periodStart, $periodEnd])
+            ->where('status', 'approved')
+            ->orderBy('date')
+            ->get()
+            ->map(function (OvertimeRequest $overtime) use ($employee, $workDaysPerWeek, $baseRate, $holidayDates, $workingDates, $canLoadSchedules) {
+                $minutes = $overtime->getPayableDuration();
+                if ($minutes <= 0) {
+                    return null;
+                }
+
+                $date = Carbon::parse($overtime->date)->format('Y-m-d');
+                $hasWorkingShift = in_array($date, $workingDates, true);
+                $isHoliday = ! $hasWorkingShift && ($overtime->overtime_type ?? 'workday') === 'holiday';
+                $isShortestWorkdayHoliday = $canLoadSchedules && $isHoliday
+                    && $this->isSixDayOfficialHolidayOnShortestWorkday($employee, $date, $holidayDates, $workDaysPerWeek);
+                $amount = $this->computeOvertimeAmount($minutes, $baseRate, $isHoliday, $workDaysPerWeek, $isShortestWorkdayHoliday);
+
+                return $this->overtimeLine($overtime, $minutes, $amount, $isHoliday, $isShortestWorkdayHoliday);
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 
     private function filterBpjsByRegistration(EmployeePayroll $payroll, array $bpjs, Carbon $periodStart): array
@@ -1326,7 +1430,7 @@ class PayrollRunController extends Controller
             ->get();
 
         if ($overtimes->isEmpty()) {
-            return ['total_amount' => 0, 'detail' => ''];
+            return ['total_amount' => 0, 'detail' => '', 'lines' => []];
         }
 
         // Pola hari kerja per minggu dari work schedule karyawan
@@ -1350,6 +1454,7 @@ class PayrollRunController extends Controller
         $workdayAmount = 0;
         $holidayAmount = 0;
         $shortHolidayAmount = 0;
+        $lines = [];
 
         foreach ($overtimes as $ot) {
             $payableMinutes = $ot->getPayableDuration();
@@ -1375,6 +1480,7 @@ class PayrollRunController extends Controller
             // Hitung per hari agar tarif progresif ter-reset setiap hari
             $amount = $this->computeOvertimeAmount($payableMinutes, $baseRate, $isHoliday, $workDaysPerWeek, $isShortestWorkdayHoliday);
             $totalAmount += $amount;
+            $lines[] = $this->overtimeLine($ot, $payableMinutes, $amount, $isHoliday, $isShortestWorkdayHoliday);
 
             if ($isShortestWorkdayHoliday) {
                 $shortHolidayMins += $payableMinutes;
@@ -1398,6 +1504,7 @@ class PayrollRunController extends Controller
         return [
             'total_amount' => round($totalAmount, 0),
             'detail' => $detail,
+            'lines' => $lines,
         ];
     }
 
@@ -1422,6 +1529,49 @@ class PayrollRunController extends Controller
         $tier3 = max(0.0, $hours - $threshold - 1.0);
 
         return ($tier1 * 2.0 + $tier2 * 3.0 + $tier3 * 4.0) * $baseRate;
+    }
+
+    private function overtimeLine(OvertimeRequest $overtime, int $minutes, float $amount, bool $isHoliday, bool $isShortestWorkdayHoliday = false): array
+    {
+        return [
+            'date' => Carbon::parse($overtime->date)->format('Y-m-d'),
+            'date_label' => Carbon::parse($overtime->date)->translatedFormat('d M Y'),
+            'day_label' => Carbon::parse($overtime->date)->translatedFormat('l'),
+            'type_label' => $isShortestWorkdayHoliday ? 'Libur hari kerja terpendek' : ($isHoliday ? 'Hari libur' : 'Hari kerja'),
+            'duration_minutes' => $minutes,
+            'duration_label' => $this->formatOvertimeMinutes($minutes),
+            'time_label' => $this->overtimeTimeLabel($overtime),
+            'reason' => trim((string) ($overtime->reason ?? '')),
+            'amount' => round($amount, 0),
+        ];
+    }
+
+    private function formatOvertimeMinutes(int $minutes): string
+    {
+        $hours = intdiv($minutes, 60);
+        $remainingMinutes = $minutes % 60;
+
+        if ($hours > 0 && $remainingMinutes > 0) {
+            return "{$hours}j {$remainingMinutes}m";
+        }
+
+        if ($hours > 0) {
+            return "{$hours}j";
+        }
+
+        return "{$remainingMinutes}m";
+    }
+
+    private function overtimeTimeLabel(OvertimeRequest $overtime): string
+    {
+        $start = $overtime->actual_clock_in ?: $overtime->planned_start;
+        $end = $overtime->actual_clock_out ?: $overtime->planned_end;
+
+        if (! $start || ! $end) {
+            return '-';
+        }
+
+        return Carbon::parse($start)->format('H:i').' - '.Carbon::parse($end)->format('H:i');
     }
 
     /**

@@ -217,11 +217,22 @@
                     <td class="px-4 py-3.5 border-b border-gray-100">
                         @if($detail->components && count($detail->components) > 0)
                         <div class="space-y-0.5">
-                            @foreach($detail->components as $comp)
+                            @foreach($detail->components as $compIndex => $comp)
+                            @php
+                                $isOvertimeComponent = ($comp['name'] ?? '') === 'Lembur' && !empty($comp['lines']) && is_array($comp['lines']);
+                                $overtimeModalId = 'payrollOvertimeDetail-'.$detail->id.'-'.$compIndex;
+                            @endphp
                             <div class="flex items-center gap-1.5 text-[11px]">
                                 @if($comp['type'] === 'earning')
                                     <span class="text-emerald-600">+</span>
-                                    <span class="text-gray-700">{{ $comp['name'] }}</span>
+                                    @if($isOvertimeComponent)
+                                        <button type="button" onclick="openPayrollOvertimeDetail('{{ $overtimeModalId }}')" class="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-left font-semibold text-indigo-600 transition hover:bg-indigo-50 cursor-pointer" title="Lihat rincian lembur">
+                                            <span>{{ $comp['name'] }}</span>
+                                            <span class="material-symbols-outlined text-[13px]">info</span>
+                                        </button>
+                                    @else
+                                        <span class="text-gray-700">{{ $comp['name'] }}</span>
+                                    @endif
                                     <span class="font-semibold text-emerald-600 ml-auto">Rp {{ number_format($comp['amount'], 0, ',', '.') }}</span>
                                 @elseif($comp['type'] === 'info')
                                     <span class="text-blue-500">ℹ</span>
@@ -279,6 +290,64 @@
         </table>
     </div>
 </div>
+
+@foreach($details as $detail)
+@foreach(($detail->components ?? []) as $compIndex => $component)
+@continue(($component['name'] ?? '') !== 'Lembur' || empty($component['lines']) || !is_array($component['lines']))
+@php
+    $overtimeModalId = 'payrollOvertimeDetail-'.$detail->id.'-'.$compIndex;
+@endphp
+<div id="{{ $overtimeModalId }}" class="hidden fixed inset-0 z-[70] items-start justify-center overflow-y-auto px-4 py-6">
+    <div class="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]" onclick="closePayrollOvertimeDetail('{{ $overtimeModalId }}')"></div>
+    <div class="relative w-full max-w-3xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+        <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-4 py-3">
+            <div class="min-w-0">
+                <h3 class="text-[15px] font-bold text-gray-900">Rincian Lembur</h3>
+                <p class="mt-0.5 text-[11px] text-gray-500">{{ $detail->employee->full_name ?? '-' }} &middot; {{ \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y') }}</p>
+            </div>
+            <button type="button" onclick="closePayrollOvertimeDetail('{{ $overtimeModalId }}')" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 cursor-pointer">
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        </div>
+        <div class="px-4 py-4">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                <div class="text-[11px] font-semibold text-emerald-800">{{ $component['detail'] ?? 'Detail lembur payroll' }}</div>
+                <div class="text-[13px] font-bold text-emerald-800">Rp {{ number_format($component['amount'] ?? 0, 0, ',', '.') }}</div>
+            </div>
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+                <table class="w-full min-w-[680px]">
+                    <thead>
+                        <tr>
+                            <th class="bg-gray-50 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Tanggal</th>
+                            <th class="bg-gray-50 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Jenis</th>
+                            <th class="bg-gray-50 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Jam</th>
+                            <th class="bg-gray-50 px-3 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-500">Durasi</th>
+                            <th class="bg-gray-50 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Keterangan</th>
+                            <th class="bg-gray-50 px-3 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-500">Nominal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($component['lines'] as $line)
+                        <tr>
+                            <td class="border-t border-gray-100 px-3 py-2 text-[11px] text-gray-700">
+                                <div class="font-semibold text-gray-800">{{ $line['date_label'] ?? $line['date'] ?? '-' }}</div>
+                                <div class="text-[10px] text-gray-400">{{ $line['day_label'] ?? '' }}</div>
+                            </td>
+                            <td class="border-t border-gray-100 px-3 py-2 text-[11px] text-gray-600">{{ $line['type_label'] ?? '-' }}</td>
+                            <td class="border-t border-gray-100 px-3 py-2 text-[11px] tabular-nums text-gray-600">{{ $line['time_label'] ?? '-' }}</td>
+                            <td class="border-t border-gray-100 px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-gray-800">{{ $line['duration_label'] ?? '-' }}</td>
+                            <td class="border-t border-gray-100 px-3 py-2 text-[11px] text-gray-600">{{ $line['reason'] ?? '-' }}</td>
+                            <td class="border-t border-gray-100 px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-emerald-700">Rp {{ number_format($line['amount'] ?? 0, 0, ',', '.') }}</td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+@endforeach
+@endforeach
 
 @if($run->status === 'draft' && $canUpdatePayrollRun)
 @foreach($details as $detail)
@@ -432,6 +501,27 @@ document.getElementById('payslipDownloadModal')?.addEventListener('click', funct
     if (e.target === this) closePayslipDownloadModal();
 });
 
+function openPayrollOvertimeDetail(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closePayrollOvertimeDetail(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function closeAllPayrollOvertimeDetails() {
+    document.querySelectorAll('[id^="payrollOvertimeDetail-"]').forEach((modal) => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    });
+}
+
 function openPayrollDetailEdit(id) {
     document.getElementById('editPayrollDetail-' + id)?.classList.remove('hidden');
 }
@@ -473,6 +563,10 @@ function addPayrollDetailComponent(id) {
         </tr>
     `);
 }
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeAllPayrollOvertimeDetails();
+});
 </script>
 @endpush
 @endsection

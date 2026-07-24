@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class PayrollRun extends Model
 {
     protected $fillable = [
-        'period', 'status',
+        'company_id', 'period', 'status',
         'total_earning', 'total_deduction', 'total_net',
         'finalized_at', 'published_at', 'locked_at', 'created_by',
     ];

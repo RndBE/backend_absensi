@@ -6,8 +6,11 @@ use App\Http\Controllers\Admin\PayrollRunController;
 use App\Mail\PayslipPublishedMail;
 use App\Models\Company;
 use App\Models\Employee;
+use App\Models\EmployeePayroll;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunDetail;
+use App\Support\PayslipBenefits;
+use App\Support\PayslipBpjsData;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Mail;
@@ -364,6 +367,144 @@ class PayrollPayslipEmailPublishTest extends TestCase
         $this->assertContains('JKM Perusahaan: 0.3% x Rp 2.624.387', $notes);
     }
 
+    public function test_historical_payslip_uses_stored_components_instead_of_current_active_bpjs(): void
+    {
+        $company = Company::create(['name' => 'PT Historical']);
+        $employee = Employee::create([
+            'employee_code' => 'EMP-HIST',
+            'company_id' => $company->id,
+            'department_id' => null,
+            'full_name' => 'Historical Employee',
+            'email' => 'historical@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+        ]);
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 10000000,
+            'ptkp_status' => 'TK/0',
+            'bpjs_kesehatan' => 'BPJS-KES-AKTIF',
+            'bpjs_ketenagakerjaan' => 'BPJS-TK-AKTIF',
+            'effective_date' => now()->startOfMonth()->toDateString(),
+            'is_active' => true,
+        ]);
+        $run = PayrollRun::create([
+            'period' => '2026-01',
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'total_earning' => 5000000,
+            'total_deduction' => 0,
+            'net_salary' => 5000000,
+            'components' => [],
+            'is_manual_edited' => false,
+        ])->load(['employee.activePayroll', 'payrollRun']);
+
+        $bpjsData = PayslipBpjsData::fromDetail($detail);
+
+        $this->assertSame('components', $bpjsData['source']);
+        $this->assertSame([], $bpjsData['items']);
+        $this->assertSame(0, $bpjsData['total']);
+    }
+
+    public function test_historical_payslip_still_renders_bpjs_snapshot_saved_in_components(): void
+    {
+        $company = Company::create(['name' => 'PT Historical Snapshot']);
+        $employee = Employee::create([
+            'employee_code' => 'EMP-SNAP',
+            'company_id' => $company->id,
+            'department_id' => null,
+            'full_name' => 'Snapshot Employee',
+            'email' => 'snapshot@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+        ]);
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 10000000,
+            'ptkp_status' => 'TK/0',
+            'bpjs_kesehatan' => 'BPJS-KES-AKTIF',
+            'bpjs_ketenagakerjaan' => 'BPJS-TK-AKTIF',
+            'effective_date' => now()->startOfMonth()->toDateString(),
+            'is_active' => true,
+        ]);
+        $run = PayrollRun::create([
+            'period' => '2026-01',
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'total_earning' => 5000000,
+            'total_deduction' => 0,
+            'net_salary' => 5000000,
+            'components' => [
+                ['name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'amount' => 240000],
+                ['name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'amount' => 9600, 'detail' => '4% x Rp 240.000'],
+            ],
+            'is_manual_edited' => false,
+        ])->load(['employee.activePayroll', 'payrollRun']);
+
+        $benefits = PayslipBenefits::from(PayslipBpjsData::fromDetail($detail), $detail->components);
+        $items = collect($benefits['items']);
+
+        $this->assertSame(240000.0, $items->firstWhere('label', 'Rate BPJS Kesehatan')['amount']);
+        $this->assertSame(9600.0, $items->firstWhere('label', 'BPJS Kesehatan Perusahaan')['amount']);
+        $this->assertSame(249600.0, $benefits['total']);
+    }
+
+    public function test_manual_imported_current_period_payslip_does_not_recalculate_active_bpjs(): void
+    {
+        $company = Company::create(['name' => 'PT Manual']);
+        $employee = Employee::create([
+            'employee_code' => 'EMP-MANUAL',
+            'company_id' => $company->id,
+            'department_id' => null,
+            'full_name' => 'Manual Employee',
+            'email' => 'manual@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+        ]);
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 10000000,
+            'ptkp_status' => 'TK/0',
+            'bpjs_kesehatan' => 'BPJS-KES-AKTIF',
+            'bpjs_ketenagakerjaan' => 'BPJS-TK-AKTIF',
+            'effective_date' => now()->startOfMonth()->toDateString(),
+            'is_active' => true,
+        ]);
+        $run = PayrollRun::create([
+            'period' => now()->format('Y-m'),
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 5000000,
+            'total_earning' => 5000000,
+            'total_deduction' => 0,
+            'net_salary' => 5000000,
+            'components' => [],
+            'is_manual_edited' => true,
+        ])->load(['employee.activePayroll', 'payrollRun']);
+
+        $bpjsData = PayslipBpjsData::fromDetail($detail);
+
+        $this->assertSame('components', $bpjsData['source']);
+        $this->assertSame([], $bpjsData['items']);
+    }
+
     public function test_payslip_benefits_infers_company_contributions_from_imported_rate_basis(): void
     {
         $benefits = \App\Support\PayslipBenefits::from([], [
@@ -374,6 +515,7 @@ class PayrollPayslipEmailPublishTest extends TestCase
         $items = collect($benefits['items']);
         $notes = collect($benefits['notes'])->map(fn ($note) => $note['label'].': '.$note['detail'])->all();
 
+        $this->assertNull($items->firstWhere('label', 'Rate BPJS Kesehatan'));
         $this->assertSame(2624387.0, $items->firstWhere('label', 'Rate BPJS Ketenagakerjaan')['amount']);
         $this->assertSame(6299.0, $items->firstWhere('label', 'JKK (Jaminan Kecelakaan Kerja)')['amount']);
         $this->assertSame(7873.0, $items->firstWhere('label', 'JKM (Jaminan Kematian)')['amount']);
@@ -382,6 +524,17 @@ class PayrollPayslipEmailPublishTest extends TestCase
         $this->assertContains('JKK Perusahaan: 0.24% x Rp 2.624.387', $notes);
         $this->assertContains('JKM Perusahaan: 0.3% x Rp 2.624.387', $notes);
         $this->assertContains('JHT Perusahaan: 3.7% x Rp 2.624.387', $notes);
+    }
+
+    public function test_payslip_benefits_hides_section_when_every_item_is_zero(): void
+    {
+        $benefits = \App\Support\PayslipBenefits::from([], [
+            ['name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'amount' => 0],
+            ['name' => 'Rate BPJS Ketenagakerjaan', 'type' => 'info', 'amount' => 0],
+        ]);
+
+        $this->assertSame([], $benefits['items']);
+        $this->assertSame(0, $benefits['total']);
     }
 
     public function test_payslip_benefits_does_not_duplicate_bpjs_company_components(): void

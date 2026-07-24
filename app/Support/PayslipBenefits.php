@@ -72,7 +72,7 @@ class PayslipBenefits
     private static function pushItem(array &$items, array &$seen, string $label, float $amount, bool $isBasis): void
     {
         $label = trim($label);
-        if ($label === '') {
+        if ($label === '' || $amount <= 0) {
             return;
         }
 
