@@ -44,8 +44,8 @@ class DashboardController extends Controller
             ->whereNotNull('contract_end_date')
             ->whereBetween('contract_end_date', [$today->toDateString(), $contractWindowEnd->toDateString()])
             ->orderBy('contract_end_date')
-            ->limit(5)
-            ->get(['id', 'employee_code', 'full_name', 'position', 'employment_status', 'contract_end_date']);
+            ->paginate(5, ['id', 'employee_code', 'full_name', 'position', 'employment_status', 'contract_end_date'], 'contract_page')
+            ->withQueryString();
 
         // Recent attendance
         $recentAttendance = Attendance::with('employee:id,full_name,photo,department_id', 'employee.department:id,name')

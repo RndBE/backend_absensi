@@ -61,6 +61,7 @@ class DashboardViewTest extends TestCase
     public function test_dashboard_uses_contract_table_layout(): void
     {
         $view = file_get_contents(resource_path('views/admin/dashboard.blade.php'));
+        $controller = file_get_contents(app_path('Http/Controllers/Admin/DashboardController.php'));
 
         $this->assertStringContainsString('Kontrak Hampir Habis', $view);
         $this->assertStringContainsString('bg-white rounded-xl border border-gray-200 shadow-sm', $view);
@@ -68,6 +69,10 @@ class DashboardViewTest extends TestCase
         $this->assertStringContainsString('text-[11px] font-bold uppercase tracking-wider', $view);
         $this->assertStringContainsString('$contractsEndingSoon', $view);
         $this->assertStringContainsString('$contractsEndingSoonCount', $view);
+        $this->assertStringContainsString('$contractsEndingSoon->hasPages()', $view);
+        $this->assertStringContainsString('$contractsEndingSoon->links()', $view);
+        $this->assertStringContainsString("'contract_page'", $controller);
+        $this->assertStringContainsString('->paginate(5,', $controller);
         $this->assertStringContainsString('Tidak ada kontrak yang habis dalam 60 hari ke depan', $view);
         $this->assertStringNotContainsString('Ringkasan Approval', $view);
         $this->assertStringNotContainsString('Ringkasan HR', $view);

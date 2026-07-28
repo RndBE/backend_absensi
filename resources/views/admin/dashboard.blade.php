@@ -133,6 +133,11 @@
             </tbody>
         </table>
     </div>
+    @if($contractsEndingSoon->hasPages())
+        <div class="px-5 py-3 border-t border-gray-100">
+            {{ $contractsEndingSoon->links() }}
+        </div>
+    @endif
 </div>
 
 {{-- Grid 2 --}}
