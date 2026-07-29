@@ -43,23 +43,6 @@
         </div>
     </div>
     <div class="p-5">
-        {{-- Active status tabs --}}
-        <div class="mb-5 flex items-center gap-2 border-b border-gray-200">
-            @foreach([
-                'active' => ['label' => 'Aktif', 'count' => $employeeCounts['active'] ?? 0],
-                'inactive' => ['label' => 'Non-aktif', 'count' => $employeeCounts['inactive'] ?? 0],
-            ] as $tabStatus => $tab)
-                @php
-                    $isSelectedTab = $activeStatus === $tabStatus;
-                @endphp
-                <a href="{{ route('admin.employees.index', array_merge($employeeTabQuery, ['active_status' => $tabStatus])) }}"
-                   class="inline-flex items-center gap-2 border-b-2 px-3 pb-3 text-[13px] font-bold transition-colors {{ $isSelectedTab ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800' }}">
-                    {{ $tab['label'] }}
-                    <span class="inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold {{ $isSelectedTab ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500' }}">{{ $tab['count'] }}</span>
-                </a>
-            @endforeach
-        </div>
-
         {{-- Filters --}}
         <form method="GET" id="employeeFilterForm" class="flex items-center gap-3 mb-5 flex-wrap">
             <input type="hidden" name="active_status" value="{{ $activeStatus }}">
@@ -86,6 +69,23 @@
                 <a href="{{ route('admin.employees.index', ['active_status' => $activeStatus]) }}" class="inline-flex items-center px-3 py-2.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all duration-200">Reset</a>
             @endif
         </form>
+
+        {{-- Active status tabs --}}
+        <div class="mb-5 flex items-center gap-2 border-b border-gray-200">
+            @foreach([
+                'active' => ['label' => 'Aktif', 'count' => $employeeCounts['active'] ?? 0],
+                'inactive' => ['label' => 'Non-aktif', 'count' => $employeeCounts['inactive'] ?? 0],
+            ] as $tabStatus => $tab)
+                @php
+                    $isSelectedTab = $activeStatus === $tabStatus;
+                @endphp
+                <a href="{{ route('admin.employees.index', array_merge($employeeTabQuery, ['active_status' => $tabStatus])) }}"
+                   class="inline-flex items-center gap-2 border-b-2 px-3 pb-3 text-[13px] font-bold transition-colors {{ $isSelectedTab ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800' }}">
+                    {{ $tab['label'] }}
+                    <span class="inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold {{ $isSelectedTab ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500' }}">{{ $tab['count'] }}</span>
+                </a>
+            @endforeach
+        </div>
 
         {{-- Table --}}
         <div class="overflow-x-auto">
