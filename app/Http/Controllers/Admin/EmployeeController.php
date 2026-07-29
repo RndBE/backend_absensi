@@ -31,13 +31,19 @@ class EmployeeController extends Controller
     public function index(Request $request)
     {
         $admin = Employee::find(session('admin_id'));
+        $activeStatus = $this->activeStatus($request);
         $employees = $this->employeeListQuery($request, $admin)
             ->with(['department:id,name', 'workSchedule:id,name'])
             ->orderBy('full_name')
             ->get();
+        $employeeCountQuery = $this->employeeListQuery($request, $admin, false);
+        $employeeCounts = [
+            'active' => (clone $employeeCountQuery)->where('is_active', true)->count(),
+            'inactive' => (clone $employeeCountQuery)->where('is_active', false)->count(),
+        ];
         $departments = Department::where('company_id', $admin->company_id)->get();
 
-        return view('admin.employees.index', compact('employees', 'departments'));
+        return view('admin.employees.index', compact('employees', 'departments', 'activeStatus', 'employeeCounts'));
     }
 
     public function export(Request $request)
@@ -603,7 +609,7 @@ class EmployeeController extends Controller
             ->with('success', 'Proses resign berhasil dicatat. Karyawan telah dinonaktifkan.');
     }
 
-    private function employeeListQuery(Request $request, Employee $admin)
+    private function employeeListQuery(Request $request, Employee $admin, bool $filterActiveStatus = true)
     {
         $query = Employee::where('company_id', $admin->company_id);
 
@@ -618,7 +624,16 @@ class EmployeeController extends Controller
             $query->where('employment_status', $request->status);
         }
 
+        if ($filterActiveStatus) {
+            $query->where('is_active', $this->activeStatus($request) === 'active');
+        }
+
         return $query;
+    }
+
+    private function activeStatus(Request $request): string
+    {
+        return $request->input('active_status') === 'inactive' ? 'inactive' : 'active';
     }
 
     private function employmentStatusLabel(?string $status): string

@@ -10,6 +10,9 @@
     $canDeleteEmployee = $adminPermission->can($currentAdmin, 'employees.delete');
     // Manager: sembunyikan kolom status kepegawaian.
     $hideStatus = ($currentAdmin?->role ?? '') === 'manager';
+    $activeStatus = $activeStatus ?? (request('active_status') === 'inactive' ? 'inactive' : 'active');
+    $employeeCounts = $employeeCounts ?? ['active' => 0, 'inactive' => 0];
+    $employeeTabQuery = request()->except('active_status');
 @endphp
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
@@ -40,8 +43,26 @@
         </div>
     </div>
     <div class="p-5">
+        {{-- Active status tabs --}}
+        <div class="mb-5 flex items-center gap-2 border-b border-gray-200">
+            @foreach([
+                'active' => ['label' => 'Aktif', 'count' => $employeeCounts['active'] ?? 0],
+                'inactive' => ['label' => 'Non-aktif', 'count' => $employeeCounts['inactive'] ?? 0],
+            ] as $tabStatus => $tab)
+                @php
+                    $isSelectedTab = $activeStatus === $tabStatus;
+                @endphp
+                <a href="{{ route('admin.employees.index', array_merge($employeeTabQuery, ['active_status' => $tabStatus])) }}"
+                   class="inline-flex items-center gap-2 border-b-2 px-3 pb-3 text-[13px] font-bold transition-colors {{ $isSelectedTab ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800' }}">
+                    {{ $tab['label'] }}
+                    <span class="inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold {{ $isSelectedTab ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500' }}">{{ $tab['count'] }}</span>
+                </a>
+            @endforeach
+        </div>
+
         {{-- Filters --}}
         <form method="GET" id="employeeFilterForm" class="flex items-center gap-3 mb-5 flex-wrap">
+            <input type="hidden" name="active_status" value="{{ $activeStatus }}">
             <input type="search" id="employeeSearch"
                    class="w-full max-w-[280px] h-[42px] px-3.5 py-2.5 border border-gray-300 rounded-lg text-[13.5px] text-gray-800 bg-white outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-[3px] focus:ring-indigo-500/10 placeholder:text-gray-400"
                    placeholder="Cari nama, kode, email...">
@@ -62,7 +83,7 @@
             </select>
             @endunless
             @if(request()->filled('department_id') || request()->filled('status'))
-                <a href="{{ route('admin.employees.index') }}" class="inline-flex items-center px-3 py-2.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all duration-200">Reset</a>
+                <a href="{{ route('admin.employees.index', ['active_status' => $activeStatus]) }}" class="inline-flex items-center px-3 py-2.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all duration-200">Reset</a>
             @endif
         </form>
 
@@ -93,7 +114,12 @@
                                     <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[13px] font-bold shrink-0">{{ substr($emp->full_name, 0, 1) }}</div>
                                 @endif
                                 <div>
-                                    <div class="text-[13.5px] font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">{{ $emp->full_name }}</div>
+                                    <div class="flex items-center gap-2">
+                                        <div class="text-[13.5px] font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">{{ $emp->full_name }}</div>
+                                        @unless($emp->is_active)
+                                            <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">Non-aktif</span>
+                                        @endunless
+                                    </div>
                                     <div class="text-[11px] text-gray-400">{{ $emp->email }}</div>
                                 </div>
                             </a>
@@ -141,7 +167,7 @@
                                         </form>
                                     @endif
                                 @endif
-                                @if($canDeleteEmployee)
+                                @if($canDeleteEmployee && $emp->is_active)
                                     <a href="{{ route('admin.employees.resign', $emp->id) }}" class="inline-flex items-center justify-center w-8 h-8 text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200" title="Proses Resign"><span class="material-symbols-outlined text-[16px]">person_remove</span></a>
                                 @endif
                             </div>
@@ -149,7 +175,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="{{ $hideStatus ? 6 : 7 }}" class="text-center py-12 text-gray-400 text-sm">Tidak ada karyawan ditemukan</td>
+                        <td colspan="{{ $hideStatus ? 6 : 7 }}" class="text-center py-12 text-gray-400 text-sm">Tidak ada karyawan {{ $activeStatus === 'active' ? 'aktif' : 'non-aktif' }} ditemukan</td>
                     </tr>
                     @endforelse
                     <tr id="employeeFuseEmpty" class="hidden">

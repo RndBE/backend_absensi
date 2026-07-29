@@ -27,6 +27,20 @@ class EmployeeIndexViewTest extends TestCase
         $this->assertStringContainsString("route('admin.employees.create')", $view);
     }
 
+    public function test_employee_index_exposes_active_and_inactive_tabs(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/employees/index.blade.php'));
+        $controller = file_get_contents(app_path('Http/Controllers/Admin/EmployeeController.php'));
+
+        $this->assertStringContainsString("request('active_status') === 'inactive' ? 'inactive' : 'active'", $view);
+        $this->assertStringContainsString("'active' => ['label' => 'Aktif'", $view);
+        $this->assertStringContainsString("'inactive' => ['label' => 'Non-aktif'", $view);
+        $this->assertStringContainsString('name="active_status"', $view);
+        $this->assertStringContainsString("route('admin.employees.index', array_merge(\$employeeTabQuery, ['active_status' => \$tabStatus]))", $view);
+        $this->assertStringContainsString("private function activeStatus(Request \$request): string", $controller);
+        $this->assertStringContainsString("->where('is_active', \$this->activeStatus(\$request) === 'active')", $controller);
+    }
+
     public function test_employee_payroll_index_uses_local_fuzzy_search_like_employee_index(): void
     {
         $view = file_get_contents(resource_path('views/admin/employee-payrolls/index.blade.php'));

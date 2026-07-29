@@ -154,6 +154,21 @@ class AdminEmployeeExportTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'id' => 4,
+                'company_id' => 1,
+                'department_id' => 10,
+                'employee_code' => 'OLD001',
+                'email' => 'inactive@example.test',
+                'password' => 'secret',
+                'full_name' => 'Inactive Employee',
+                'position' => 'Former Staff',
+                'employment_status' => 'contract',
+                'role' => 'employee',
+                'is_active' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ] as $employee) {
             DB::table('employees')->insert($employee);
         }
@@ -188,6 +203,22 @@ class AdminEmployeeExportTest extends TestCase
         $this->assertStringContainsString('Laki-laki', $sheet);
         $this->assertStringContainsString('Nofiyanto', $sheet);
         $this->assertStringNotContainsString('Admin User', $sheet);
+        $this->assertStringNotContainsString('Inactive Employee', $sheet);
+    }
+
+    public function test_admin_can_export_inactive_employee_tab_data_to_excel(): void
+    {
+        $response = (new EmployeeController())->export(Request::create('/admin/employees/export', 'GET', [
+            'department_id' => 10,
+            'active_status' => 'inactive',
+        ]));
+
+        $sheet = $this->worksheetXml($response);
+
+        $this->assertStringContainsString('Inactive Employee', $sheet);
+        $this->assertStringContainsString('OLD001', $sheet);
+        $this->assertStringContainsString('Nonaktif', $sheet);
+        $this->assertStringNotContainsString('Shandy Bagus Ferdiansyah', $sheet);
     }
 
     private function worksheetXml(StreamedResponse $response): string
