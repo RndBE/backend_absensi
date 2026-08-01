@@ -163,6 +163,34 @@ class AdminApprovalSettingsTest extends TestCase
             ->assertSessionHasErrors('employee_ids.0');
     }
 
+    public function test_bulk_assign_rejects_cross_company_approver(): void
+    {
+        $this->withoutMiddleware()
+            ->withSession(['admin_id' => 1])
+            ->from(route('admin.approval-rules.index'))
+            ->post(route('admin.approval-rules.bulk-assign'), [
+                'employee_ids' => [2],
+                'apply_types' => ['budget'],
+                'approver_ids' => [5],
+            ])
+            ->assertRedirect(route('admin.approval-rules.index'))
+            ->assertSessionHasErrors('approver_ids.0');
+    }
+
+    public function test_bulk_assign_rejects_inactive_approver(): void
+    {
+        $this->withoutMiddleware()
+            ->withSession(['admin_id' => 1])
+            ->from(route('admin.approval-rules.index'))
+            ->post(route('admin.approval-rules.bulk-assign'), [
+                'employee_ids' => [2],
+                'apply_types' => ['budget'],
+                'approver_ids' => [6],
+            ])
+            ->assertRedirect(route('admin.approval-rules.index'))
+            ->assertSessionHasErrors('approver_ids.0');
+    }
+
     private function employee(int $id, int $companyId, string $name, bool $isActive): array
     {
         return [
