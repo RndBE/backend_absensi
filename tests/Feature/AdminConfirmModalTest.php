@@ -32,6 +32,15 @@ class AdminConfirmModalTest extends TestCase
         $this->assertStringContainsString('style="z-index: 1000;"', $layout);
     }
 
+    public function test_admin_layout_displays_validation_errors(): void
+    {
+        $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
+
+        $this->assertStringContainsString('$errors->any()', $layout);
+        $this->assertStringContainsString('$errors->all()', $layout);
+        $this->assertStringContainsString('Data belum dapat disimpan.', $layout);
+    }
+
     public function test_form_level_confirm_only_runs_on_submit_not_inner_clicks(): void
     {
         $layout = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
@@ -46,7 +55,7 @@ class AdminConfirmModalTest extends TestCase
 
         $offenders = $views
             ->filter(fn ($path) => Str::contains(file_get_contents($path), 'confirm('))
-            ->map(fn ($path) => str_replace(resource_path('views/admin') . DIRECTORY_SEPARATOR, '', $path))
+            ->map(fn ($path) => str_replace(resource_path('views/admin').DIRECTORY_SEPARATOR, '', $path))
             ->values()
             ->all();
 
