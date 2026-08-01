@@ -207,6 +207,19 @@
                 <span class="material-symbols-outlined text-[18px]">error</span> {{ session('error') }}
             </div>
         @endif
+        @if($errors->any())
+            <div class="flex items-start gap-2.5 px-4 py-3.5 rounded-lg text-[13.5px] mb-4 bg-red-50 text-red-800 border border-red-200 animate-slide-down">
+                <span class="material-symbols-outlined text-[18px] mt-0.5">error</span>
+                <div>
+                    <div class="font-semibold">Data belum dapat disimpan.</div>
+                    <ul class="mt-1 list-disc pl-5 space-y-0.5">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            </div>
+        @endif
         @yield('content')
     </main>
 
