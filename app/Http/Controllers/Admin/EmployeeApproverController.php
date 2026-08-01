@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
+use App\Support\ApprovalChainInput;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class EmployeeApproverController extends Controller
 {
@@ -23,30 +25,37 @@ class EmployeeApproverController extends Controller
 
     public function store(Request $request, $employeeId)
     {
-        $request->validate([
-            'chains' => 'required|array',
-            'chains.leave' => 'nullable|array',
-            'chains.leave.*' => 'integer|exists:employees,id',
-            'chains.overtime' => 'nullable|array',
-            'chains.overtime.*' => 'integer|exists:employees,id',
-            'chains.attendance' => 'nullable|array',
-            'chains.attendance.*' => 'integer|exists:employees,id',
-            'chains.budget' => 'nullable|array',
-            'chains.budget.*' => 'integer|exists:employees,id',
-            'chains.travel_report' => 'nullable|array',
-            'chains.travel_report.*' => 'integer|exists:employees,id',
-            'chains.lpj' => 'nullable|array',
-            'chains.lpj.*' => 'integer|exists:employees,id',
+        $admin = Employee::find(session('admin_id'));
+        $request->merge([
+            'chains' => ApprovalChainInput::chains($request->input('chains')),
         ]);
 
-        $admin = Employee::find(session('admin_id'));
+        $validApprover = Rule::exists('employees', 'id')
+            ->where(fn ($query) => $query
+                ->where('company_id', $admin->company_id)
+                ->where('is_active', true));
+
+        $validated = $request->validate([
+            'chains' => 'required|array',
+            'chains.leave' => 'nullable|array',
+            'chains.leave.*' => ['integer', $validApprover],
+            'chains.overtime' => 'nullable|array',
+            'chains.overtime.*' => ['integer', $validApprover],
+            'chains.attendance' => 'nullable|array',
+            'chains.attendance.*' => ['integer', $validApprover],
+            'chains.budget' => 'nullable|array',
+            'chains.budget.*' => ['integer', $validApprover],
+            'chains.travel_report' => 'nullable|array',
+            'chains.travel_report.*' => ['integer', $validApprover],
+            'chains.lpj' => 'nullable|array',
+            'chains.lpj.*' => ['integer', $validApprover],
+        ]);
+
         $employee = Employee::where('company_id', $admin->company_id)->findOrFail($employeeId);
-        $chains = $request->chains;
+        $chains = $validated['chains'];
 
         foreach (['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'] as $type) {
             $approverIds = $chains[$type] ?? [];
-            // Filter out empty/null values
-            $approverIds = array_values(array_filter($approverIds, fn($id) => !empty($id)));
             EmployeeApprover::saveChain($employee->id, $type, $approverIds);
         }
 

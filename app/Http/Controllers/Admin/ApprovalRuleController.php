@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
+use App\Support\ApprovalChainInput;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ApprovalRuleController extends Controller
 {
@@ -50,31 +52,41 @@ class ApprovalRuleController extends Controller
 
     public function bulkAssign(Request $request)
     {
-        $request->validate([
+        $admin = Employee::find(session('admin_id'));
+        $request->merge([
+            'approver_ids' => ApprovalChainInput::steps($request->input('approver_ids')),
+        ]);
+
+        $activeCompanyEmployee = fn () => Rule::exists('employees', 'id')
+            ->where(fn ($query) => $query
+                ->where('company_id', $admin->company_id)
+                ->where('is_active', true));
+
+        $validated = $request->validate([
             'employee_ids' => 'required|array|min:1',
-            'employee_ids.*' => 'integer|exists:employees,id',
+            'employee_ids.*' => ['integer', $activeCompanyEmployee()],
             'apply_types' => 'required|array|min:1',
             'apply_types.*' => 'in:leave,overtime,attendance,budget,travel_report,lpj',
             'approver_ids' => 'required|array|min:1',
-            'approver_ids.*' => 'integer|exists:employees,id',
+            'approver_ids.*' => ['integer', $activeCompanyEmployee()],
         ]);
 
         $count = 0;
-        foreach ($request->employee_ids as $employeeId) {
-            foreach ($request->apply_types as $type) {
+        foreach ($validated['employee_ids'] as $employeeId) {
+            foreach ($validated['apply_types'] as $type) {
                 EmployeeApprover::saveChain(
                     (int) $employeeId,
                     $type,
-                    $request->approver_ids
+                    $validated['approver_ids']
                 );
                 $count++;
             }
         }
 
-        $empCount = count($request->employee_ids);
-        $typeCount = count($request->apply_types);
+        $empCount = count($validated['employee_ids']);
+        $typeCount = count($validated['apply_types']);
 
-        return redirect()->route('admin.approval-rules.index', ['type' => $request->apply_types[0] ?? 'leave'])
+        return redirect()->route('admin.approval-rules.index', ['type' => $validated['apply_types'][0] ?? 'leave'])
             ->with('success', "Berhasil menerapkan approval chain ke {$empCount} karyawan × {$typeCount} tipe pengajuan.");
     }
 }
