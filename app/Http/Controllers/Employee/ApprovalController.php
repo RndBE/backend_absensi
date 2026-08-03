@@ -100,15 +100,17 @@ class ApprovalController extends Controller
             'travelZone',
         ])->findOrFail($id);
 
-        if (! $this->canActOn($employee, 'budget', $budgetRequest)) {
+        $isCurrentApprover = $this->canActOn($employee, 'budget', $budgetRequest);
+
+        if (! $isCurrentApprover && ! $this->hasApproved($employee, 'budget', $budgetRequest)) {
             return redirect()->route('employee.approvals.index')
-                ->with('error', 'Anda bukan approver untuk step pengajuan ini.');
+                ->with('error', 'Anda tidak memiliki akses untuk mencetak pengajuan ini.');
         }
 
         return view('budget-requests.print', [
             'budgetRequest' => $budgetRequest,
             'approvalChain' => EmployeeApprover::getChain($budgetRequest->employee_id, 'budget'),
-            'backUrl' => route('employee.approvals.index'),
+            'backUrl' => route('employee.approvals.index', $isCurrentApprover ? [] : ['tab' => 'history']),
         ]);
     }
 
@@ -125,14 +127,16 @@ class ApprovalController extends Controller
             'approvalLogs.approver:id,full_name,signature',
         ])->findOrFail($id);
 
-        if (! $this->canActOn($employee, 'travel_report', $report)) {
+        $isCurrentApprover = $this->canActOn($employee, 'travel_report', $report);
+
+        if (! $isCurrentApprover && ! $this->hasApproved($employee, 'travel_report', $report)) {
             return redirect()->route('employee.approvals.index')
-                ->with('error', 'Anda bukan approver untuk step pengajuan ini.');
+                ->with('error', 'Anda tidak memiliki akses untuk mencetak pengajuan ini.');
         }
 
         return view('admin.travel-reports.print', [
             'report' => $report,
-            'backUrl' => route('employee.approvals.index'),
+            'backUrl' => route('employee.approvals.index', $isCurrentApprover ? [] : ['tab' => 'history']),
         ]);
     }
 
@@ -149,14 +153,41 @@ class ApprovalController extends Controller
             'approvalLogs.approver:id,full_name,photo',
         ])->findOrFail($id);
 
-        if (! $this->canActOn($employee, 'lpj', $lpj)) {
+        $isCurrentApprover = $this->canActOn($employee, 'lpj', $lpj);
+
+        if (! $isCurrentApprover && ! $this->hasApproved($employee, 'lpj', $lpj)) {
             return redirect()->route('employee.approvals.index')
-                ->with('error', 'Anda bukan approver untuk step pengajuan ini.');
+                ->with('error', 'Anda tidak memiliki akses untuk mencetak pengajuan ini.');
         }
 
         return view('lpj.print', [
             'lpj' => $lpj,
-            'backUrl' => route('employee.approvals.index'),
+            'backUrl' => route('employee.approvals.index', $isCurrentApprover ? [] : ['tab' => 'history']),
+        ]);
+    }
+
+    public function printDecision(Request $request, string $type, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $modelClass = $this->resolveModel($type);
+        $item = $modelClass::with($this->printRelationsFor($type))->findOrFail($id);
+
+        $approvalLog = $this->approvedLogFor($employee, $type, $item);
+
+        if (! $approvalLog) {
+            return redirect()->route('employee.approvals.index', ['tab' => 'history'])
+                ->with('error', 'Anda tidak memiliki persetujuan yang dapat dicetak untuk pengajuan ini.');
+        }
+
+        $approvalLog->load('approver:id,full_name,position');
+
+        return view('employee.approvals.print', [
+            'item' => $item,
+            'type' => $type,
+            'typeLabel' => $this->typeLabels[$type],
+            'approvalLog' => $approvalLog,
+            'backUrl' => route('employee.approvals.index', ['tab' => 'history']),
         ]);
     }
 
@@ -352,6 +383,22 @@ class ApprovalController extends Controller
         return $expectedApprover?->id === $approver->id;
     }
 
+    private function hasApproved(Employee $approver, string $type, Model $item): bool
+    {
+        return (bool) $this->approvedLogFor($approver, $type, $item);
+    }
+
+    private function approvedLogFor(Employee $approver, string $type, Model $item): ?ApprovalLog
+    {
+        return ApprovalLog::query()
+            ->where('approvable_type', $this->resolveModel($type))
+            ->where('approvable_id', $item->getKey())
+            ->where('approver_id', $approver->id)
+            ->where('action', 'approved')
+            ->latest('created_at')
+            ->first();
+    }
+
     private function onFinalApproval(string $modelClass, Model $item): void
     {
         // Kurangi saldo untuk jenis berkuota (Cuti Tahunan & WFH). WFH tidak minus.
@@ -381,6 +428,23 @@ class ApprovalController extends Controller
             'travel_report' => ['employee:id,full_name,position,photo', 'budgetRequest', 'attachments'],
             'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city'],
             default => ['employee:id,full_name,position,photo'],
+        };
+    }
+
+    private function printRelationsFor(string $type): array
+    {
+        return match ($type) {
+            'leave' => [
+                'employee:id,employee_code,full_name,position,department_id',
+                'employee.department:id,name',
+                'leaveType:id,name',
+                'delegate:id,full_name',
+            ],
+            'overtime', 'attendance' => [
+                'employee:id,employee_code,full_name,position,department_id',
+                'employee.department:id,name',
+            ],
+            default => $this->relationsFor($type),
         };
     }
 }

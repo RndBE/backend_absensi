@@ -1069,6 +1069,38 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             ->assertSee('Approver One');
     }
 
+    public function test_employee_can_print_approved_budget_from_approval_history(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'EMP002',
+            'email' => 'approver@example.test',
+            'full_name' => 'Approver One',
+            'department_id' => 1,
+        ]);
+        $this->seedApprover(1, 'budget', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        DB::table('budget_requests')->where('id', $budgetId)->update(['status' => 'pending']);
+
+        $this->withSession(['employee_id' => 2])
+            ->post("/employee/approvals/budget/{$budgetId}/approve", ['notes' => 'Anggaran disetujui'])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals?tab=history')
+            ->assertOk()
+            ->assertSee("/employee/approvals/budget/{$budgetId}/print", false)
+            ->assertSee('approval-history-print', false);
+
+        $this->withSession(['employee_id' => 2])
+            ->get("/employee/approvals/budget/{$budgetId}/print")
+            ->assertOk()
+            ->assertSee('FORM PENGAJUAN ANGGARAN PT. ARTA TEKNOLOGI COMUNINDO')
+            ->assertSee('/employee/approvals?tab=history', false);
+    }
+
     public function test_employee_cannot_print_budget_approval_when_not_current_approver(): void
     {
         $this->seedEmployee(['department_id' => 1]);

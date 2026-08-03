@@ -91,9 +91,28 @@
                     @endif
                 </div>
 
-                <div class="shrink-0 text-left text-[11.5px] text-gray-400 sm:text-right">
-                    {{ $log->created_at->format('d/m/Y') }}<br>
-                    <span class="text-[11px]">{{ $log->created_at->format('H:i') }}</span>
+                <div class="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
+                    <div class="text-left text-[11.5px] text-gray-400 sm:text-right">
+                        {{ $log->created_at->format('d/m/Y') }}<br>
+                        <span class="text-[11px]">{{ $log->created_at->format('H:i') }}</span>
+                    </div>
+
+                    @if($disetujui && $item && $typeKey)
+                        @php
+                            $historyPrintUrl = match($typeKey) {
+                                'budget' => route('employee.approvals.budget.print', $item->id),
+                                'travel_report' => route('employee.approvals.travel_report.print', $item->id),
+                                'lpj' => route('employee.approvals.lpj.print', $item->id),
+                                default => route('employee.approvals.decision.print', [$typeKey, $item->id]),
+                            };
+                        @endphp
+                        <a href="{{ $historyPrintUrl }}" target="_blank" rel="noopener"
+                           class="approval-history-print inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 text-[11.5px] font-bold text-teal-700 transition-colors hover:bg-teal-100"
+                           aria-label="Cetak persetujuan {{ $typeLabels[$typeKey] ?? $typeKey }} {{ $item->employee?->full_name }}">
+                            <span class="material-symbols-outlined text-[15px]">print</span>
+                            Cetak
+                        </a>
+                    @endif
                 </div>
             </div>
         @empty

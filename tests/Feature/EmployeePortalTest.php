@@ -1312,7 +1312,7 @@ class EmployeePortalTest extends TestCase
             ->assertSee('bg-red-50 text-red-700', false); // >72 jam → merah
     }
 
-    /** Tab riwayat menampilkan keputusan approver ini beserta catatannya, tanpa tombol aksi. */
+    /** Tab riwayat menampilkan keputusan approver beserta catatan dan akses cetaknya. */
     public function test_employee_approval_history_tab_lists_past_decisions(): void
     {
         $this->seedEmployee();
@@ -1330,7 +1330,47 @@ class EmployeePortalTest extends TestCase
             ->assertSee('Catatan Anda:')
             ->assertSee('Disetujui, lembur wajar')
             ->assertSee('Step 1')
+            ->assertSee('/employee/approvals/overtime/1/print', false)
+            ->assertSee('approval-history-print', false)
+            ->assertSee('Cetak')
             ->assertDontSee('formaction=', false);
+    }
+
+    public function test_employee_can_print_an_approval_from_their_history(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $this->withSession(['employee_id' => 2])
+            ->post('/employee/approvals/overtime/1/approve', ['notes' => 'Durasi sesuai kebutuhan'])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals/overtime/1/print')
+            ->assertOk()
+            ->assertSee('Bukti Persetujuan Lembur')
+            ->assertSee('Employee One')
+            ->assertSee('Fadel Approver')
+            ->assertSee('Durasi sesuai kebutuhan')
+            ->assertSee('Lembur closing laporan')
+            ->assertSee('window.print()', false);
+    }
+
+    public function test_employee_cannot_print_another_approvers_history(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fadel@example.test', 'full_name' => 'Fadel Approver']);
+        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'other@example.test', 'full_name' => 'Other Employee']);
+        $this->seedOvertimeApprovalForEmployee(1, [2]);
+
+        $this->withSession(['employee_id' => 2])
+            ->post('/employee/approvals/overtime/1/approve')
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->withSession(['employee_id' => 3])
+            ->get('/employee/approvals/overtime/1/print')
+            ->assertRedirect(route('employee.approvals.index', ['tab' => 'history']));
     }
 
     public function test_employee_approver_can_approve_overtime_step_then_next_approver_final_approves(): void

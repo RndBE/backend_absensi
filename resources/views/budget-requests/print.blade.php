@@ -54,15 +54,12 @@
     <button type="button" onclick="window.print()" class="print-btn no-print">Cetak</button>
 
     @php
-        $approvalChain = ($approvalChain ?? collect())->values();
-        $signatureNames = [
-            'pengaju' => $budgetRequest->employee?->full_name ?? '',
-            'pj' => $approvalChain->get(0)?->approver?->full_name ?? '',
-            'manager' => $approvalChain->get(1)?->approver?->full_name ?? '',
-            'finance' => $approvalChain->get(2)?->approver?->full_name ?? '',
-            'manager_admin' => $approvalChain->get(3)?->approver?->full_name ?? '',
-            'direktur' => $approvalChain->get(4)?->approver?->full_name ?? '',
-        ];
+        // Dipetakan lewat jabatan approver, bukan urutan langkah — lihat
+        // BudgetSignatureSlots. Kotak tanpa orang yang cocok dibiarkan kosong.
+        $signatureNames = \App\Support\BudgetSignatureSlots::map(
+            $budgetRequest->employee,
+            $approvalChain ?? collect()
+        );
         $rows = max(10, $budgetRequest->items->count());
     @endphp
 

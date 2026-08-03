@@ -138,6 +138,9 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/approvals/budget/{id}/print', [EmployeeApprovalController::class, 'printBudget'])->name('approvals.budget.print');
     Route::get('/approvals/travel-report/{id}/print', [EmployeeApprovalController::class, 'printTravelReport'])->name('approvals.travel_report.print');
     Route::get('/approvals/lpj/{id}/print', [EmployeeApprovalController::class, 'printLpj'])->name('approvals.lpj.print');
+    Route::get('/approvals/{type}/{id}/print', [EmployeeApprovalController::class, 'printDecision'])
+        ->whereIn('type', ['leave', 'overtime', 'attendance'])
+        ->name('approvals.decision.print');
     Route::post('/approvals/{type}/{id}/approve', [EmployeeApprovalController::class, 'approve'])
         ->whereIn('type', ['leave', 'overtime', 'attendance', 'budget', 'travel_report', 'lpj'])
         ->name('approvals.approve');
