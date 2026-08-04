@@ -275,7 +275,7 @@ class PayrollLoanDeductionTest extends TestCase
         return [$employee, $admin];
     }
 
-    public function test_resigned_employee_drops_jht_jkk_jkm_in_resign_month(): void
+    public function test_resigned_employee_keeps_full_ketenagakerjaan_in_resign_month(): void
     {
         [$employee, $admin] = $this->seedBpjsScenario('bpjs-resign', 'KES-001', 'TK-001');
         // Keluar di bulan periode (Juni).
@@ -286,14 +286,11 @@ class PayrollLoanDeductionTest extends TestCase
 
         $names = collect(PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail()->components)->pluck('name');
 
-        // JHT/JKK/JKM dihilangkan di bulan resign.
-        $this->assertFalse($names->contains('JHT Karyawan'));
-        $this->assertFalse($names->contains('JHT Perusahaan'));
-        $this->assertFalse($names->contains('JKK Perusahaan'));
-        $this->assertFalse($names->contains('JKM Perusahaan'));
-        // BPJS Kesehatan & JP tetap ada.
-        $this->assertTrue($names->contains('BPJS Kesehatan'));
-        $this->assertTrue($names->contains('JP Karyawan'));
+        // Iuran bulan terakhir tetap dihitung penuh: mutasi keluar ke BPJS baru efektif
+        // bulan berikutnya, jadi tagihan bulan ini masih memuat JHT/JKK/JKM/JP.
+        foreach (['JHT Karyawan', 'JHT Perusahaan', 'JKK Perusahaan', 'JKM Perusahaan', 'BPJS Kesehatan', 'JP Karyawan'] as $name) {
+            $this->assertTrue($names->contains($name), "Komponen '{$name}' harus tetap ada di bulan resign.");
+        }
     }
 
     public function test_update_detail_saves_newly_added_component(): void
@@ -412,20 +409,20 @@ class PayrollLoanDeductionTest extends TestCase
         $detail = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
         $before = $detail->components;
 
-        // Bulan terakhir: netto (10.000.000 - 500.000 biaya jabatan - 200.000 BPJS karyawan)
-        // disetahunkan 6 bulan = 55.800.000 → PKP 1.800.000 → progresif 5% = 90.000.
+        // Bulan terakhir: netto (10.000.000 - 500.000 biaya jabatan - 400.000 BPJS karyawan)
+        // disetahunkan 6 bulan = 54.600.000 → PKP 600.000 → progresif 5% = 30.000.
         $this->assertSame(100000.0, $this->componentAmount($before, 'BPJS Kesehatan'));
-        $this->assertSame(90000.0, $this->componentAmount($before, 'PPh 21'));
+        $this->assertSame(30000.0, $this->componentAmount($before, 'PPh 21'));
 
-        // Iuran karyawan dinaikkan → pengurang makin besar → PKP 600.000 → 30.000.
+        // Iuran karyawan diturunkan → pengurang menyusut → PKP 900.000 → 45.000.
         $request = \Illuminate\Http\Request::create('/x', 'PUT', [
-            'components' => $this->componentFormPayload($before, ['BPJS Kesehatan' => 300000]),
+            'components' => $this->componentFormPayload($before, ['BPJS Kesehatan' => 50000]),
         ]);
         (new PayrollRunController)->updateDetail($request, $run->id, $detail->id);
 
         $after = $detail->fresh()->components;
-        $this->assertSame(300000.0, $this->componentAmount($after, 'BPJS Kesehatan'));
-        $this->assertSame(30000.0, $this->componentAmount($after, 'PPh 21'), 'BPJS karyawan adalah pengurang pajak, PPh 21 harus turun.');
+        $this->assertSame(50000.0, $this->componentAmount($after, 'BPJS Kesehatan'));
+        $this->assertSame(45000.0, $this->componentAmount($after, 'PPh 21'), 'BPJS karyawan adalah pengurang pajak, PPh 21 harus naik saat iurannya turun.');
     }
 
     public function test_editing_employee_bpjs_deduction_recalculates_pph21_in_december(): void
@@ -552,7 +549,7 @@ class PayrollLoanDeductionTest extends TestCase
         // Karyawan baru join setelah cutoff: applyEligibility menol-kan semua iuran.
         $bpjs = $this->bpjsArray(['kesehatan' => 0, 'jht' => 0, 'jkk' => 0, 'jkm' => 0, 'jp' => 0]);
 
-        $items = \App\Support\PayrollBpjs::benefitItems($bpjs, false);
+        $items = \App\Support\PayrollBpjs::benefitItems($bpjs);
 
         // Tidak ada baris apa pun — termasuk "Rate BPJS Kesehatan" yang dulu selalu muncul.
         $this->assertSame([], $items);
@@ -562,22 +559,26 @@ class PayrollLoanDeductionTest extends TestCase
     {
         $bpjs = $this->bpjsArray(['kesehatan' => 100000, 'jht' => 92500, 'jkk' => 6000, 'jkm' => 7500, 'jp' => 50000]);
 
-        $labels = array_column(\App\Support\PayrollBpjs::benefitItems($bpjs, false), 'label');
+        $labels = array_column(\App\Support\PayrollBpjs::benefitItems($bpjs), 'label');
 
         $this->assertContains('Rate BPJS Kesehatan', $labels);
         $this->assertContains('BPJS Kesehatan Perusahaan', $labels);
     }
 
-    public function test_benefit_items_show_zero_ketenagakerjaan_rows_for_resign(): void
+    public function test_benefit_items_hide_ketenagakerjaan_rows_when_unregistered(): void
     {
-        // Resign: JHT/JKK/JKM di-nol-kan tapi tetap TAMPIL sebagai Rp 0.
-        $bpjs = $this->bpjsArray(['kesehatan' => 100000, 'jht' => 0, 'jkk' => 0, 'jkm' => 0, 'jp' => 50000]);
+        // Tanpa nomor Ketenagakerjaan semua programnya 0 → tidak boleh muncul baris Rp 0
+        // palsu, termasuk untuk karyawan yang keluar di bulan ini.
+        $bpjs = $this->bpjsArray(['kesehatan' => 100000, 'jht' => 0, 'jkk' => 0, 'jkm' => 0, 'jp' => 0]);
 
-        $labels = array_column(\App\Support\PayrollBpjs::benefitItems($bpjs, true), 'label');
+        $labels = array_column(\App\Support\PayrollBpjs::benefitItems($bpjs), 'label');
 
-        $this->assertContains('Rate BPJS Ketenagakerjaan', $labels);
-        $this->assertContains('JKK (Jaminan Kecelakaan Kerja)', $labels);
-        $this->assertContains('JHT Perusahaan (Jaminan Hari Tua)', $labels);
+        $this->assertNotContains('Rate BPJS Ketenagakerjaan', $labels);
+        $this->assertNotContains('JKK (Jaminan Kecelakaan Kerja)', $labels);
+        $this->assertNotContains('JKM (Jaminan Kematian)', $labels);
+        $this->assertNotContains('JHT Perusahaan (Jaminan Hari Tua)', $labels);
+        // Kesehatan tetap tampil karena nomornya ada.
+        $this->assertContains('BPJS Kesehatan Perusahaan', $labels);
     }
 
     /** Bangun struktur hasil BpjsCalculator dengan iuran company tertentu (basis tetap terisi). */

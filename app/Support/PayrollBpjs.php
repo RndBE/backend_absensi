@@ -60,14 +60,6 @@ class PayrollBpjs
         return $total;
     }
 
-    /** Apakah karyawan keluar (resign / hari kerja terakhir) di bulan periode ini. */
-    public static function isResignedInMonth(?Employee $employee, Carbon $periodStart): bool
-    {
-        $exitRaw = $employee?->last_working_date ?: $employee?->resign_date;
-
-        return $exitRaw && Carbon::parse($exitRaw)->isSameMonth($periodStart);
-    }
-
     /** Karyawan baru yang join SETELAH tanggal cutoff di bulan ini (BPJS belum jalan bulan ini). */
     public static function isJoinedAfterCutoff(?Employee $employee, Carbon $periodStart): bool
     {
@@ -83,8 +75,11 @@ class PayrollBpjs
      * benefit di slip sama persis dengan komponen payroll. Dipakai bersama oleh
      * perhitungan payroll (generateDetails) dan tampilan benefit (buildBpjsData).
      *
-     * Urutan: join setelah cutoff → semua 0; resign → JHT/JKK/JKM 0; tanpa nomor
-     * registrasi → program terkait 0.
+     * Urutan: join setelah cutoff → semua 0; tanpa nomor registrasi → program terkait 0.
+     *
+     * Karyawan yang KELUAR di bulan periode tidak diperlakukan khusus: iuran bulan
+     * terakhirnya tetap dihitung penuh, karena laporan mutasi keluar ke BPJS baru
+     * efektif bulan berikutnya sehingga tagihan bulan itu masih memuat JHT/JKK/JKM/JP.
      */
     public static function applyEligibility(array $bpjs, EmployeePayroll $payroll, Carbon $periodStart): array
     {
@@ -94,9 +89,6 @@ class PayrollBpjs
         if (self::isJoinedAfterCutoff($employee, $periodStart)) {
             return self::refreshTotals(self::zero($bpjs, ['kesehatan', 'jht', 'jkk', 'jkm', 'jp']));
         }
-
-        // Resign di bulan ini → JHT/JKK/JKM 0 (Kesehatan & JP tetap).
-        $bpjs = self::dropKetenagakerjaanForResign($bpjs, $employee, $periodStart);
 
         // Tanpa nomor registrasi (termasuk placeholder "-") → program terkait 0.
         if (! self::hasRegistrationNumber($payroll->bpjs_kesehatan)) {
@@ -111,11 +103,10 @@ class PayrollBpjs
 
     /**
      * Rakit baris benefit BPJS (ditanggung perusahaan) dari hasil applyEligibility.
-     * Baris rate/basis hanya muncul bila iuran terkait aktif bulan ini; khusus resign,
-     * JHT/JKK/JKM tetap ditampilkan sebagai Rp 0. Dipakai bersama oleh semua buildBpjsData
-     * (Admin/Employee/Api/Job) agar tampilan benefit konsisten.
+     * Baris rate/basis hanya muncul bila iuran terkait aktif bulan ini. Dipakai bersama
+     * oleh semua buildBpjsData (Admin/Employee/Api/Job) agar tampilan benefit konsisten.
      */
-    public static function benefitItems(array $bpjs, bool $resigned = false): array
+    public static function benefitItems(array $bpjs): array
     {
         $company = fn (string $k) => (float) ($bpjs[$k]['company'] ?? 0);
         $items = [];
@@ -125,19 +116,18 @@ class PayrollBpjs
             $items[] = ['label' => 'Rate BPJS Kesehatan', 'amount' => $bpjs['kesehatan']['basis'], 'is_basis' => true];
         }
 
-        // Rate/basis Ketenagakerjaan tampil bila ada iuran, atau saat resign (baris Rp 0).
-        $tkHasContrib = ($company('jht') + $company('jkk') + $company('jkm') + $company('jp') > 0) || $resigned;
-        if ($tkHasContrib) {
+        // Rate/basis Ketenagakerjaan tampil bila ada iuran salah satu programnya.
+        if ($company('jht') + $company('jkk') + $company('jkm') + $company('jp') > 0) {
             $items[] = ['label' => 'Rate BPJS Ketenagakerjaan', 'amount' => $bpjs['jht']['basis'], 'is_basis' => true];
         }
 
-        if ($company('jkk') > 0 || $resigned) {
+        if ($company('jkk') > 0) {
             $items[] = ['label' => 'JKK (Jaminan Kecelakaan Kerja)', 'amount' => $bpjs['jkk']['company'], 'is_basis' => false];
         }
-        if ($company('jkm') > 0 || $resigned) {
+        if ($company('jkm') > 0) {
             $items[] = ['label' => 'JKM (Jaminan Kematian)', 'amount' => $bpjs['jkm']['company'], 'is_basis' => false];
         }
-        if ($company('jht') > 0 || $resigned) {
+        if ($company('jht') > 0) {
             $items[] = ['label' => 'JHT Perusahaan (Jaminan Hari Tua)', 'amount' => $bpjs['jht']['company'], 'is_basis' => false];
         }
         if ($company('jp') > 0) {
@@ -177,25 +167,6 @@ class PayrollBpjs
         $bpjs['company_total'] = collect($keys)->sum(fn ($k) => (float) ($bpjs[$k]['company'] ?? 0));
         $bpjs['employee_total'] = collect($keys)->sum(fn ($k) => (float) ($bpjs[$k]['employee'] ?? 0));
         $bpjs['grand_total'] = $bpjs['company_total'] + $bpjs['employee_total'];
-
-        return $bpjs;
-    }
-
-    /**
-     * Untuk karyawan yang KELUAR (resign) di bulan periode, nol-kan JHT/JKK/JKM
-     * (Ketenagakerjaan selain JP). BPJS Kesehatan & JP tetap. Nilainya tetap 0 (bukan
-     * dihapus) agar bisa ditampilkan sebagai baris Rp 0 di benefit.
-     */
-    public static function dropKetenagakerjaanForResign(array $bpjs, ?Employee $employee, Carbon $periodStart): array
-    {
-        if (self::isResignedInMonth($employee, $periodStart)) {
-            foreach (['jht', 'jkk', 'jkm'] as $key) {
-                if (isset($bpjs[$key])) {
-                    $bpjs[$key]['company'] = 0;
-                    $bpjs[$key]['employee'] = 0;
-                }
-            }
-        }
 
         return $bpjs;
     }

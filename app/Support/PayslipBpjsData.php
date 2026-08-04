@@ -22,8 +22,7 @@ class PayslipBpjsData
         $periodDate = Carbon::parse($detail->payrollRun->period.'-01');
         $bpjs = (new BpjsCalculator($periodDate->format('Y-m-d')))->calculate((float) $payroll->basic_salary);
         $bpjs = PayrollBpjs::applyEligibility($bpjs, $payroll, $periodDate);
-        $resigned = PayrollBpjs::isResignedInMonth($detail->employee, $periodDate);
-        $items = PayrollBpjs::benefitItems($bpjs, $resigned);
+        $items = PayrollBpjs::benefitItems($bpjs);
 
         return [
             'source' => 'calculated',
