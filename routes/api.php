@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OvertimeController;
 use App\Http\Controllers\Api\PayslipController;
+use App\Http\Controllers\Api\PegawaiLookupController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\TravelReportController;
 use App\Http\Controllers\Api\TravelZoneController;
@@ -24,6 +25,19 @@ use Illuminate\Support\Facades\Route;
 
 // Public routes
 Route::post('/auth/login', [AuthController::class, 'login']);
+
+/*
+|--------------------------------------------------------------------------
+| Service-to-service (X-API-KEY)
+|--------------------------------------------------------------------------
+| Untuk sistem lain yang membaca data HRIS tanpa menyalin tabelnya — saat ini
+| inventory, yang butuh identitas pegawai untuk pencatatan aset.
+| Hanya baca, hanya identitas dasar. Tidak ada payroll di sini.
+| Dokumentasi: docs/api-pegawai-by-email.md
+*/
+Route::middleware('service.api')->group(function () {
+    Route::get('/pegawai/by-email', [PegawaiLookupController::class, 'byEmail']);
+});
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {

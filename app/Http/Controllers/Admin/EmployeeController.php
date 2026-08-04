@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\WorkSchedule;
 use App\Services\BpjsCalculator;
 use App\Services\EmployeePortalMagicLinkService;
+use App\Services\InventoryClient;
 use App\Services\Pph21Calculator;
 use App\Services\WhatsAppGatewayService;
 use App\Support\AdminPermission;
@@ -211,7 +212,7 @@ class EmployeeController extends Controller
         return redirect()->route('admin.employees.index')->with('success', 'Karyawan berhasil ditambahkan.');
     }
 
-    public function show($id)
+    public function show($id, InventoryClient $inventory)
     {
         $admin = Employee::find(session('admin_id'));
         $employee = Employee::where('company_id', $admin->company_id)
@@ -223,7 +224,11 @@ class EmployeeController extends Controller
             $approvalChains[$type] = EmployeeApprover::getChain($id, $type);
         }
 
-        return view('admin.employees.show', compact('employee', 'approvalChains'));
+        // Aset yang sedang dipegang, diambil langsung dari inventory tiap halaman dibuka.
+        // Tidak pernah gagal — kalau inventory mati, statusnya 'unavailable'.
+        $inventoryAssets = $inventory->employeeAssets($employee->email);
+
+        return view('admin.employees.show', compact('employee', 'approvalChains', 'inventoryAssets'));
     }
 
     public function edit($id)

@@ -350,6 +350,7 @@
                     @endforeach
                 </div>
             </div>
+
         </div>
 
         {{-- Right Column --}}
@@ -461,6 +462,99 @@
                                     {{ implode(' ', $rParts) }}
                                 @endif
                             </span>
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+            {{-- Aset dari Inventory --}}
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div class="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between gap-2">
+                    <h3 class="text-[14px] font-bold text-gray-800 flex items-center gap-1.5 min-w-0"><span
+                            class="material-symbols-outlined text-[16px] text-indigo-500 shrink-0">inventory_2</span>
+                        <span class="truncate">Aset Dipegang</span>
+                    </h3>
+                    @php
+                        $assetTotal = count($inventoryAssets['loans']) + count($inventoryAssets['pic']);
+                    @endphp
+                    @if($inventoryAssets['status'] === 'ok' && $assetTotal)
+                        <span
+                            class="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">{{ $assetTotal }}
+                            aset</span>
+                    @endif
+                </div>
+                <div class="p-5">
+                    @if($inventoryAssets['status'] === 'ok')
+                        @php
+                            // Dipisah karena kewajibannya beda: peminjaman wajib dikembalikan,
+                            // PIC itu penugasan tetap. Digabung bikin HR salah baca saat resign.
+                            $assetGroups = array_filter([
+                                'Dipinjam' => $inventoryAssets['loans'],
+                                'Tanggung Jawab (PIC)' => $inventoryAssets['pic'],
+                            ]);
+
+                            // Tinggi daftar dibatasi supaya kartu tidak menjulur jauh ke bawah saat
+                            // aset banyak. Tidak pakai ambang jumlah: browser sendiri baru memunculkan
+                            // scrollbar kalau isinya melebihi batas, jadi daftar pendek tetap tampil
+                            // penuh tanpa perlu dihitung — dan tetap benar walau nama barang panjang
+                            // membungkus jadi dua baris. Sekitar 3 aset muat sebelum mulai digulir.
+                            // Semua item tetap ada di DOM; jumlah total terbaca dari badge di header.
+                        @endphp
+                        @if($assetTotal)
+                            <div class="max-h-[380px] overflow-y-auto card-scroll">
+                                @foreach($assetGroups as $groupLabel => $groupAssets)
+                                    <div class="{{ !$loop->first ? 'mt-4 pt-4 border-t border-gray-200' : '' }}">
+                                        <div
+                                            class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                                            {{ $groupLabel }} ({{ count($groupAssets) }})</div>
+                                        @foreach($groupAssets as $aset)
+                                            <div
+                                                class="py-3 {{ $loop->first ? 'pt-0' : '' }} {{ !$loop->last ? 'border-b border-gray-100' : 'pb-0' }}">
+                                                <div
+                                                    class="text-[13px] font-semibold text-gray-800 leading-snug break-words">
+                                                    {{ data_get($aset, 'nama_barang') ?: '-' }}</div>
+                                                <div class="text-[11px] font-mono text-gray-500 mt-1 break-all">
+                                                    {{ data_get($aset, 'nomor_aset') ?: '-' }}</div>
+                                                <div class="mt-1.5 text-[11.5px] text-gray-500 leading-relaxed">
+                                                    <span
+                                                        class="font-medium text-gray-700">{{ data_get($aset, 'kondisi') ?: '-' }}</span>
+                                                    · {{ data_get($aset, 'ruangan') ?: 'Tanpa ruangan' }}
+                                                    · Jumlah {{ data_get($aset, 'jumlah') ?: 1 }}
+                                                    @if(data_get($aset, 'serial_number'))
+                                                        <br><span
+                                                            class="font-mono">SN {{ data_get($aset, 'serial_number') }}</span>
+                                                    @endif
+                                                </div>
+                                                {{-- Baris PIC tidak punya peminjaman; jangan cetak "- · 0 hari sejak -" --}}
+                                                @if(data_get($aset, 'peminjaman.kode'))
+                                                    <div class="mt-1 text-[11px] text-gray-400 leading-relaxed">
+                                                        <span
+                                                            class="font-mono">{{ data_get($aset, 'peminjaman.kode') }}</span>
+                                                        · {{ data_get($aset, 'peminjaman.lama_dipinjam_hari') ?: 0 }} hari
+                                                        <br>sejak {{ data_get($aset, 'peminjaman.tgl_pinjam') ?: '-' }}
+                                                        @if(data_get($aset, 'peminjaman.keperluan'))
+                                                            · {{ data_get($aset, 'peminjaman.keperluan') }}
+                                                        @endif
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="text-[13px] text-gray-500">Tidak ada aset yang sedang dipegang.</div>
+                        @endif
+                    @else
+                        @php
+                            $inventoryTone = $inventoryAssets['status'] === 'unavailable'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200';
+                        @endphp
+                        <div
+                            class="flex items-start gap-1.5 px-3 py-2 rounded-lg border text-[12px] font-medium leading-snug {{ $inventoryTone }}">
+                            <span class="material-symbols-outlined text-[15px] shrink-0">info</span>
+                            <span>{{ $inventoryAssets['message'] }}</span>
                         </div>
                     @endif
                 </div>

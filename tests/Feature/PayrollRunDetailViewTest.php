@@ -53,4 +53,22 @@ class PayrollRunDetailViewTest extends TestCase
         $this->assertStringContainsString('fallbackOvertimeLinesForDetail', $controller);
         $this->assertStringContainsString("'lines' => \$overtimeData['lines']", $controller);
     }
+
+    public function test_penalty_components_can_open_detail_modal(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/payroll-runs/show.blade.php'));
+        $controller = file_get_contents(app_path('Http/Controllers/Admin/PayrollRunController.php'));
+
+        $this->assertStringContainsString('openPayrollPenaltyDetail', $view);
+        $this->assertStringContainsString('payrollPenaltyDetail-', $view);
+        $this->assertStringContainsString('Rincian {{ $component[\'name\']', $view);
+        $this->assertStringContainsString("'laporan harian'", $view);
+        $this->assertStringContainsString("'lhp'", $view);
+        $this->assertStringContainsString("'kedisiplin'", $view);
+        $this->assertStringContainsString("'kedisplin'", $view);
+        $this->assertStringContainsString("'penalty' => [", $controller);
+        $this->assertStringContainsString("'lines' => \$lateData['lines']", $controller);
+        $this->assertStringContainsString("'lines' => \$alphaData['lines']", $controller);
+        $this->assertStringContainsString('attachPenaltyLinesForDetail', $controller);
+    }
 }

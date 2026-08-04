@@ -92,11 +92,28 @@ class PayrollRunController extends Controller
         $run = PayrollRun::with(['creator:id,full_name', 'logs.performer:id,full_name'])->findOrFail($id);
 
         $details = PayrollRunDetail::where('payroll_run_id', $id)
-            ->with(['employee:id,full_name,employee_code,department_id,position', 'employee.department:id,name'])
+            ->with(['employee:id,company_id,full_name,email,employee_code,department_id,position', 'employee.department:id,name'])
             ->orderBy('net_salary', 'desc')
             ->get();
 
-        $details->each(fn (PayrollRunDetail $detail) => $this->attachOvertimeLines($detail, $run));
+        $dailyReportLateData = [];
+        if ($details->contains(fn (PayrollRunDetail $detail) => $this->needsDailyReportPenaltyLines($detail))) {
+            $periodStart = Carbon::parse($run->period.'-01')->startOfMonth();
+            $dailyReportLateData = $this->fetchDailyReportLateCounts(
+                $details->pluck('employee.email')->filter(),
+                $periodStart,
+                $periodStart->copy()->endOfMonth()
+            );
+        }
+
+        $details->each(function (PayrollRunDetail $detail) use ($run, $dailyReportLateData) {
+            $this->attachOvertimeLines($detail, $run);
+            $this->attachPenaltyLinesForDetail($detail, $run);
+            $this->attachDailyReportPenaltyLinesForDetail(
+                $detail,
+                $dailyReportLateData[strtolower((string) $detail->employee?->email)] ?? []
+            );
+        });
 
         return view('admin.payroll-runs.show', compact('run', 'details'));
     }
@@ -124,8 +141,10 @@ class PayrollRunController extends Controller
             : (json_decode((string) $detail->components, true) ?: []);
         $components = $request->components;
         foreach ($components as $index => &$component) {
-            if (empty($component['lines']) && ! empty($existingComponents[$index]['lines'])) {
-                $component['lines'] = $existingComponents[$index]['lines'];
+            foreach (['lines', 'penalty'] as $detailKey) {
+                if (empty($component[$detailKey]) && ! empty($existingComponents[$index][$detailKey])) {
+                    $component[$detailKey] = $existingComponents[$index][$detailKey];
+                }
             }
         }
         unset($component);
@@ -450,7 +469,7 @@ class PayrollRunController extends Controller
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
 
-        $dailyReportLateCounts = $this->fetchDailyReportLateCounts(
+        $dailyReportLateData = $this->fetchDailyReportLateCounts(
             $payrolls->pluck('employee.email'),
             $periodStart,
             $periodEnd
@@ -639,14 +658,27 @@ class PayrollRunController extends Controller
                             'is_taxable' => false,
                             'is_auto' => true,
                             'detail' => $lateData['days'].' hari × Rp '.number_format($latePenalty, 0, ',', '.'),
+                            'penalty' => [
+                                'source' => 'Data presensi',
+                                'count' => $lateData['days'],
+                                'unit_label' => 'hari terlambat',
+                                'unit_amount' => $latePenalty,
+                            ],
+                            'lines' => $lateData['lines'],
                         ];
                         $totalDeduction += $lateData['amount'];
                     }
                 }
 
-                $disciplineLateDays = (int) ($dailyReportLateCounts[strtolower((string) $employee->email)] ?? 0);
+                $employeeDailyReportLate = $dailyReportLateData[strtolower((string) $employee->email)]
+                    ?? ['days' => 0, 'dates' => []];
+                $disciplineLateDays = (int) ($employeeDailyReportLate['days'] ?? 0);
                 if ($disciplineLateDays > 0 && $latePenalty > 0) {
-                    $disciplineComponent = $this->buildDisciplinePenaltyComponent($disciplineLateDays, $latePenalty);
+                    $disciplineComponent = $this->buildDisciplinePenaltyComponent(
+                        $disciplineLateDays,
+                        $latePenalty,
+                        $employeeDailyReportLate['dates'] ?? []
+                    );
                     $components[] = $disciplineComponent;
                     $totalDeduction += $disciplineComponent['amount'];
                 }
@@ -663,6 +695,13 @@ class PayrollRunController extends Controller
                         'is_taxable' => false,
                         'is_auto' => true,
                         'detail' => $alphaData['days'].' hari × Rp '.number_format($alphaData['per_day'], 0, ',', '.'),
+                        'penalty' => [
+                            'source' => 'Data presensi dan jadwal kerja',
+                            'count' => $alphaData['days'],
+                            'unit_label' => 'hari alpha',
+                            'unit_amount' => $alphaData['per_day'],
+                        ],
+                        'lines' => $alphaData['lines'],
                     ];
                     $totalDeduction += $alphaData['amount'];
                 }
@@ -1021,6 +1060,178 @@ class PayrollRunController extends Controller
         }
     }
 
+    /**
+     * Payroll lama hanya menyimpan formula potongan tanpa rincian tanggal. Saat halaman
+     * dibuka, lengkapi tanggal dari data lokal secara in-memory agar tidak perlu regenerate
+     * dan tidak mengubah nominal maupun JSON payroll yang sudah tersimpan.
+     */
+    private function attachPenaltyLinesForDetail(PayrollRunDetail $detail, PayrollRun $run): void
+    {
+        if (! Schema::hasTable('attendances') || ! Schema::hasTable('leave_requests')) {
+            return;
+        }
+
+        $components = is_array($detail->components)
+            ? $detail->components
+            : (json_decode((string) $detail->components, true) ?: []);
+        $periodStart = Carbon::parse($run->period.'-01')->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+        $holidayDates = Schema::hasTable('holidays')
+            ? Holiday::query()
+                ->when(
+                    Schema::hasColumn('holidays', 'company_id') && $detail->employee?->company_id,
+                    fn ($query) => $query->where('company_id', $detail->employee->company_id)
+                )
+                ->whereBetween('date', [$periodStart, $periodEnd])
+                ->pluck('date')
+                ->map(fn ($date) => Carbon::parse($date)->toDateString())
+                ->all()
+            : [];
+        $changed = false;
+
+        foreach ($components as &$component) {
+            $penaltyType = $this->localPenaltyType($component);
+            if (! $penaltyType || (! empty($component['lines']) && is_array($component['lines']))) {
+                continue;
+            }
+
+            $rate = $this->penaltyRateFromComponent($component);
+            if ($penaltyType === 'alpha') {
+                if (! Schema::hasTable('employees') || ! Schema::hasTable('schedule_assignments') || ! Schema::hasTable('shifts')) {
+                    continue;
+                }
+
+                $rate = $rate > 0 ? $rate : self::ALPHA_PENALTY_PER_DAY;
+                $data = $this->calculateAlphaPenalty(
+                    (int) $detail->employee_id,
+                    $periodStart,
+                    $periodEnd,
+                    $holidayDates,
+                    (float) $detail->basic_salary
+                );
+            } else {
+                $rate = $rate > 0 ? $rate : 50000;
+                $data = $this->calculateLatePenalty(
+                    (int) $detail->employee_id,
+                    $periodStart,
+                    $periodEnd,
+                    $holidayDates,
+                    $rate
+                );
+            }
+
+            if (empty($data['lines'])) {
+                continue;
+            }
+
+            $component['lines'] = $data['lines'];
+            $component['penalty'] ??= [
+                'source' => $penaltyType === 'alpha' ? 'Data presensi dan jadwal kerja' : 'Data presensi',
+                'count' => (int) ($data['days'] ?? count($data['lines'])),
+                'unit_label' => $penaltyType === 'alpha' ? 'hari alpha' : 'hari terlambat',
+                'unit_amount' => $rate,
+            ];
+            $changed = true;
+        }
+        unset($component);
+
+        if ($changed) {
+            $detail->setAttribute('components', $components);
+        }
+    }
+
+    private function localPenaltyType(array $component): ?string
+    {
+        if (($component['type'] ?? '') !== 'deduction') {
+            return null;
+        }
+
+        $name = strtolower((string) ($component['name'] ?? ''));
+        if (str_contains($name, 'alpha')) {
+            return 'alpha';
+        }
+
+        $isExternalReportPenalty = str_contains($name, 'laporan')
+            || str_contains($name, 'lhp')
+            || str_contains($name, 'kedisiplin')
+            || str_contains($name, 'kedisplin');
+
+        return str_contains($name, 'terlambat') && ! $isExternalReportPenalty ? 'late' : null;
+    }
+
+    private function penaltyRateFromComponent(array $component): float
+    {
+        $storedRate = (float) ($component['penalty']['unit_amount'] ?? 0);
+        if ($storedRate > 0) {
+            return $storedRate;
+        }
+
+        if (preg_match('/Rp\s*([\d.]+)/iu', (string) ($component['detail'] ?? ''), $matches)) {
+            return (float) str_replace('.', '', $matches[1]);
+        }
+
+        return 0;
+    }
+
+    private function needsDailyReportPenaltyLines(PayrollRunDetail $detail): bool
+    {
+        return collect($detail->components ?? [])->contains(function ($component) {
+            return is_array($component)
+                && $this->isDailyReportPenaltyComponent($component)
+                && (empty($component['lines']) || ! is_array($component['lines']));
+        });
+    }
+
+    private function attachDailyReportPenaltyLinesForDetail(PayrollRunDetail $detail, array $lateData): void
+    {
+        $dates = $lateData['dates'] ?? [];
+        if (empty($dates)) {
+            return;
+        }
+
+        $components = is_array($detail->components)
+            ? $detail->components
+            : (json_decode((string) $detail->components, true) ?: []);
+        $changed = false;
+
+        foreach ($components as &$component) {
+            if (! $this->isDailyReportPenaltyComponent($component)
+                || (! empty($component['lines']) && is_array($component['lines']))) {
+                continue;
+            }
+
+            $rate = $this->penaltyRateFromComponent($component);
+            $rate = $rate > 0 ? $rate : 50000;
+            $generated = $this->buildDisciplinePenaltyComponent(
+                (int) ($lateData['days'] ?? count($dates)),
+                $rate,
+                $dates
+            );
+            $component['lines'] = $generated['lines'];
+            $component['penalty'] ??= $generated['penalty'];
+            $changed = true;
+        }
+        unset($component);
+
+        if ($changed) {
+            $detail->setAttribute('components', $components);
+        }
+    }
+
+    private function isDailyReportPenaltyComponent(array $component): bool
+    {
+        if (($component['type'] ?? '') !== 'deduction') {
+            return false;
+        }
+
+        $name = strtolower((string) ($component['name'] ?? ''));
+
+        return str_contains($name, 'laporan')
+            || str_contains($name, 'lhp')
+            || str_contains($name, 'kedisiplin')
+            || str_contains($name, 'kedisplin');
+    }
+
     private function fallbackOvertimeLinesForDetail(PayrollRunDetail $detail, PayrollRun $run): array
     {
         if (! Schema::hasTable('overtime_requests')) {
@@ -1243,23 +1454,41 @@ class PayrollRunController extends Controller
      */
     private function calculateLatePenalty(int $empId, $periodStart, $periodEnd, array $holidayDates, float $penaltyPerDay = 50000): array
     {
-
         // Get approved leave dates to exclude
         $leaveDates = $this->getApprovedLeaveDates($empId, $periodStart, $periodEnd);
 
-        // Count late days from attendance
-        $lateDays = Attendance::where('employee_id', $empId)
+        $lateAttendances = Attendance::where('employee_id', $empId)
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->where('is_late', true)
             ->where('status', 'present')
             ->where(fn ($query) => $query->whereNull('review_status')->orWhere('review_status', 'approved'))
             ->whereNotIn('date', $holidayDates)
             ->whereNotIn('date', $leaveDates)
-            ->count();
+            ->orderBy('date')
+            ->get(['date', 'clock_in']);
+
+        $lines = $lateAttendances->map(function (Attendance $attendance) use ($penaltyPerDay) {
+            $date = Carbon::parse($attendance->date);
+
+            return [
+                'date' => $date->toDateString(),
+                'date_label' => $date->translatedFormat('d M Y'),
+                'day_label' => $date->translatedFormat('l'),
+                'description' => 'Terlambat masuk kerja',
+                'evidence' => $attendance->clock_in
+                    ? 'Clock-in '.Carbon::parse($attendance->clock_in)->format('H:i')
+                    : 'Ditandai terlambat pada presensi',
+                'amount' => $penaltyPerDay,
+            ];
+        })->values()->all();
+
+        $lateDays = count($lines);
 
         return [
             'days' => $lateDays,
             'amount' => $lateDays * $penaltyPerDay,
+            'per_day' => $penaltyPerDay,
+            'lines' => $lines,
         ];
     }
 
@@ -1278,10 +1507,16 @@ class PayrollRunController extends Controller
         }
 
         try {
-            $response = Http::withHeaders([
+            $http = Http::withHeaders([
                 'Accept' => 'application/json',
                 'X-Internal-Secret' => $secret,
-            ])
+            ]);
+
+            if (! config('services.daily.verify_ssl', true)) {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http
                 ->timeout(10)
                 ->get($baseUrl.'/api/internal/payroll/daily-report-late', [
                     'start' => $periodStart->toDateString(),
@@ -1298,10 +1533,29 @@ class PayrollRunController extends Controller
             }
 
             return collect($response->json('data') ?? [])
-                ->mapWithKeys(fn ($row) => [
-                    strtolower((string) ($row['email'] ?? '')) => (int) ($row['late_days'] ?? 0),
-                ])
-                ->filter(fn ($days, $email) => $email !== '')
+                ->mapWithKeys(function ($row) {
+                    $dates = collect($row['late_dates'] ?? [])
+                        ->map(function ($date) {
+                            try {
+                                return Carbon::parse($date)->toDateString();
+                            } catch (\Throwable) {
+                                return null;
+                            }
+                        })
+                        ->filter()
+                        ->unique()
+                        ->sort()
+                        ->values()
+                        ->all();
+
+                    return [
+                        strtolower((string) ($row['email'] ?? '')) => [
+                            'days' => (int) ($row['late_days'] ?? count($dates)),
+                            'dates' => $dates,
+                        ],
+                    ];
+                })
+                ->filter(fn ($data, $email) => $email !== '')
                 ->all();
         } catch (\Throwable $exception) {
             Log::warning('Tidak dapat terhubung ke DailyCloseApp saat menghitung potongan kedisiplinan.', [
@@ -1312,9 +1566,31 @@ class PayrollRunController extends Controller
         }
     }
 
-    private function buildDisciplinePenaltyComponent(int $lateDays, float $penaltyPerDay): array
+    private function buildDisciplinePenaltyComponent(int $lateDays, float $penaltyPerDay, array $lateDates = []): array
     {
         $amount = $lateDays * $penaltyPerDay;
+        $lines = collect($lateDates)
+            ->map(function ($date) use ($penaltyPerDay) {
+                try {
+                    $date = Carbon::parse($date);
+                } catch (\Throwable) {
+                    return null;
+                }
+
+                return [
+                    'date' => $date->toDateString(),
+                    'date_label' => $date->translatedFormat('d M Y'),
+                    'day_label' => $date->translatedFormat('l'),
+                    'description' => 'Laporan harian terlambat',
+                    'evidence' => 'Ditandai terlambat oleh DailyCloseApp',
+                    'amount' => $penaltyPerDay,
+                ];
+            })
+            ->filter()
+            ->unique('date')
+            ->sortBy('date')
+            ->values()
+            ->all();
 
         return [
             'id' => null,
@@ -1325,6 +1601,13 @@ class PayrollRunController extends Controller
             'is_taxable' => false,
             'is_auto' => true,
             'detail' => $lateDays.' hari × Rp '.number_format($penaltyPerDay, 0, ',', '.'),
+            'penalty' => [
+                'source' => 'Data keterlambatan laporan harian',
+                'count' => $lateDays,
+                'unit_label' => 'hari terlambat laporan',
+                'unit_amount' => $penaltyPerDay,
+            ],
+            'lines' => $lines,
         ];
     }
 
@@ -1394,12 +1677,33 @@ class PayrollRunController extends Controller
             }
         }
 
-        $absentDays = $explicitAbsentDates->merge($inferredAbsentDates)->unique()->count();
+        $explicitAbsentLookup = $explicitAbsentDates->flip();
+        $absentDates = $explicitAbsentDates
+            ->merge($inferredAbsentDates)
+            ->unique()
+            ->sort()
+            ->values();
+        $lines = $absentDates->map(function (string $dateString) use ($explicitAbsentLookup, $perDay) {
+            $date = Carbon::parse($dateString);
+
+            return [
+                'date' => $dateString,
+                'date_label' => $date->translatedFormat('d M Y'),
+                'day_label' => $date->translatedFormat('l'),
+                'description' => 'Tidak hadir (Alpha)',
+                'evidence' => $explicitAbsentLookup->has($dateString)
+                    ? 'Status presensi tercatat Alpha'
+                    : 'Tidak ada presensi pada hari kerja terjadwal',
+                'amount' => $perDay,
+            ];
+        })->all();
+        $absentDays = $absentDates->count();
 
         return [
             'days' => $absentDays,
             'amount' => $absentDays * $perDay,
             'per_day' => $perDay,
+            'lines' => $lines,
         ];
     }
 

@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Http\Controllers\Admin\PayrollRunController;
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\PayrollRun;
+use App\Models\PayrollRunDetail;
 use App\Models\ScheduleTemplate;
 use App\Models\ScheduleTemplateDay;
 use App\Models\Shift;
@@ -35,7 +37,11 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
             'http://daily.test/api/internal/payroll/daily-report-late*' => Http::response([
                 'success' => true,
                 'data' => [
-                    ['email' => 'staff@example.test', 'late_days' => 2],
+                    [
+                        'email' => 'staff@example.test',
+                        'late_days' => 2,
+                        'late_dates' => ['2026-06-05', '2026-06-04'],
+                    ],
                     ['email' => 'other@example.test', 'late_days' => 0],
                 ],
             ]),
@@ -51,8 +57,10 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
             ]
         );
 
-        $this->assertSame(2, $counts['staff@example.test']);
-        $this->assertSame(0, $counts['other@example.test']);
+        $this->assertSame(2, $counts['staff@example.test']['days']);
+        $this->assertSame(['2026-06-04', '2026-06-05'], $counts['staff@example.test']['dates']);
+        $this->assertSame(0, $counts['other@example.test']['days']);
+        $this->assertSame([], $counts['other@example.test']['dates']);
         Http::assertSent(fn ($request) => $request->url() === 'http://daily.test/api/internal/payroll/daily-report-late?start=2026-06-01&end=2026-06-30&emails%5B0%5D=staff%40example.test&emails%5B1%5D=other%40example.test'
             && $request->header('X-Internal-Secret')[0] === 'bridge-secret');
     }
@@ -62,13 +70,148 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         $component = $this->invokePrivate(
             new PayrollRunController,
             'buildDisciplinePenaltyComponent',
-            [3, 50000]
+            [3, 50000, ['2026-06-07', '2026-06-05', '2026-06-06']]
         );
 
         $this->assertSame('Potongan Sanksi Laporan', $component['name']);
         $this->assertSame('deduction', $component['type']);
         $this->assertSame(150000.0, $component['amount']);
         $this->assertSame('3 hari × Rp 50.000', $component['detail']);
+        $this->assertSame('Data keterlambatan laporan harian', $component['penalty']['source']);
+        $this->assertSame(3, $component['penalty']['count']);
+        $this->assertSame(50000.0, $component['penalty']['unit_amount']);
+        $this->assertCount(3, $component['lines']);
+        $this->assertSame('2026-06-05', $component['lines'][0]['date']);
+        $this->assertSame('Laporan harian terlambat', $component['lines'][0]['description']);
+    }
+
+    public function test_existing_payroll_can_attach_daily_report_dates_without_regenerate(): void
+    {
+        $detail = new PayrollRunDetail([
+            'employee_id' => 77,
+            'basic_salary' => 6000000,
+            'components' => [[
+                'name' => 'Potongan Sanksi Laporan',
+                'type' => 'deduction',
+                'amount' => 100000,
+                'detail' => '2 hari × Rp 50.000',
+            ]],
+        ]);
+
+        $this->invokePrivate(
+            new PayrollRunController,
+            'attachDailyReportPenaltyLinesForDetail',
+            [$detail, ['days' => 2, 'dates' => ['2026-06-04', '2026-06-05']]]
+        );
+
+        $component = $detail->components[0];
+        $this->assertCount(2, $component['lines']);
+        $this->assertSame('2026-06-04', $component['lines'][0]['date']);
+        $this->assertSame('2026-06-05', $component['lines'][1]['date']);
+        $this->assertSame('Data keterlambatan laporan harian', $component['penalty']['source']);
+    }
+
+    public function test_existing_lhp_alias_can_attach_daily_report_dates_without_regenerate(): void
+    {
+        $detail = new PayrollRunDetail([
+            'employee_id' => 77,
+            'basic_salary' => 6000000,
+            'components' => [[
+                'name' => 'Denda LHP',
+                'type' => 'deduction',
+                'amount' => 50000,
+                'detail' => '1 hari Ã— Rp 50.000',
+            ]],
+        ]);
+
+        $this->invokePrivate(
+            new PayrollRunController,
+            'attachDailyReportPenaltyLinesForDetail',
+            [$detail, ['days' => 1, 'dates' => ['2026-06-04']]]
+        );
+
+        $component = $detail->components[0];
+        $this->assertCount(1, $component['lines']);
+        $this->assertSame('2026-06-04', $component['lines'][0]['date']);
+        $this->assertSame('Data keterlambatan laporan harian', $component['penalty']['source']);
+    }
+
+    public function test_late_penalty_includes_daily_detail_lines(): void
+    {
+        Attendance::create([
+            'employee_id' => 77,
+            'date' => '2026-06-03',
+            'clock_in' => '08:25:00',
+            'status' => 'present',
+            'is_late' => true,
+        ]);
+
+        $penalty = $this->invokePrivate(
+            new PayrollRunController,
+            'calculateLatePenalty',
+            [77, '2026-06-01', '2026-06-30', [], 50000]
+        );
+
+        $this->assertSame(1, $penalty['days']);
+        $this->assertSame(50000.0, $penalty['amount']);
+        $this->assertCount(1, $penalty['lines']);
+        $this->assertSame('2026-06-03', $penalty['lines'][0]['date']);
+        $this->assertSame('Clock-in 08:25', $penalty['lines'][0]['evidence']);
+        $this->assertSame(50000.0, $penalty['lines'][0]['amount']);
+    }
+
+    public function test_existing_payroll_can_show_late_and_alpha_dates_without_regenerate(): void
+    {
+        Attendance::create([
+            'employee_id' => 77,
+            'date' => '2026-06-09',
+            'clock_in' => '08:35:00',
+            'status' => 'present',
+            'is_late' => true,
+        ]);
+        Attendance::create([
+            'employee_id' => 77,
+            'date' => '2026-06-10',
+            'status' => 'absent',
+        ]);
+
+        $detail = new PayrollRunDetail([
+            'employee_id' => 77,
+            'basic_salary' => 6000000,
+            'components' => [
+                [
+                    'name' => 'Potongan Keterlambatan',
+                    'type' => 'deduction',
+                    'amount' => 50000,
+                    'detail' => '1 hari × Rp 50.000',
+                ],
+                [
+                    'name' => 'Potongan Alpha',
+                    'type' => 'deduction',
+                    'amount' => 100000,
+                    'detail' => '1 hari × Rp 100.000',
+                ],
+            ],
+        ]);
+        $run = new PayrollRun(['period' => '2026-06']);
+
+        $this->invokePrivate(
+            new PayrollRunController,
+            'attachPenaltyLinesForDetail',
+            [$detail, $run]
+        );
+
+        $component = $detail->components[0];
+        $this->assertCount(1, $component['lines']);
+        $this->assertSame('2026-06-09', $component['lines'][0]['date']);
+        $this->assertSame('Clock-in 08:35', $component['lines'][0]['evidence']);
+        $this->assertSame('Data presensi', $component['penalty']['source']);
+
+        $alphaComponent = $detail->components[1];
+        $this->assertCount(1, $alphaComponent['lines']);
+        $this->assertSame('2026-06-10', $alphaComponent['lines'][0]['date']);
+        $this->assertSame('Status presensi tercatat Alpha', $alphaComponent['lines'][0]['evidence']);
+        $this->assertSame('Data presensi dan jadwal kerja', $alphaComponent['penalty']['source']);
     }
 
     public function test_alpha_penalty_is_fixed_one_hundred_thousand_per_absent_day(): void
@@ -93,6 +236,9 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         $this->assertSame(2, $penalty['days']);
         $this->assertSame(100000, $penalty['per_day']);
         $this->assertSame(200000, $penalty['amount']);
+        $this->assertCount(2, $penalty['lines']);
+        $this->assertSame('2026-06-03', $penalty['lines'][0]['date']);
+        $this->assertSame('Status presensi tercatat Alpha', $penalty['lines'][0]['evidence']);
     }
 
     public function test_alpha_penalty_counts_past_scheduled_workdays_without_attendance(): void
@@ -175,6 +321,7 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
             $table->string('clock_out_photo')->nullable();
             $table->string('status')->default('present');
             $table->boolean('is_late')->default(false);
+            $table->string('review_status')->nullable();
             $table->timestamps();
         });
 

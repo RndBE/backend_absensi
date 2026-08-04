@@ -53,6 +53,7 @@ return [
     'daily' => [
         'url' => env('DAILY_APP_URL', 'http://127.0.0.1:8001'),
         'internal_secret' => env('DAILY_INTERNAL_SECRET'),
+        'verify_ssl' => env('DAILY_VERIFY_SSL', true),
     ],
 
     'violation_report' => [
@@ -63,6 +64,24 @@ return [
         'endpoint' => env('WHATSAPP_ENDPOINT', 'http://127.0.0.1:3000/client/sendMessage/beacon'),
         'api_key' => env('WHATSAPP_API_KEY'),
         'timeout' => env('WHATSAPP_TIMEOUT', 15),
+    ],
+
+    // Kunci MASUK: dipakai memvalidasi sistem lain yang memanggil API HRIS
+    // (mis. inventory membaca data pegawai). Bukan untuk memanggil orang lain.
+    // Nilainya harus sama dengan HRIS_API_KEY di .env sistem pemanggil.
+    'hris_api' => [
+        'key' => env('HRIS_API_KEY'),
+    ],
+
+    // Integrasi inventory (BE-INVENTORY). Inventory tetap pemilik data aset —
+    // HRIS memanggilnya saat halaman dibuka, tidak menyalin datanya.
+    // Dokumentasi endpoint: be-inventory/docs/api-hris-aset-karyawan.md
+    'inventory' => [
+        'url' => env('INVENTORY_URL'),
+        // Harus sama persis dengan INVENTORY_API_KEY di .env inventory.
+        // Kalau diganti, kedua sisi harus diganti bersamaan atau HRIS langsung 401.
+        'api_key' => env('INVENTORY_API_KEY'),
+        'timeout' => env('INVENTORY_TIMEOUT', 5),
     ],
 
     // Integrasi AI kantor "Tessa" — MENGIKUTI role HRIS.

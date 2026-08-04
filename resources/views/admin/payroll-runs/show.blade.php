@@ -6,6 +6,23 @@
     $adminPermission = app(\App\Support\AdminPermission::class);
     $canUpdatePayrollRun = $adminPermission->can($currentAdmin, 'payroll.runs.update');
     $canPublishPayrollRun = $adminPermission->can($currentAdmin, 'payroll.runs.publish');
+    $isPenaltyDetailComponent = static function (array $component): bool {
+        if (($component['type'] ?? '') !== 'deduction') {
+            return false;
+        }
+
+        $name = \Illuminate\Support\Str::lower((string) ($component['name'] ?? ''));
+
+        return \Illuminate\Support\Str::contains($name, [
+            'terlambat',
+            'alpha',
+            'laporan harian',
+            'sanksi laporan',
+            'lhp',
+            'kedisiplin',
+            'kedisplin',
+        ]);
+    };
 @endphp
 <div class="mb-4">
     <a href="{{ route('admin.payroll-runs.index') }}" class="inline-flex items-center gap-1 text-[13px] text-gray-500 hover:text-indigo-600 transition-colors">
@@ -221,6 +238,8 @@
                             @php
                                 $isOvertimeComponent = ($comp['name'] ?? '') === 'Lembur' && !empty($comp['lines']) && is_array($comp['lines']);
                                 $overtimeModalId = 'payrollOvertimeDetail-'.$detail->id.'-'.$compIndex;
+                                $isPenaltyComponent = $isPenaltyDetailComponent($comp);
+                                $penaltyModalId = 'payrollPenaltyDetail-'.$detail->id.'-'.$compIndex;
                             @endphp
                             <div class="flex items-center gap-1.5 text-[11px]">
                                 @if($comp['type'] === 'earning')
@@ -244,7 +263,14 @@
                                     @endif
                                 @else
                                     <span class="text-red-600">−</span>
-                                    <span class="text-gray-700">{{ $comp['name'] }}</span>
+                                    @if($isPenaltyComponent)
+                                        <button type="button" onclick="openPayrollPenaltyDetail('{{ $penaltyModalId }}')" class="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-left font-semibold text-red-600 transition hover:bg-red-50 cursor-pointer" title="Lihat rincian {{ $comp['name'] }}">
+                                            <span>{{ $comp['name'] }}</span>
+                                            <span class="material-symbols-outlined text-[13px]">info</span>
+                                        </button>
+                                    @else
+                                        <span class="text-gray-700">{{ $comp['name'] }}</span>
+                                    @endif
                                     <span class="font-semibold text-red-600 ml-auto">Rp {{ number_format($comp['amount'], 0, ',', '.') }}</span>
                                 @endif
                             </div>
@@ -343,6 +369,108 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+</div>
+@endforeach
+@endforeach
+
+@foreach($details as $detail)
+@foreach(($detail->components ?? []) as $compIndex => $component)
+@continue(! $isPenaltyDetailComponent($component))
+@php
+    $penaltyModalId = 'payrollPenaltyDetail-'.$detail->id.'-'.$compIndex;
+    $penalty = is_array($component['penalty'] ?? null) ? $component['penalty'] : null;
+    $penaltyLines = is_array($component['lines'] ?? null) ? $component['lines'] : [];
+    $penaltyName = \Illuminate\Support\Str::lower((string) ($component['name'] ?? ''));
+    $penaltyDetail = (string) ($component['detail'] ?? '');
+
+    // Payroll lama belum menyimpan metadata terstruktur. Ambil jumlah dan tarif dari
+    // detail formula agar popup lama tetap informatif tanpa mengubah nominal tersimpan.
+    if (! $penalty && preg_match('/(\d+)\s*hari.*?Rp\s*([\d.]+)/iu', $penaltyDetail, $matches)) {
+        $isReportPenalty = \Illuminate\Support\Str::contains($penaltyName, ['laporan', 'lhp', 'kedisiplin', 'kedisplin']);
+        $penalty = [
+            'source' => \Illuminate\Support\Str::contains($penaltyName, 'alpha')
+                ? 'Data presensi dan jadwal kerja'
+                : ($isReportPenalty ? 'Data laporan harian' : 'Data presensi'),
+            'count' => (int) $matches[1],
+            'unit_label' => \Illuminate\Support\Str::contains($penaltyName, 'alpha')
+                ? 'hari alpha'
+                : ($isReportPenalty ? 'hari terlambat laporan' : 'hari terlambat'),
+            'unit_amount' => (float) str_replace('.', '', $matches[2]),
+        ];
+    }
+@endphp
+<div id="{{ $penaltyModalId }}" class="hidden fixed inset-0 z-[70] items-start justify-center overflow-y-auto px-4 py-6">
+    <div class="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]" onclick="closePayrollPenaltyDetail('{{ $penaltyModalId }}')"></div>
+    <div class="relative w-full max-w-3xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+        <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-4 py-3">
+            <div class="min-w-0">
+                <h3 class="text-[15px] font-bold text-gray-900">Rincian {{ $component['name'] ?? 'Denda' }}</h3>
+                <p class="mt-0.5 text-[11px] text-gray-500">{{ $detail->employee->full_name ?? '-' }} &middot; {{ \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y') }}</p>
+            </div>
+            <button type="button" onclick="closePayrollPenaltyDetail('{{ $penaltyModalId }}')" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 cursor-pointer">
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        </div>
+        <div class="px-4 py-4">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+                <div class="text-[11px] font-semibold text-red-800">{{ ($component['detail'] ?? null) ?: 'Rincian nominal potongan payroll' }}</div>
+                <div class="text-[13px] font-bold text-red-800">Rp {{ number_format($component['amount'] ?? 0, 0, ',', '.') }}</div>
+            </div>
+
+            @if($penalty)
+            <div class="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                    <div class="text-[9px] font-bold uppercase tracking-wider text-gray-400">Sumber Data</div>
+                    <div class="mt-1 text-[11px] font-semibold text-gray-700">{{ $penalty['source'] ?? '-' }}</div>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                    <div class="text-[9px] font-bold uppercase tracking-wider text-gray-400">Jumlah</div>
+                    <div class="mt-1 text-[11px] font-semibold text-gray-700">{{ $penalty['count'] ?? 0 }} {{ $penalty['unit_label'] ?? 'kejadian' }}</div>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                    <div class="text-[9px] font-bold uppercase tracking-wider text-gray-400">Tarif</div>
+                    <div class="mt-1 text-[11px] font-semibold text-gray-700">Rp {{ number_format($penalty['unit_amount'] ?? 0, 0, ',', '.') }} / hari</div>
+                </div>
+            </div>
+            @endif
+
+            @if(count($penaltyLines) > 0)
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+                <table class="w-full min-w-[620px]">
+                    <thead>
+                        <tr>
+                            <th class="bg-gray-50 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Tanggal</th>
+                            <th class="bg-gray-50 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Keterangan</th>
+                            <th class="bg-gray-50 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Dasar Perhitungan</th>
+                            <th class="bg-gray-50 px-3 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-500">Nominal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($penaltyLines as $line)
+                        <tr>
+                            <td class="border-t border-gray-100 px-3 py-2 text-[11px] text-gray-700">
+                                <div class="font-semibold text-gray-800">{{ $line['date_label'] ?? $line['date'] ?? '-' }}</div>
+                                <div class="text-[10px] text-gray-400">{{ $line['day_label'] ?? '' }}</div>
+                            </td>
+                            <td class="border-t border-gray-100 px-3 py-2 text-[11px] text-gray-600">{{ $line['description'] ?? '-' }}</td>
+                            <td class="border-t border-gray-100 px-3 py-2 text-[11px] text-gray-600">{{ $line['evidence'] ?? '-' }}</td>
+                            <td class="border-t border-gray-100 px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-red-700">Rp {{ number_format($line['amount'] ?? 0, 0, ',', '.') }}</td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @elseif($penalty)
+            <div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-center text-[11px] text-gray-500">
+                Ringkasan perhitungan tersedia, tetapi daftar tanggal tidak tersimpan pada komponen payroll ini.
+            </div>
+            @else
+            <div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center text-[11px] text-gray-500">
+                Detail tanggal tidak tersimpan untuk komponen ini. Nominal di atas mengikuti nilai komponen payroll yang dimasukkan.
+            </div>
+            @endif
         </div>
     </div>
 </div>
@@ -522,6 +650,27 @@ function closeAllPayrollOvertimeDetails() {
     });
 }
 
+function openPayrollPenaltyDetail(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closePayrollPenaltyDetail(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function closeAllPayrollPenaltyDetails() {
+    document.querySelectorAll('[id^="payrollPenaltyDetail-"]').forEach((modal) => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    });
+}
+
 function openPayrollDetailEdit(id) {
     document.getElementById('editPayrollDetail-' + id)?.classList.remove('hidden');
 }
@@ -565,7 +714,10 @@ function addPayrollDetailComponent(id) {
 }
 
 document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeAllPayrollOvertimeDetails();
+    if (event.key === 'Escape') {
+        closeAllPayrollOvertimeDetails();
+        closeAllPayrollPenaltyDetails();
+    }
 });
 </script>
 @endpush
