@@ -19,6 +19,7 @@ use App\Models\PayrollRunDetail;
 use App\Models\ScheduleAssignment;
 use App\Services\BpjsCalculator;
 use App\Services\Pph21Calculator;
+use App\Support\AdminPermission;
 use App\Support\LoanPayrollComponentSync;
 use App\Support\PayrollBpjs;
 use App\Support\ScheduledWorkingDays;
@@ -414,12 +415,36 @@ class PayrollRunController extends Controller
 
     private function logAction(PayrollRun $run, string $action, int $performedBy, ?string $notes = null): void
     {
+        // Aksi superadmin TIDAK dicatat, atas permintaan: tidak boleh terbaca di panel
+        // Riwayat Aksi. Karena penyaringnya di titik pencatatan (bukan di tampilan),
+        // barisnya memang tidak pernah dibuat — jadi aksi superadmin tidak bisa
+        // ditelusuri lagi dari mana pun, termasuk langsung dari database.
+        if ($this->isSuperadminActor($performedBy)) {
+            return;
+        }
+
         PayrollLog::create([
             'payroll_run_id' => $run->id,
             'action' => $action,
             'performed_by' => $performedBy,
             'notes' => $notes,
         ]);
+    }
+
+    /**
+     * Pelaku ber-role superadmin. Memakai resolver yang sama dengan gate izin, jadi
+     * ikut mengenali role dari tabel employee_roles maupun kolom employees.role lama.
+     */
+    private function isSuperadminActor(?int $employeeId): bool
+    {
+        if (! $employeeId) {
+            return false;
+        }
+
+        $employee = Employee::find($employeeId);
+
+        return $employee
+            && in_array('superadmin', app(AdminPermission::class)->roleSlugs($employee), true);
     }
 
     private function queuePayslipEmails(PayrollRun $run): void
