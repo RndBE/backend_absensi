@@ -368,29 +368,31 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertTrue($names->contains('Tax Allowance'));
     }
 
-    public function test_superadmin_actions_are_not_written_to_activity_log(): void
+    public function test_activity_log_skips_technical_account_but_keeps_superadmin_role(): void
     {
         $company = Company::create(['name' => 'PT Log']);
-        $superadmin = Employee::create([
-            'employee_code' => 'ADM-SUPER', 'company_id' => $company->id, 'full_name' => 'Super',
-            'email' => 'super-log@example.test', 'password' => 'secret', 'role' => 'superadmin', 'is_active' => true,
+        // Akun teknis yang dikecualikan — dicocokkan per email.
+        $technical = Employee::create([
+            'employee_code' => 'ADM-TECH', 'company_id' => $company->id, 'full_name' => 'Superadmin',
+            'email' => 'superadmin@gmail.com', 'password' => 'secret', 'role' => 'superadmin', 'is_active' => true,
         ]);
-        $hrAdmin = Employee::create([
-            'employee_code' => 'ADM-HR', 'company_id' => $company->id, 'full_name' => 'HR',
-            'email' => 'hr-log@example.test', 'password' => 'secret', 'role' => 'hr_admin', 'is_active' => true,
+        // Admin HR yang JUGA ber-role superadmin — harus tetap tercatat.
+        $hrSuperadmin = Employee::create([
+            'employee_code' => 'ADM-HR', 'company_id' => $company->id, 'full_name' => 'Avissa',
+            'email' => 'avissa@example.test', 'password' => 'secret', 'role' => 'superadmin', 'is_active' => true,
         ]);
 
-        $run = PayrollRun::create(['period' => '2026-07', 'created_by' => $hrAdmin->id, 'status' => 'draft']);
+        $run = PayrollRun::create(['period' => '2026-07', 'created_by' => $hrSuperadmin->id, 'status' => 'draft']);
         $controller = new PayrollRunController;
 
-        $this->invokePrivate($controller, 'logAction', [$run, 'finalized', $superadmin->id, null]);
+        $this->invokePrivate($controller, 'logAction', [$run, 'regenerated', $technical->id, null]);
         $this->assertSame(0, \App\Models\PayrollLog::where('payroll_run_id', $run->id)->count(),
-            'Aksi superadmin tidak boleh tercatat di Riwayat Aksi.');
+            'Aksi akun teknis (superadmin@gmail.com) tidak boleh tercatat.');
 
-        $this->invokePrivate($controller, 'logAction', [$run, 'finalized', $hrAdmin->id, null]);
+        $this->invokePrivate($controller, 'logAction', [$run, 'finalized', $hrSuperadmin->id, null]);
         $logs = \App\Models\PayrollLog::where('payroll_run_id', $run->id)->get();
-        $this->assertCount(1, $logs, 'Aksi role lain harus tetap tercatat.');
-        $this->assertSame($hrAdmin->id, (int) $logs->first()->performed_by);
+        $this->assertCount(1, $logs, 'Role superadmin saja tidak cukup untuk dikecualikan — harus tetap tercatat.');
+        $this->assertSame($hrSuperadmin->id, (int) $logs->first()->performed_by);
     }
 
     public function test_editing_company_bpjs_premium_recalculates_pph21(): void

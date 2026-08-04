@@ -19,7 +19,6 @@ use App\Models\PayrollRunDetail;
 use App\Models\ScheduleAssignment;
 use App\Services\BpjsCalculator;
 use App\Services\Pph21Calculator;
-use App\Support\AdminPermission;
 use App\Support\LoanPayrollComponentSync;
 use App\Support\PayrollBpjs;
 use App\Support\ScheduledWorkingDays;
@@ -34,6 +33,13 @@ class PayrollRunController extends Controller
 {
     private const ALPHA_PENALTY_PER_DAY = 100000;
     private const BPJS_REGISTRATION_CUTOFF_DAY = 20;
+
+    /**
+     * Akun teknis/maintenance yang aksinya TIDAK dicatat di Riwayat Aksi payroll run,
+     * agar riwayat yang dilihat HR hanya berisi aksi operasional. Dicocokkan per email
+     * (huruf kecil) — bukan per role, sehingga admin HR ber-role superadmin tetap dicatat.
+     */
+    private const UNLOGGED_ACTOR_EMAILS = ['superadmin@gmail.com'];
 
     public function index()
     {
@@ -415,11 +421,11 @@ class PayrollRunController extends Controller
 
     private function logAction(PayrollRun $run, string $action, int $performedBy, ?string $notes = null): void
     {
-        // Aksi superadmin TIDAK dicatat, atas permintaan: tidak boleh terbaca di panel
-        // Riwayat Aksi. Karena penyaringnya di titik pencatatan (bukan di tampilan),
-        // barisnya memang tidak pernah dibuat — jadi aksi superadmin tidak bisa
-        // ditelusuri lagi dari mana pun, termasuk langsung dari database.
-        if ($this->isSuperadminActor($performedBy)) {
+        // Aksi dari akun teknis tidak dicatat di Riwayat Aksi. Penyaringnya per-AKUN
+        // (email), bukan per-role: admin HR yang kebetulan ber-role superadmin tetap
+        // tercatat seperti biasa. Karena disaring di titik pencatatan, barisnya memang
+        // tidak pernah dibuat sehingga tidak bisa ditelusuri lagi dari database.
+        if ($this->isUnloggedActor($performedBy)) {
             return;
         }
 
@@ -431,20 +437,16 @@ class PayrollRunController extends Controller
         ]);
     }
 
-    /**
-     * Pelaku ber-role superadmin. Memakai resolver yang sama dengan gate izin, jadi
-     * ikut mengenali role dari tabel employee_roles maupun kolom employees.role lama.
-     */
-    private function isSuperadminActor(?int $employeeId): bool
+    /** Pelaku yang aksinya dikecualikan dari Riwayat Aksi (lihat UNLOGGED_ACTOR_EMAILS). */
+    private function isUnloggedActor(?int $employeeId): bool
     {
         if (! $employeeId) {
             return false;
         }
 
-        $employee = Employee::find($employeeId);
+        $email = Employee::whereKey($employeeId)->value('email');
 
-        return $employee
-            && in_array('superadmin', app(AdminPermission::class)->roleSlugs($employee), true);
+        return $email && in_array(strtolower(trim($email)), self::UNLOGGED_ACTOR_EMAILS, true);
     }
 
     private function queuePayslipEmails(PayrollRun $run): void
