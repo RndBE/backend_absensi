@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\Admin\PayrollRunController;
+use App\Jobs\SendPayslipEmailJob;
 use App\Mail\PayslipPublishedMail;
 use App\Models\Company;
 use App\Models\Employee;
@@ -76,7 +77,7 @@ class PayrollPayslipEmailPublishTest extends TestCase
         (new PayrollRunController)->publish($run->id);
 
         $this->assertSame('published', $run->fresh()->status);
-        Queue::assertPushed(\App\Jobs\SendPayslipEmailJob::class, 1);
+        Queue::assertPushed(SendPayslipEmailJob::class, 1);
     }
 
     public function test_payslip_email_contains_period_and_pdf_attachment(): void
@@ -345,7 +346,7 @@ class PayrollPayslipEmailPublishTest extends TestCase
 
     public function test_payslip_benefits_generates_formula_notes_from_bpjs_raw_data(): void
     {
-        $benefits = \App\Support\PayslipBenefits::from([
+        $benefits = PayslipBenefits::from([
             'items' => [
                 ['label' => 'Rate BPJS Kesehatan', 'amount' => 2624387, 'is_basis' => true],
                 ['label' => 'BPJS Kesehatan Perusahaan', 'amount' => 104975, 'is_basis' => false],
@@ -461,6 +462,53 @@ class PayrollPayslipEmailPublishTest extends TestCase
         $this->assertSame(249600.0, $benefits['total']);
     }
 
+    public function test_manual_historical_payslip_reconstructs_bpjs_rate_rows_from_snapshot(): void
+    {
+        $company = Company::create(['name' => 'PT Arta Teknologi Comunindo']);
+        $employee = Employee::create([
+            'employee_code' => 'HELLA-JUL-2026',
+            'company_id' => $company->id,
+            'department_id' => null,
+            'full_name' => 'Hella',
+            'email' => 'hella@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+        ]);
+        $run = PayrollRun::create([
+            'period' => '2026-07',
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 2624387,
+            'total_earning' => 2624387,
+            'total_deduction' => 0,
+            'net_salary' => 2624387,
+            'components' => [
+                ['name' => 'BPJS Kesehatan Perusahaan', 'type' => 'info', 'amount' => 104975, 'detail' => '4% x Rp 2.624.387'],
+                ['name' => 'JHT Perusahaan', 'type' => 'info', 'amount' => 97102, 'detail' => '3.7% x Rp 2.624.387'],
+                ['name' => 'JKK Perusahaan', 'type' => 'info', 'amount' => 6299, 'detail' => '0.24% x Rp 2.624.387'],
+                ['name' => 'JKM Perusahaan', 'type' => 'info', 'amount' => 7873, 'detail' => '0.3% x Rp 2.624.387'],
+            ],
+            'is_manual_edited' => true,
+        ])->load(['employee', 'payrollRun']);
+
+        $benefits = PayslipBenefits::from(PayslipBpjsData::fromDetail($detail), $detail->components);
+
+        $this->assertSame([
+            'Rate BPJS Kesehatan',
+            'Rate BPJS Ketenagakerjaan',
+            'JKK (Jaminan Kecelakaan Kerja)',
+            'JKM (Jaminan Kematian)',
+            'JHT Perusahaan (Jaminan Hari Tua)',
+            'BPJS Kesehatan Perusahaan',
+        ], collect($benefits['items'])->pluck('label')->all());
+        $this->assertSame(5465023.0, $benefits['total']);
+    }
+
     public function test_manual_imported_current_period_payslip_does_not_recalculate_active_bpjs(): void
     {
         $company = Company::create(['name' => 'PT Manual']);
@@ -507,7 +555,7 @@ class PayrollPayslipEmailPublishTest extends TestCase
 
     public function test_payslip_benefits_infers_company_contributions_from_imported_rate_basis(): void
     {
-        $benefits = \App\Support\PayslipBenefits::from([], [
+        $benefits = PayslipBenefits::from([], [
             ['name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'amount' => 0],
             ['name' => 'Rate BPJS Ketenagakerjaan', 'type' => 'info', 'amount' => 2624387],
         ]);
@@ -528,7 +576,7 @@ class PayrollPayslipEmailPublishTest extends TestCase
 
     public function test_payslip_benefits_hides_section_when_every_item_is_zero(): void
     {
-        $benefits = \App\Support\PayslipBenefits::from([], [
+        $benefits = PayslipBenefits::from([], [
             ['name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'amount' => 0],
             ['name' => 'Rate BPJS Ketenagakerjaan', 'type' => 'info', 'amount' => 0],
         ]);
@@ -539,7 +587,7 @@ class PayrollPayslipEmailPublishTest extends TestCase
 
     public function test_payslip_benefits_does_not_duplicate_bpjs_company_components(): void
     {
-        $benefits = \App\Support\PayslipBenefits::from([
+        $benefits = PayslipBenefits::from([
             'items' => [
                 ['label' => 'Rate BPJS Ketenagakerjaan', 'amount' => 2624387, 'is_basis' => true],
                 ['label' => 'JKK (Jaminan Kecelakaan Kerja)', 'amount' => 6299, 'is_basis' => false],
