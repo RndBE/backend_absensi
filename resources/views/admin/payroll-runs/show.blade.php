@@ -514,8 +514,12 @@
                             @foreach($components as $index => $component)
                             @php
                                 $isAutoComponent = !empty($component['is_auto']);
-                                // Lembur (auto) boleh diedit NOMINAL-nya; komponen auto lain tetap terkunci.
-                                $isEditableAuto = $isAutoComponent && ($component['name'] ?? '') === 'Lembur';
+                                // Lembur & iuran BPJS (auto) boleh diedit NOMINAL-nya; komponen auto
+                                // lain tetap terkunci. Nama & tipe tetap tidak bisa diubah.
+                                $isEditableAuto = $isAutoComponent && (
+                                    ($component['name'] ?? '') === 'Lembur'
+                                    || \App\Support\PayrollBpjs::isBpjsComponent($component)
+                                );
                                 $amountEditable = ! $isAutoComponent || $isEditableAuto;
                             @endphp
                             <tr data-component-row>

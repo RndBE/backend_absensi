@@ -20,6 +20,7 @@ use App\Models\ScheduleAssignment;
 use App\Services\BpjsCalculator;
 use App\Services\Pph21Calculator;
 use App\Support\LoanPayrollComponentSync;
+use App\Support\PayrollBpjs;
 use App\Support\ScheduledWorkingDays;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -148,6 +149,14 @@ class PayrollRunController extends Controller
             }
         }
         unset($component);
+
+        // Nominal iuran BPJS boleh diedit manual, tapi BPJS karyawan adalah pengurang
+        // dasar PPh 21 dan premi perusahaan yang objek pajak menambah brutonya. Begitu
+        // angkanya berubah, PPh 21 harus dihitung ulang agar potongan pajaknya konsisten.
+        if ($this->bpjsAmountsChanged($existingComponents, $components)) {
+            $components = $this->rebuildPph21Components($run, $detail, $components);
+        }
+
         $totalEarning = $detail->basic_salary;
         $totalDeduction = 0;
 
@@ -572,9 +581,14 @@ class PayrollRunController extends Controller
             // Apply pro-rate to basic salary
             $proratedBasic = round($basicSalary * $proRateRatio, 0);
 
-            // 1. Get manual components assigned to this employee
+            // 1. Get manual components that apply to this payroll period. A resign
+            // process closes assignments by setting is_active=false + end_date, so
+            // the date range remains the source of truth for the employee's final month.
             $empComponents = EmployeePayrollComponent::where('employee_id', $empId)
-                ->where('is_active', true)
+                ->where(function ($q) {
+                    $q->where('is_active', true)
+                        ->orWhereNotNull('end_date');
+                })
                 ->where('start_date', '<=', $periodEnd)
                 ->where(function ($q) use ($periodStart) {
                     $q->whereNull('end_date')
@@ -613,7 +627,8 @@ class PayrollRunController extends Controller
                 ];
             }
 
-            // Process manual (non-auto) components (also pro-rated if applicable)
+            // Process manual (non-auto) components at their full assigned amount.
+            // Join/resign pro-rate applies only to basic salary.
             foreach ($empComponents as $ec) {
                 $comp = $ec->component;
                 if ($comp->is_auto) {
@@ -624,7 +639,7 @@ class PayrollRunController extends Controller
                     continue;
                 }
 
-                $amount = round((float) $ec->amount * $proRateRatio, 0);
+                $amount = round((float) $ec->amount, 0);
                 $components[] = [
                     'id' => $comp->id,
                     'name' => $comp->name,
@@ -813,165 +828,17 @@ class PayrollRunController extends Controller
             }
 
             // 7. Auto-calculate: PPh 21
-            $ptkpStatus = $payroll->employee->ptkp_status ?? $payroll->ptkp_status ?? 'TK/0';
-            if (! $ptkpStatus) {
-                $ptkpStatus = 'TK/0';
-            }
-            $taxMethod = $payroll->tax_method ?? 'gross_up';
-
-            $pph21Calc = new Pph21Calculator($periodStart->format('Y-m-d'));
-            $isDecember = ($periodDate->month === 12);
-
-            // Deteksi bulan terakhir karyawan (keluar di periode ini) — pakai hari kerja
-            // terakhir, fallback ke tanggal resign.
-            $exitDateForTax = $employee->last_working_date ?: $employee->resign_date;
-            $resignDate = $exitDateForTax ? Carbon::parse($exitDateForTax) : null;
-            $isResignMonth = $resignDate && $resignDate->between($periodStart, $periodEnd);
-
-            // Bruto dasar PPh 21: gaji pokok + earning taxable + premi pemberi
-            // kerja yang objek pajak (JKK, JKM, BPJS Kesehatan 4%). Tidak sama
-            // dengan total_earning (premi pemberi kerja bukan penghasilan tunai,
-            // tapi tetap objek PPh; earning non-taxable dikecualikan dari pajak).
-            $brutoTaxable = Pph21Calculator::taxableBrutoFromComponents($proratedBasic, $components);
-
-            if ($isDecember) {
-                // ── Desember: Penghitungan Kembali berdasarkan penghasilan sebenarnya ──
-                // Ambil akumulasi bruto & PPh21 Jan-Nov dari payroll run detail tahun ini
-                $year = $periodDate->year;
-                $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year) {
-                    $q->whereYear('period', $year)
-                        ->whereMonth('period', '<=', 11) // Jan-Nov only
-                        ->where('status', '!=', 'draft');
-                })->where('employee_id', $empId)->get();
-
-                $brutoJanToNov = 0;
-                $taxJanToNov = 0;
-                foreach ($prevDetails as $pd) {
-                    $comps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
-                    // Bruto pajak Jan-Nov = dasar PPh (termasuk premi pemberi kerja
-                    // yang objek pajak), bukan total_earning tunai.
-                    $brutoJanToNov += Pph21Calculator::taxableBrutoFromComponents((float) $pd->basic_salary, $comps);
-                    // Sum PPh21 deduction components
-                    foreach ($comps as $c) {
-                        if (str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction') {
-                            $taxJanToNov += (float) ($c['amount'] ?? 0);
-                        }
-                    }
-                }
-
-                $tax = $pph21Calc->calculateDecember(
-                    brutoDecember      : $brutoTaxable,
-                    brutoJanToNov      : $brutoJanToNov,
-                    bpjsEmployeeMonthly: $bpjs['employee_total'],
-                    ptkpStatus         : $ptkpStatus,
-                    taxMethod          : $taxMethod,
-                    taxJanToNov        : $taxJanToNov
-                );
-                $detailNote = "Desember — Penghitungan Kembali Tahunan\n"
-                            .'Bruto Jan-Nov: Rp '.number_format($brutoJanToNov, 0, ',', '.').' | '
-                            .'Pajak Jan-Nov: Rp '.number_format($taxJanToNov, 0, ',', '.').' | '
-                            .'PKP Aktual: Rp '.number_format($tax['pkp'], 0, ',', '.');
-            } elseif ($isResignMonth) {
-                // ── Bulan terakhir karyawan resign: penghitungan progresif (PMK-168/2023) ──
-                // Disetahunkan berdasarkan jumlah bulan bekerja tahun ini, lalu dikurangi
-                // PPh21 yang sudah dipotong bulan-bulan sebelumnya (true-up masa pajak terakhir).
-                $year = $periodDate->year;
-                $joinDate = $employee->join_date ? Carbon::parse($employee->join_date) : null;
-                $firstMonth = ($joinDate && $joinDate->year === $year) ? $joinDate->month : 1;
-                $monthsWorked = max(1, $periodDate->month - $firstMonth + 1);
-
-                // Akumulasi PPh21 yang sudah dipotong bulan-bulan sebelumnya tahun ini
-                $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year, $periodDate) {
-                    $q->where('period', 'like', $year.'-%')
-                        ->where('period', '<', $periodDate->format('Y-m'))
-                        ->where('status', '!=', 'draft');
-                })->where('employee_id', $empId)->get();
-
-                $taxAlreadyPaid = $this->sumPriorPph21Paid($prevDetails);
-
-                $tax = $pph21Calc->calculateFinalMonth(
-                    avgBrutoMonthly: (float) $payroll->basic_salary,
-                    ptkpStatus     : $ptkpStatus,
-                    taxMethod      : $taxMethod,
-                    bpjsEmployee   : $bpjs['employee_total'],
-                    monthsWorked   : $monthsWorked,
-                    taxAlreadyPaid : $taxAlreadyPaid
-                );
-                $detailNote = 'Bulan terakhir (resign '.$resignDate->format('d/m/Y').') — '
-                    .'Penghitungan progresif PMK-168/2023 | '
-                    ."Masa kerja: {$monthsWorked} bln, PPh21 sudah dipotong: Rp ".number_format($taxAlreadyPaid, 0, ',', '.').' | '
-                    .'PKP: Rp '.number_format($tax['pkp'], 0, ',', '.').', '
-                    .'Pajak periode: Rp '.number_format($tax['tax_for_period'], 0, ',', '.');
-            } else {
-                // ── Jan-Nov: annualized × 12 (metode normal) ──
-                $tax = $pph21Calc->calculateMonthly($brutoTaxable, $ptkpStatus, $taxMethod, $bpjs['employee_total']);
-                $detailNote = 'Jan-Nov - TER bulanan PP 58/2023 | '
-                    ."Metode: {$taxMethod}, PTKP: {$ptkpStatus}, "
-                    .'Kategori TER: '.($tax['ter_category'] ?? '-').', '
-                    .'Tarif: '.number_format((float) ($tax['ter_rate'] ?? 0), 2, ',', '.').'%';
-            }
-
-            // Gross-up: add tunjangan pajak as earning
-            if ($taxMethod === 'gross_up' && ($tax['tunjangan_pajak'] ?? 0) > 0) {
-                $components[] = [
-                    'id' => null,
-                    'name' => 'Tunjangan Pajak (Gross Up)',
-                    'type' => 'earning',
-                    'category' => 'recurring',
-                    'amount' => $tax['tunjangan_pajak'],
-                    'is_taxable' => true,
-                    'is_auto' => true,
-                    'detail' => 'PPh 21 ditanggung perusahaan',
-                ];
-                $totalEarning += $tax['tunjangan_pajak'];
-            }
-
-            // PPh 21 deduction (not for nett method)
-            if ($tax['pph21_deduction'] > 0) {
-                $isPph21Dtp = $payroll->pph21_dtp ?? false;
-                $components[] = [
-                    'id' => null,
-                    'name' => 'PPh 21'.($isPph21Dtp ? ' (DTP)' : '').($isDecember ? ' *Desember' : ''),
-                    'type' => $isPph21Dtp ? 'info' : 'deduction',
-                    'category' => 'recurring',
-                    'amount' => $tax['pph21_deduction'],
-                    'is_taxable' => false,
-                    'is_auto' => true,
-                    'detail' => $detailNote,
-                ];
-                if (! $isPph21Dtp) {
-                    $totalDeduction += $tax['pph21_deduction'];
-                }
-            }
-
-            if (($tax['pph21_refund'] ?? 0) > 0) {
-                $refund = (float) $tax['pph21_refund'];
-                $components[] = [
-                    'id' => null,
-                    'name' => 'Tax Allowance',
-                    'type' => 'earning',
-                    'category' => 'one-time',
-                    'amount' => -$refund,
-                    'is_taxable' => true,
-                    'is_auto' => true,
-                    'detail' => 'Reversal tax allowance bulan sebelumnya.',
-                ];
-                $totalEarning -= $refund;
-
-                $components[] = [
-                    'id' => null,
-                    'name' => 'PPh 21',
-                    'type' => 'deduction',
-                    'category' => 'one-time',
-                    'amount' => -$refund,
-                    'is_taxable' => false,
-                    'is_auto' => true,
-                    'detail' => 'PPh21 sudah dipotong: Rp '.number_format((float) ($tax['tax_already_paid'] ?? 0), 0, ',', '.')
-                        .' | Pajak periode final: Rp '.number_format((float) ($tax['tax_for_period'] ?? 0), 0, ',', '.')
-                        .' | Dikembalikan di payroll bulan terakhir.',
-                ];
-                $totalDeduction -= $refund;
-            }
+            $pph21 = $this->buildPph21Components(
+                $payroll,
+                $periodStart,
+                $periodEnd,
+                $proratedBasic,
+                $components,
+                (float) $bpjs['employee_total']
+            );
+            $components = array_merge($components, $pph21['components']);
+            $totalEarning += $pph21['earning_delta'];
+            $totalDeduction += $pph21['deduction_delta'];
 
             PayrollRunDetail::create([
                 'payroll_run_id' => $run->id,
@@ -985,6 +852,276 @@ class PayrollRunController extends Controller
         }
 
         $this->recalculateRunTotals($run);
+    }
+
+    /**
+     * Hitung PPh 21 seorang karyawan untuk satu periode, lalu rakit komponen pajaknya
+     * (tunjangan gross-up, potongan PPh 21, dan refund di bulan terakhir).
+     *
+     * Dipakai bersama oleh generateDetails() dan updateDetail(). Yang terakhir
+     * memanggilnya ulang ketika nominal BPJS diedit manual, karena iuran BPJS karyawan
+     * adalah pengurang dasar PPh 21 sedangkan premi perusahaan yang objek pajak
+     * (JKK, JKM, Kesehatan 4%) justru menambah brutonya — tanpa hitung ulang,
+     * potongan pajaknya jadi tidak konsisten dengan angka BPJS yang baru.
+     *
+     * @param  float  $basicForBruto      Gaji pokok dasar bruto pajak (prorata bila ada).
+     * @param  array  $components         Komponen NON-pajak, sudah termasuk BPJS.
+     * @param  float  $bpjsEmployeeTotal  Total iuran BPJS karyawan (pengurang).
+     * @return array{components: array, earning_delta: float, deduction_delta: float}
+     */
+    private function buildPph21Components(
+        EmployeePayroll $payroll,
+        Carbon $periodStart,
+        Carbon $periodEnd,
+        float $basicForBruto,
+        array $components,
+        float $bpjsEmployeeTotal
+    ): array {
+        $employee = $payroll->employee;
+        $empId = $payroll->employee_id;
+
+        $ptkpStatus = $employee->ptkp_status ?? $payroll->ptkp_status ?? 'TK/0';
+        if (! $ptkpStatus) {
+            $ptkpStatus = 'TK/0';
+        }
+        $taxMethod = $payroll->tax_method ?? 'gross_up';
+
+        $pph21Calc = new Pph21Calculator($periodStart->format('Y-m-d'));
+        $isDecember = ($periodStart->month === 12);
+
+        // Deteksi bulan terakhir karyawan (keluar di periode ini) — pakai hari kerja
+        // terakhir, fallback ke tanggal resign.
+        $exitDateForTax = $employee->last_working_date ?: $employee->resign_date;
+        $resignDate = $exitDateForTax ? Carbon::parse($exitDateForTax) : null;
+        $isResignMonth = $resignDate && $resignDate->between($periodStart, $periodEnd);
+
+        // Bruto dasar PPh 21: gaji pokok + earning taxable + premi pemberi
+        // kerja yang objek pajak (JKK, JKM, BPJS Kesehatan 4%). Tidak sama
+        // dengan total_earning (premi pemberi kerja bukan penghasilan tunai,
+        // tapi tetap objek PPh; earning non-taxable dikecualikan dari pajak).
+        $brutoTaxable = Pph21Calculator::taxableBrutoFromComponents($basicForBruto, $components);
+
+        if ($isDecember) {
+            // ── Desember: Penghitungan Kembali berdasarkan penghasilan sebenarnya ──
+            // Ambil akumulasi bruto & PPh21 Jan-Nov dari payroll run detail tahun ini
+            $year = $periodStart->year;
+            $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year) {
+                $q->whereYear('period', $year)
+                    ->whereMonth('period', '<=', 11) // Jan-Nov only
+                    ->where('status', '!=', 'draft');
+            })->where('employee_id', $empId)->get();
+
+            $brutoJanToNov = 0;
+            $taxJanToNov = 0;
+            foreach ($prevDetails as $pd) {
+                $comps = is_array($pd->components) ? $pd->components : json_decode($pd->components, true) ?? [];
+                // Bruto pajak Jan-Nov = dasar PPh (termasuk premi pemberi kerja
+                // yang objek pajak), bukan total_earning tunai.
+                $brutoJanToNov += Pph21Calculator::taxableBrutoFromComponents((float) $pd->basic_salary, $comps);
+                // Sum PPh21 deduction components
+                foreach ($comps as $c) {
+                    if (str_contains($c['name'] ?? '', 'PPh') && ($c['type'] ?? '') === 'deduction') {
+                        $taxJanToNov += (float) ($c['amount'] ?? 0);
+                    }
+                }
+            }
+
+            $tax = $pph21Calc->calculateDecember(
+                brutoDecember      : $brutoTaxable,
+                brutoJanToNov      : $brutoJanToNov,
+                bpjsEmployeeMonthly: $bpjsEmployeeTotal,
+                ptkpStatus         : $ptkpStatus,
+                taxMethod          : $taxMethod,
+                taxJanToNov        : $taxJanToNov
+            );
+            $detailNote = "Desember — Penghitungan Kembali Tahunan\n"
+                        .'Bruto Jan-Nov: Rp '.number_format($brutoJanToNov, 0, ',', '.').' | '
+                        .'Pajak Jan-Nov: Rp '.number_format($taxJanToNov, 0, ',', '.').' | '
+                        .'PKP Aktual: Rp '.number_format($tax['pkp'], 0, ',', '.');
+        } elseif ($isResignMonth) {
+            // ── Bulan terakhir karyawan resign: penghitungan progresif (PMK-168/2023) ──
+            // Disetahunkan berdasarkan jumlah bulan bekerja tahun ini, lalu dikurangi
+            // PPh21 yang sudah dipotong bulan-bulan sebelumnya (true-up masa pajak terakhir).
+            $year = $periodStart->year;
+            $joinDate = $employee->join_date ? Carbon::parse($employee->join_date) : null;
+            $firstMonth = ($joinDate && $joinDate->year === $year) ? $joinDate->month : 1;
+            $monthsWorked = max(1, $periodStart->month - $firstMonth + 1);
+
+            // Akumulasi PPh21 yang sudah dipotong bulan-bulan sebelumnya tahun ini
+            $currentPeriod = $periodStart->format('Y-m');
+            $prevDetails = PayrollRunDetail::whereHas('payrollRun', function ($q) use ($year, $currentPeriod) {
+                $q->where('period', 'like', $year.'-%')
+                    ->where('period', '<', $currentPeriod)
+                    ->where('status', '!=', 'draft');
+            })->where('employee_id', $empId)->get();
+
+            $taxAlreadyPaid = $this->sumPriorPph21Paid($prevDetails);
+
+            $tax = $pph21Calc->calculateFinalMonth(
+                avgBrutoMonthly: (float) $payroll->basic_salary,
+                ptkpStatus     : $ptkpStatus,
+                taxMethod      : $taxMethod,
+                bpjsEmployee   : $bpjsEmployeeTotal,
+                monthsWorked   : $monthsWorked,
+                taxAlreadyPaid : $taxAlreadyPaid
+            );
+            $detailNote = 'Bulan terakhir (resign '.$resignDate->format('d/m/Y').') — '
+                .'Penghitungan progresif PMK-168/2023 | '
+                ."Masa kerja: {$monthsWorked} bln, PPh21 sudah dipotong: Rp ".number_format($taxAlreadyPaid, 0, ',', '.').' | '
+                .'PKP: Rp '.number_format($tax['pkp'], 0, ',', '.').', '
+                .'Pajak periode: Rp '.number_format($tax['tax_for_period'], 0, ',', '.');
+        } else {
+            // ── Jan-Nov: annualized × 12 (metode normal) ──
+            $tax = $pph21Calc->calculateMonthly($brutoTaxable, $ptkpStatus, $taxMethod, $bpjsEmployeeTotal);
+            $detailNote = 'Jan-Nov - TER bulanan PP 58/2023 | '
+                ."Metode: {$taxMethod}, PTKP: {$ptkpStatus}, "
+                .'Kategori TER: '.($tax['ter_category'] ?? '-').', '
+                .'Tarif: '.number_format((float) ($tax['ter_rate'] ?? 0), 2, ',', '.').'%';
+        }
+
+        $taxComponents = [];
+        $earningDelta = 0.0;
+        $deductionDelta = 0.0;
+
+        // Gross-up: add tunjangan pajak as earning
+        if ($taxMethod === 'gross_up' && ($tax['tunjangan_pajak'] ?? 0) > 0) {
+            $taxComponents[] = [
+                'id' => null,
+                'name' => 'Tunjangan Pajak (Gross Up)',
+                'type' => 'earning',
+                'category' => 'recurring',
+                'amount' => $tax['tunjangan_pajak'],
+                'is_taxable' => true,
+                'is_auto' => true,
+                'detail' => 'PPh 21 ditanggung perusahaan',
+            ];
+            $earningDelta += $tax['tunjangan_pajak'];
+        }
+
+        // PPh 21 deduction (not for nett method)
+        if ($tax['pph21_deduction'] > 0) {
+            $isPph21Dtp = $payroll->pph21_dtp ?? false;
+            $taxComponents[] = [
+                'id' => null,
+                'name' => 'PPh 21'.($isPph21Dtp ? ' (DTP)' : '').($isDecember ? ' *Desember' : ''),
+                'type' => $isPph21Dtp ? 'info' : 'deduction',
+                'category' => 'recurring',
+                'amount' => $tax['pph21_deduction'],
+                'is_taxable' => false,
+                'is_auto' => true,
+                'detail' => $detailNote,
+            ];
+            if (! $isPph21Dtp) {
+                $deductionDelta += $tax['pph21_deduction'];
+            }
+        }
+
+        if (($tax['pph21_refund'] ?? 0) > 0) {
+            $refund = (float) $tax['pph21_refund'];
+            $taxComponents[] = [
+                'id' => null,
+                'name' => 'Tax Allowance',
+                'type' => 'earning',
+                'category' => 'one-time',
+                'amount' => -$refund,
+                'is_taxable' => true,
+                'is_auto' => true,
+                'detail' => 'Reversal tax allowance bulan sebelumnya.',
+            ];
+            $earningDelta -= $refund;
+
+            $taxComponents[] = [
+                'id' => null,
+                'name' => 'PPh 21',
+                'type' => 'deduction',
+                'category' => 'one-time',
+                'amount' => -$refund,
+                'is_taxable' => false,
+                'is_auto' => true,
+                'detail' => 'PPh21 sudah dipotong: Rp '.number_format((float) ($tax['tax_already_paid'] ?? 0), 0, ',', '.')
+                    .' | Pajak periode final: Rp '.number_format((float) ($tax['tax_for_period'] ?? 0), 0, ',', '.')
+                    .' | Dikembalikan di payroll bulan terakhir.',
+            ];
+            $deductionDelta -= $refund;
+        }
+
+        return [
+            'components' => $taxComponents,
+            'earning_delta' => $earningDelta,
+            'deduction_delta' => $deductionDelta,
+        ];
+    }
+
+    /**
+     * Komponen pajak hasil buildPph21Components() — dibuang lalu dirakit ulang saat
+     * dasar pajaknya berubah karena edit manual BPJS.
+     */
+    private function isAutoTaxComponent(array $component): bool
+    {
+        if (empty($component['is_auto'])) {
+            return false;
+        }
+
+        $name = strtolower(trim((string) ($component['name'] ?? '')));
+
+        // PPh 21 dicatat sebagai deduction, atau info bila DTP (ditanggung pemerintah).
+        if (str_starts_with($name, 'pph 21')) {
+            return in_array($component['type'] ?? '', ['deduction', 'info'], true);
+        }
+
+        return $this->isLegacyTaxAllowanceComponent($component);
+    }
+
+    /**
+     * Hitung ulang PPh 21 sebuah detail payroll dari komponen hasil edit manual.
+     * Komponen pajak lama dibuang, sisanya (termasuk nominal BPJS yang baru) jadi
+     * dasar hitung, lalu komponen pajak baru ditempel di belakang — urutannya sama
+     * seperti hasil generate ulang.
+     */
+    private function rebuildPph21Components(PayrollRun $run, PayrollRunDetail $detail, array $components): array
+    {
+        $payroll = $detail->employee?->activePayroll;
+        if (! $payroll) {
+            // Tanpa data payroll aktif (mis. karyawan resign yang payrollnya dinonaktifkan)
+            // dasar pajaknya tidak bisa dipastikan — komponen pajak dibiarkan apa adanya.
+            return $components;
+        }
+
+        $base = array_values(array_filter(
+            $components,
+            fn ($component) => is_array($component) && ! $this->isAutoTaxComponent($component)
+        ));
+
+        $periodStart = Carbon::parse($run->period.'-01')->startOfMonth();
+
+        $pph21 = $this->buildPph21Components(
+            $payroll,
+            $periodStart,
+            $periodStart->copy()->endOfMonth(),
+            (float) $detail->basic_salary,
+            $base,
+            PayrollBpjs::employeeTotalFromComponents($base)
+        );
+
+        return array_merge($base, $pph21['components']);
+    }
+
+    /** Apakah ada nominal iuran BPJS yang berubah antara data tersimpan dan hasil submit. */
+    private function bpjsAmountsChanged(array $before, array $after): bool
+    {
+        $amountsByName = function (array $components): array {
+            $amounts = [];
+            foreach ($components as $component) {
+                if (is_array($component) && PayrollBpjs::isBpjsComponent($component)) {
+                    $amounts[trim((string) $component['name'])] = round((float) ($component['amount'] ?? 0), 2);
+                }
+            }
+            ksort($amounts);
+
+            return $amounts;
+        };
+
+        return $amountsByName($before) !== $amountsByName($after);
     }
 
     private function sumPriorPph21Paid(Collection $details): float

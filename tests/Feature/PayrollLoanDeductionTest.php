@@ -371,6 +371,148 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertTrue($names->contains('Tax Allowance'));
     }
 
+    public function test_editing_company_bpjs_premium_recalculates_pph21(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-tax-comp', 'KES-900', 'TK-900');
+        EmployeePayroll::where('employee_id', $employee->id)
+            ->update(['basic_salary' => 10000000, 'tax_method' => 'gross']);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id, 'status' => 'draft']);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
+        $before = $detail->components;
+
+        // Bruto pajak = 10.000.000 + 400.000 (Kesehatan 4%) + 24.000 (JKK) + 30.000 (JKM)
+        // = 10.454.000 → TER kategori A 2,5% = 261.350.
+        $this->assertSame(400000.0, $this->componentAmount($before, 'BPJS Kesehatan Perusahaan'));
+        $this->assertSame(261350.0, $this->componentAmount($before, 'PPh 21'));
+
+        // Premi Kesehatan perusahaan diturunkan → bruto pajak 10.154.000 → TER 2,25%.
+        $request = \Illuminate\Http\Request::create('/x', 'PUT', [
+            'components' => $this->componentFormPayload($before, ['BPJS Kesehatan Perusahaan' => 100000]),
+        ]);
+        (new PayrollRunController)->updateDetail($request, $run->id, $detail->id);
+
+        $after = $detail->fresh()->components;
+        $this->assertSame(100000.0, $this->componentAmount($after, 'BPJS Kesehatan Perusahaan'), 'Nominal BPJS hasil edit harus tersimpan.');
+        $this->assertSame(228465.0, $this->componentAmount($after, 'PPh 21'), 'PPh 21 harus ikut dihitung ulang dari premi baru.');
+    }
+
+    public function test_editing_employee_bpjs_deduction_recalculates_pph21_in_final_month(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-tax-emp', 'KES-901', 'TK-901');
+        $employee->update(['last_working_date' => '2026-06-30']);
+        EmployeePayroll::where('employee_id', $employee->id)
+            ->update(['basic_salary' => 10000000, 'tax_method' => 'gross']);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id, 'status' => 'draft']);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
+        $before = $detail->components;
+
+        // Bulan terakhir: netto (10.000.000 - 500.000 biaya jabatan - 200.000 BPJS karyawan)
+        // disetahunkan 6 bulan = 55.800.000 → PKP 1.800.000 → progresif 5% = 90.000.
+        $this->assertSame(100000.0, $this->componentAmount($before, 'BPJS Kesehatan'));
+        $this->assertSame(90000.0, $this->componentAmount($before, 'PPh 21'));
+
+        // Iuran karyawan dinaikkan → pengurang makin besar → PKP 600.000 → 30.000.
+        $request = \Illuminate\Http\Request::create('/x', 'PUT', [
+            'components' => $this->componentFormPayload($before, ['BPJS Kesehatan' => 300000]),
+        ]);
+        (new PayrollRunController)->updateDetail($request, $run->id, $detail->id);
+
+        $after = $detail->fresh()->components;
+        $this->assertSame(300000.0, $this->componentAmount($after, 'BPJS Kesehatan'));
+        $this->assertSame(30000.0, $this->componentAmount($after, 'PPh 21'), 'BPJS karyawan adalah pengurang pajak, PPh 21 harus turun.');
+    }
+
+    public function test_editing_employee_bpjs_deduction_recalculates_pph21_in_december(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-tax-des', 'KES-903', 'TK-903');
+        EmployeePayroll::where('employee_id', $employee->id)
+            ->update(['basic_salary' => 80000000, 'tax_method' => 'gross']);
+
+        $run = PayrollRun::create(['period' => '2026-12', 'created_by' => $admin->id, 'status' => 'draft']);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
+        $before = $detail->components;
+
+        // Desember dihitung ulang tahunan & progresif (bukan TER): bruto 80.912.000
+        // - biaya jabatan 4.045.600 - BPJS karyawan setahun 21.845.076 = netto 55.021.324
+        // → PKP 1.021.324 → 5% = 51.066.
+        $this->assertSame(120000.0, $this->componentAmount($before, 'BPJS Kesehatan'));
+        $this->assertSame(51066.0, $this->componentAmount($before, 'PPh 21 *Desember'));
+
+        // Iuran karyawan diturunkan → pengurang setahun menyusut → PKP 2.221.324 → 111.066.
+        $request = \Illuminate\Http\Request::create('/x', 'PUT', [
+            'components' => $this->componentFormPayload($before, ['BPJS Kesehatan' => 20000]),
+        ]);
+        (new PayrollRunController)->updateDetail($request, $run->id, $detail->id);
+
+        $after = $detail->fresh()->components;
+        $this->assertSame(20000.0, $this->componentAmount($after, 'BPJS Kesehatan'));
+        $this->assertSame(111066.0, $this->componentAmount($after, 'PPh 21 *Desember'));
+    }
+
+    public function test_editing_non_bpjs_component_leaves_pph21_untouched(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('bpjs-tax-other', 'KES-902', 'TK-902');
+        EmployeePayroll::where('employee_id', $employee->id)
+            ->update(['basic_salary' => 10000000, 'tax_method' => 'gross']);
+
+        $run = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id, 'status' => 'draft']);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
+        $before = $detail->components;
+
+        // Edit yang tidak menyentuh BPJS tidak boleh mengubah PPh 21 (perilaku lama).
+        $payload = $this->componentFormPayload($before);
+        $payload[] = [
+            'name' => 'Uang Makan', 'type' => 'earning', 'amount' => '500000',
+            'category' => 'one-time', 'is_taxable' => '0', 'is_auto' => '0', 'detail' => '',
+        ];
+
+        $request = \Illuminate\Http\Request::create('/x', 'PUT', ['components' => $payload]);
+        (new PayrollRunController)->updateDetail($request, $run->id, $detail->id);
+
+        $after = $detail->fresh()->components;
+        $this->assertSame(500000.0, $this->componentAmount($after, 'Uang Makan'));
+        $this->assertSame(261350.0, $this->componentAmount($after, 'PPh 21'));
+    }
+
+    /** Ubah komponen hasil generate menjadi payload seperti yang dikirim form edit. */
+    private function componentFormPayload(array $components, array $overrides = []): array
+    {
+        return collect($components)->map(function (array $component) use ($overrides) {
+            $name = $component['name'];
+
+            return [
+                'name' => $name,
+                'type' => $component['type'],
+                'amount' => (string) ($overrides[$name] ?? $component['amount']),
+                'category' => $component['category'] ?? 'recurring',
+                'is_taxable' => empty($component['is_taxable']) ? '0' : '1',
+                'is_auto' => empty($component['is_auto']) ? '0' : '1',
+                'detail' => $component['detail'] ?? '',
+            ];
+        })->values()->all();
+    }
+
+    private function componentAmount(array $components, string $name): float
+    {
+        $match = collect($components)->firstWhere('name', $name);
+        $this->assertNotNull(
+            $match,
+            "Komponen '{$name}' harus ada. Yang ada: ".collect($components)->pluck('name')->implode(', ')
+        );
+
+        return (float) $match['amount'];
+    }
+
     public function test_apply_eligibility_zeros_bpjs_for_join_after_cutoff(): void
     {
         [$employee] = $this->seedBpjsScenario('elig-join', 'KES-1', 'TK-1');
@@ -585,6 +727,41 @@ class PayrollLoanDeductionTest extends TestCase
             'payroll_run_id' => $run->id,
             'employee_id' => $employee->id,
         ]);
+    }
+
+    public function test_resign_month_keeps_full_professional_allowance_after_assignment_is_deactivated(): void
+    {
+        [$admin, $employee] = $this->seedResignedEmployee('res-profession', '2026-07-15');
+
+        $professionAllowance = PayrollComponent::create([
+            'name' => 'Tunjangan Profesi',
+            'type' => 'earning',
+            'category' => 'fixed',
+            'is_taxable' => false,
+            'is_auto' => false,
+        ]);
+
+        EmployeePayrollComponent::create([
+            'employee_id' => $employee->id,
+            'payroll_component_id' => $professionAllowance->id,
+            'amount' => 1_000_000,
+            'start_date' => '2026-01-01',
+            'end_date' => '2026-07-15',
+            'is_active' => false,
+        ]);
+
+        $run = PayrollRun::create(['period' => '2026-07', 'created_by' => $admin->id]);
+        $this->invokePrivate(new PayrollRunController, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+        $component = collect($detail->components)->firstWhere('name', 'Tunjangan Profesi');
+
+        $this->assertNotNull($component, 'Tunjangan profesi harus tetap masuk pada payroll bulan resign.');
+        $this->assertSame(1_000_000.0, (float) $component['amount'], 'Hanya gaji pokok yang diprorata.');
+        $this->assertLessThan(6_000_000.0, (float) $detail->basic_salary);
+        $this->assertSame((float) $detail->basic_salary + 1_000_000.0, (float) $detail->total_earning);
     }
 
     public function test_resigned_employee_is_excluded_from_later_month(): void

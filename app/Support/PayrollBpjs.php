@@ -11,6 +11,55 @@ class PayrollBpjs
     /** Tanggal batas registrasi BPJS. Join setelah tanggal ini → BPJS mulai bulan depan. */
     public const REGISTRATION_CUTOFF_DAY = 20;
 
+    /** Nama komponen iuran BPJS yang dipotong dari karyawan (type deduction). */
+    public const EMPLOYEE_COMPONENT_NAMES = ['BPJS Kesehatan', 'JHT Karyawan', 'JP Karyawan'];
+
+    /** Nama komponen premi BPJS yang ditanggung perusahaan (type info). */
+    public const COMPANY_COMPONENT_NAMES = [
+        'BPJS Kesehatan Perusahaan', 'JHT Perusahaan', 'JKK Perusahaan', 'JKM Perusahaan', 'JP Perusahaan',
+    ];
+
+    /**
+     * Kenali komponen iuran BPJS di daftar komponen payslip. Nama dicocokkan PERSIS
+     * (bukan str_contains) supaya "BPJS Kesehatan" tidak tertukar dengan
+     * "BPJS Kesehatan Perusahaan". Dipakai untuk membuka kunci edit nominal BPJS di
+     * payroll run dan untuk menghitung ulang PPh 21 setelahnya.
+     */
+    public static function isEmployeeComponent(array $component): bool
+    {
+        return ($component['type'] ?? '') === 'deduction'
+            && in_array(trim((string) ($component['name'] ?? '')), self::EMPLOYEE_COMPONENT_NAMES, true);
+    }
+
+    public static function isCompanyComponent(array $component): bool
+    {
+        return ($component['type'] ?? '') === 'info'
+            && in_array(trim((string) ($component['name'] ?? '')), self::COMPANY_COMPONENT_NAMES, true);
+    }
+
+    public static function isBpjsComponent(array $component): bool
+    {
+        return self::isEmployeeComponent($component) || self::isCompanyComponent($component);
+    }
+
+    /**
+     * Total iuran BPJS karyawan dari daftar komponen. Dipakai sebagai pengurang dasar
+     * PPh 21 menggantikan $bpjs['employee_total'] hasil BpjsCalculator, agar nominal
+     * yang sudah diedit manual ikut terpakai saat pajak dihitung ulang.
+     */
+    public static function employeeTotalFromComponents(array $components): float
+    {
+        $total = 0.0;
+
+        foreach ($components as $component) {
+            if (is_array($component) && self::isEmployeeComponent($component)) {
+                $total += (float) ($component['amount'] ?? 0);
+            }
+        }
+
+        return $total;
+    }
+
     /** Apakah karyawan keluar (resign / hari kerja terakhir) di bulan periode ini. */
     public static function isResignedInMonth(?Employee $employee, Carbon $periodStart): bool
     {
