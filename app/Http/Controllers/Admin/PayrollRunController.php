@@ -26,6 +26,7 @@ use App\Support\ScheduledWorkingDays;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -299,14 +300,73 @@ class PayrollRunController extends Controller
             return back()->with('error', 'Hanya payroll draft yang bisa di-regenerate.');
         }
 
-        // Get existing employee IDs from current details before deleting
-        $employeeIds = $run->details()->pluck('employee_id')->toArray();
+        DB::transaction(function () use ($run, $admin) {
+            $snapshots = $run->details()->get()->keyBy('employee_id');
+            $employeeIds = $snapshots->keys()->all();
 
-        $run->details()->delete();
-        $this->generateDetails($run, $employeeIds);
-        $this->logAction($run, 'regenerated', $admin->id);
+            $run->details()->delete();
+            $this->generateDetails($run, $employeeIds);
+            $this->restoreManualOverrides($run, $snapshots);
+            $this->recalculateRunTotals($run);
+            $this->logAction($run, 'regenerated', $admin->id);
+        });
 
-        return back()->with('success', 'Detail payroll berhasil di-regenerate.');
+        return back()->with('success', 'Data otomatis berhasil di-regenerate tanpa menghapus perubahan manual.');
+    }
+
+    private function restoreManualOverrides(PayrollRun $run, Collection $snapshots): void
+    {
+        $overrides = app(PayrollManualOverrides::class);
+        $details = $run->details()->with('employee.activePayroll')->get();
+
+        foreach ($details as $detail) {
+            $old = $snapshots->get($detail->employee_id);
+            if (! $old instanceof PayrollRunDetail || ! $old->is_manual_edited) {
+                continue;
+            }
+
+            $ledger = is_array($old->manual_overrides) && $old->manual_overrides !== []
+                ? $old->manual_overrides
+                : $overrides->deriveLegacy($old, $detail);
+
+            if ($ledger === []) {
+                continue;
+            }
+
+            $generatedBasic = (float) $detail->basic_salary;
+            $generatedComponents = is_array($detail->components) ? $detail->components : [];
+            $manualBasic = $overrides->basicSalary($generatedBasic, $ledger);
+            $merged = $overrides->apply($generatedComponents, $ledger);
+
+            $detail->setAttribute('basic_salary', $manualBasic);
+            if (round($generatedBasic, 2) !== round($manualBasic, 2)
+                || $this->bpjsAmountsChanged($generatedComponents, $merged)) {
+                $merged = $this->rebuildPph21Components($run, $detail, $merged);
+                $merged = $overrides->apply(
+                    $merged,
+                    $ledger,
+                    fn (array $component) => $this->isManualTaxComponent($component)
+                );
+            }
+
+            $totals = $overrides->totals($manualBasic, $merged);
+            $detail->update([
+                'basic_salary' => $manualBasic,
+                'components' => $merged,
+                'total_earning' => $totals['total_earning'],
+                'total_deduction' => $totals['total_deduction'],
+                'net_salary' => $totals['net_salary'],
+                'is_manual_edited' => true,
+                'manual_overrides' => $ledger,
+            ]);
+        }
+    }
+
+    private function isManualTaxComponent(array $component): bool
+    {
+        return $this->isAutoTaxComponent($component)
+            || $this->isPph21DeductionComponent($component)
+            || $this->isLegacyTaxAllowanceComponent($component);
     }
 
     public function injectBpjs($id)

@@ -372,6 +372,101 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertArrayHasKey('deduction|potongan terlambat', $ledger['removed']);
     }
 
+    public function test_regenerate_refreshes_automatic_data_without_removing_manual_component_edits(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('regen-manual', 'KES-REGEN', null);
+        $run = PayrollRun::create([
+            'period' => '2026-07',
+            'created_by' => $admin->id,
+            'status' => 'draft',
+        ]);
+        $controller = new PayrollRunController;
+        $this->invokePrivate($controller, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
+        $submitted = collect($detail->components)
+            ->map(function (array $component) {
+                if ($component['name'] === 'BPJS Kesehatan') {
+                    $component['amount'] = 65_000;
+                }
+
+                return $component;
+            })
+            ->push([
+                'id' => null,
+                'name' => 'Rate BPJS Kesehatan',
+                'type' => 'info',
+                'category' => 'info',
+                'amount' => 2_624_387,
+                'is_taxable' => false,
+                'is_auto' => false,
+                'detail' => '',
+            ])
+            ->values()
+            ->all();
+
+        $controller->updateDetail(
+            \Illuminate\Http\Request::create('/x', 'PUT', ['components' => $submitted]),
+            $run->id,
+            $detail->id
+        );
+
+        $employee->activePayroll()->update(['basic_salary' => 6_000_000]);
+        $controller->regenerate($run->id);
+
+        $fresh = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
+        $components = collect($fresh->components);
+
+        $this->assertSame(6_000_000.0, (float) $fresh->basic_salary, 'Gaji otomatis terbaru harus dipakai.');
+        $this->assertSame(65_000.0, (float) $components->firstWhere('name', 'BPJS Kesehatan')['amount']);
+        $this->assertSame(240_000.0, (float) $components->firstWhere('name', 'BPJS Kesehatan Perusahaan')['amount']);
+        $this->assertSame(2_624_387.0, (float) $components->firstWhere('name', 'Rate BPJS Kesehatan')['amount']);
+        $this->assertTrue($fresh->is_manual_edited);
+        $this->assertSame(
+            (float) $fresh->total_earning - (float) $fresh->total_deduction,
+            (float) $fresh->net_salary
+        );
+    }
+
+    public function test_regenerate_preserves_legacy_manual_rate_component_without_override_ledger(): void
+    {
+        [$employee, $admin] = $this->seedBpjsScenario('regen-legacy', 'KES-LEGACY', null);
+        $run = PayrollRun::create([
+            'period' => '2026-07',
+            'created_by' => $admin->id,
+            'status' => 'draft',
+        ]);
+        $controller = new PayrollRunController;
+        $this->invokePrivate($controller, 'generateDetails', [$run, [$employee->id]]);
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
+        $components = $detail->components;
+        $components[] = [
+            'id' => null,
+            'name' => 'Rate BPJS Kesehatan',
+            'type' => 'info',
+            'category' => 'info',
+            'amount' => 2_624_387,
+            'is_taxable' => false,
+            'is_auto' => false,
+            'detail' => '',
+        ];
+        $detail->update([
+            'components' => $components,
+            'is_manual_edited' => true,
+            'manual_overrides' => null,
+        ]);
+
+        $controller->regenerate($run->id);
+
+        $fresh = PayrollRunDetail::where('payroll_run_id', $run->id)->firstOrFail();
+        $rate = collect($fresh->components)->firstWhere('name', 'Rate BPJS Kesehatan');
+
+        $this->assertNotNull($rate);
+        $this->assertSame(2_624_387.0, (float) $rate['amount']);
+        $this->assertNotEmpty($fresh->manual_overrides);
+    }
+
     public function test_update_detail_allows_negative_component_and_still_adds_new_one(): void
     {
         $company = Company::create(['name' => 'PT Neg']);
