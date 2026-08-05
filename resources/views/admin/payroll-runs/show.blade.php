@@ -73,7 +73,7 @@
     </form>
     @endif
     @if($run->status === 'draft' && $canUpdatePayrollRun)
-    <form action="{{ route('admin.payroll-runs.regenerate', $run->id) }}" method="POST" data-confirm="Regenerate semua data?">
+    <form action="{{ route('admin.payroll-runs.regenerate', $run->id) }}" method="POST" data-confirm="Regenerate data otomatis? Perubahan manual tetap dipertahankan.">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">refresh</span> Regenerate

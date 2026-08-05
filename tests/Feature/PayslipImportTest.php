@@ -83,6 +83,7 @@ class PayslipImportTest extends TestCase
             $table->decimal('net_salary', 15, 2)->default(0);
             $table->json('components')->nullable();
             $table->boolean('is_manual_edited')->default(false);
+            $table->json('manual_overrides')->nullable();
             $table->timestamps();
         });
 
@@ -365,6 +366,8 @@ class PayslipImportTest extends TestCase
         $this->assertEquals(50000.0, (float) $detail->total_deduction);
         $this->assertEquals(6150000.0, (float) $detail->net_salary);
         $this->assertTrue((bool) $detail->is_manual_edited);
+        $this->assertEquals(6000000.0, (float) $detail->manual_overrides['basic_salary']);
+        $this->assertArrayHasKey('info|rate bpjs kesehatan', $detail->manual_overrides['components']);
         $this->assertSame('published', $run->fresh()->status);
         $this->assertEquals(6200000.0, (float) $run->fresh()->total_earning);
         $this->assertEquals(50000.0, (float) $run->fresh()->total_deduction);

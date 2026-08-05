@@ -20,9 +20,12 @@ class PayrollManualOverrides
         foreach ($submittedByKey as $key => $component) {
             $previous = $beforeByKey[$key] ?? null;
 
-            if ($previous === null || ! $this->isAutomatic($component) || $this->componentsDiffer($previous, $component)) {
+            if ($previous === null || $this->componentsDiffer($previous, $component)) {
                 $ledger['components'][$key] = $component;
                 unset($ledger['removed'][$key]);
+                if ($previous === null) {
+                    $ledger['added'][$key] = true;
+                }
             }
         }
 
@@ -31,8 +34,9 @@ class PayrollManualOverrides
                 continue;
             }
 
-            unset($ledger['components'][$key]);
-            if ($this->isAutomatic($component)) {
+            $wasManuallyAdded = ! empty($ledger['added'][$key]);
+            unset($ledger['components'][$key], $ledger['added'][$key]);
+            if (! $wasManuallyAdded) {
                 $ledger['removed'][$key] = $component;
             } else {
                 unset($ledger['removed'][$key]);
@@ -63,6 +67,9 @@ class PayrollManualOverrides
             if (! $this->isAutomatic($component)
                 || ($generated !== null && $this->componentsDiffer($component, $generated))) {
                 $ledger['components'][$key] = $component;
+                if ($generated === null) {
+                    $ledger['added'][$key] = true;
+                }
             }
         }
 
@@ -139,6 +146,9 @@ class PayrollManualOverrides
             'removed' => is_array($ledger['removed'] ?? null)
                 ? array_filter($ledger['removed'], 'is_array')
                 : [],
+            'added' => is_array($ledger['added'] ?? null)
+                ? array_filter($ledger['added'], fn ($value) => (bool) $value)
+                : [],
         ];
     }
 
@@ -152,6 +162,9 @@ class PayrollManualOverrides
         }
         if ($ledger['removed'] === []) {
             unset($ledger['removed']);
+        }
+        if ($ledger['added'] === []) {
+            unset($ledger['added']);
         }
 
         return $ledger;

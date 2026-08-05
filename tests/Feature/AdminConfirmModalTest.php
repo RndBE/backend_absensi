@@ -48,6 +48,16 @@ class AdminConfirmModalTest extends TestCase
         $this->assertStringContainsString("if (trigger.matches('form')) return;", $layout);
     }
 
+    public function test_payroll_regenerate_confirmation_explains_manual_edits_are_preserved(): void
+    {
+        $view = file_get_contents(resource_path('views/admin/payroll-runs/show.blade.php'));
+
+        $this->assertStringContainsString(
+            'Regenerate data otomatis? Perubahan manual tetap dipertahankan.',
+            $view
+        );
+    }
+
     public function test_admin_views_do_not_use_browser_confirm_dialogs(): void
     {
         $views = collect(glob(resource_path('views/admin/**/*.blade.php'), GLOB_BRACE))

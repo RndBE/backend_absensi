@@ -42,6 +42,20 @@ class PayrollManualOverridesTest extends TestCase
         $this->assertSame(60_000.0, $this->amount($merged, 'BPJS Kesehatan'));
     }
 
+    public function test_unchanged_non_automatic_assignment_is_not_frozen_as_manual_override(): void
+    {
+        $service = new PayrollManualOverrides;
+        $before = [$this->component('Tunjangan Jabatan', 'earning', 500_000, false)];
+
+        $ledger = $service->capture(null, $before, $before);
+        $merged = $service->apply([
+            $this->component('Tunjangan Jabatan', 'earning', 750_000, false),
+        ], $ledger);
+
+        $this->assertArrayNotHasKey('components', $ledger);
+        $this->assertSame(750_000.0, $this->amount($merged, 'Tunjangan Jabatan'));
+    }
+
     public function test_removed_automatic_component_stays_removed(): void
     {
         $service = new PayrollManualOverrides;
@@ -53,6 +67,20 @@ class PayrollManualOverridesTest extends TestCase
         ], $ledger);
 
         $this->assertNull($this->find($merged, 'Potongan Terlambat'));
+    }
+
+    public function test_removed_non_automatic_assignment_stays_removed(): void
+    {
+        $service = new PayrollManualOverrides;
+        $before = [$this->component('Tunjangan Jabatan', 'earning', 500_000, false)];
+
+        $ledger = $service->capture(null, $before, []);
+        $merged = $service->apply([
+            $this->component('Tunjangan Jabatan', 'earning', 750_000, false),
+        ], $ledger);
+
+        $this->assertArrayHasKey('earning|tunjangan jabatan', $ledger['removed']);
+        $this->assertNull($this->find($merged, 'Tunjangan Jabatan'));
     }
 
     public function test_basic_salary_override_and_totals_are_applied(): void
