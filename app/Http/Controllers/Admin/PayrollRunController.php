@@ -20,6 +20,7 @@ use App\Models\ScheduleAssignment;
 use App\Services\BpjsCalculator;
 use App\Services\Pph21Calculator;
 use App\Support\LoanPayrollComponentSync;
+use App\Support\PayrollManualOverrides;
 use App\Support\PayrollBpjs;
 use App\Support\ScheduledWorkingDays;
 use Illuminate\Http\Request;
@@ -157,6 +158,14 @@ class PayrollRunController extends Controller
         }
         unset($component);
 
+        $manualOverrides = app(PayrollManualOverrides::class)->capture(
+            $detail->manual_overrides,
+            $existingComponents,
+            $components,
+            (float) $detail->basic_salary,
+            (float) $detail->basic_salary
+        );
+
         // Nominal iuran BPJS boleh diedit manual, tapi BPJS karyawan adalah pengurang
         // dasar PPh 21 dan premi perusahaan yang objek pajak menambah brutonya. Begitu
         // angkanya berubah, PPh 21 harus dihitung ulang agar potongan pajaknya konsisten.
@@ -181,6 +190,7 @@ class PayrollRunController extends Controller
             'total_deduction' => $totalDeduction,
             'net_salary' => $totalEarning - $totalDeduction,
             'is_manual_edited' => true,
+            'manual_overrides' => $manualOverrides,
         ]);
 
         $this->recalculateRunTotals($run);

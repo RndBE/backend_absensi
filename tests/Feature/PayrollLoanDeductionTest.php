@@ -330,6 +330,48 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertSame(5350000.0, (float) $detail->fresh()->total_earning); // 5.000.000 + 100.000 + 250.000
     }
 
+    public function test_update_detail_records_changed_added_and_removed_components_as_manual_overrides(): void
+    {
+        $company = Company::create(['name' => 'PT Manual Override']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-OVERRIDE', 'company_id' => $company->id, 'full_name' => 'Admin Override',
+            'email' => 'admin-override@example.test', 'password' => 'secret', 'role' => 'admin', 'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+        $employee = Employee::create([
+            'employee_code' => 'EMP-OVERRIDE', 'company_id' => $company->id, 'full_name' => 'Employee Override',
+            'email' => 'employee-override@example.test', 'password' => 'secret', 'role' => 'employee',
+            'is_active' => true, 'ptkp' => 'TK/0',
+        ]);
+        $run = PayrollRun::create(['period' => '2026-07', 'created_by' => $admin->id, 'status' => 'draft']);
+        $detail = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $employee->id,
+            'basic_salary' => 5_000_000,
+            'total_earning' => 5_000_000,
+            'total_deduction' => 102_488,
+            'net_salary' => 4_897_512,
+            'components' => [
+                ['name' => 'BPJS Kesehatan', 'type' => 'deduction', 'amount' => 52_488, 'category' => 'recurring', 'is_taxable' => false, 'is_auto' => true, 'detail' => ''],
+                ['name' => 'Potongan Terlambat', 'type' => 'deduction', 'amount' => 50_000, 'category' => 'recurring', 'is_taxable' => false, 'is_auto' => true, 'detail' => ''],
+            ],
+        ]);
+
+        $request = \Illuminate\Http\Request::create('/x', 'PUT', [
+            'components' => [
+                ['name' => 'BPJS Kesehatan', 'type' => 'deduction', 'amount' => '60000', 'category' => 'recurring', 'is_taxable' => '0', 'is_auto' => '1', 'detail' => ''],
+                ['name' => 'Rate BPJS Kesehatan', 'type' => 'info', 'amount' => '2624387', 'category' => 'info', 'is_taxable' => '0', 'is_auto' => '0', 'detail' => ''],
+            ],
+        ]);
+
+        (new PayrollRunController)->updateDetail($request, $run->id, $detail->id);
+
+        $ledger = $detail->fresh()->manual_overrides;
+        $this->assertSame(60_000.0, (float) $ledger['components']['deduction|bpjs kesehatan']['amount']);
+        $this->assertSame(2_624_387.0, (float) $ledger['components']['info|rate bpjs kesehatan']['amount']);
+        $this->assertArrayHasKey('deduction|potongan terlambat', $ledger['removed']);
+    }
+
     public function test_update_detail_allows_negative_component_and_still_adds_new_one(): void
     {
         $company = Company::create(['name' => 'PT Neg']);
@@ -1416,6 +1458,7 @@ class PayrollLoanDeductionTest extends TestCase
             $table->decimal('net_salary', 15, 2)->default(0);
             $table->json('components')->nullable();
             $table->boolean('is_manual_edited')->default(false);
+            $table->json('manual_overrides')->nullable();
             $table->timestamps();
         });
 

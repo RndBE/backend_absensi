@@ -9,6 +9,7 @@ use App\Models\PayrollRunDetail;
 use App\Models\PayrollRun;
 use App\Models\Company;
 use App\Support\AdminPermission;
+use App\Support\PayrollManualOverrides;
 use App\Support\PayslipBpjsData;
 use App\Support\PayslipFilename;
 use App\Support\PayslipLoanSummary;
@@ -231,7 +232,15 @@ class PayslipController extends Controller
         ]);
 
         $basicSalary = (float) $request->input('basic_salary', 0);
-        $components = $this->normalizePayslipComponents($request->input('components', []), $detail->components ?? []);
+        $existingComponents = $detail->components ?? [];
+        $components = $this->normalizePayslipComponents($request->input('components', []), $existingComponents);
+        $manualOverrides = app(PayrollManualOverrides::class)->capture(
+            $detail->manual_overrides,
+            is_array($existingComponents) ? $existingComponents : [],
+            $components,
+            (float) $detail->basic_salary,
+            $basicSalary
+        );
         $totalEarning = $basicSalary;
         $totalDeduction = 0.0;
 
@@ -250,6 +259,7 @@ class PayslipController extends Controller
             'total_deduction' => $totalDeduction,
             'net_salary' => $totalEarning - $totalDeduction,
             'is_manual_edited' => true,
+            'manual_overrides' => $manualOverrides,
         ]);
 
         $this->recalculateRunTotals($detail->payrollRun);
