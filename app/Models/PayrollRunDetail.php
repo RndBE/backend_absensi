@@ -10,7 +10,7 @@ class PayrollRunDetail extends Model
     protected $fillable = [
         'payroll_run_id', 'employee_id',
         'basic_salary', 'total_earning', 'total_deduction', 'net_salary',
-        'components', 'is_manual_edited',
+        'components', 'is_manual_edited', 'manual_overrides',
     ];
 
     protected function casts(): array
@@ -22,6 +22,7 @@ class PayrollRunDetail extends Model
             'net_salary' => 'decimal:2',
             'components' => 'array',
             'is_manual_edited' => 'boolean',
+            'manual_overrides' => 'array',
         ];
     }
 
