@@ -46,6 +46,13 @@ Schedule::command('lhp:remind')->dailyAt($lhpReminderTime)
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/lhp-reminder.log'));
 
+// Jaring pengaman sinkron cuti/sakit ke DailyCloseApp. Pengiriman utamanya lewat hook
+// saat ACC, ini cuma menambal yang gagal terkirim. Endpoint Daily idempotent, jadi
+// kirim ulang tidak menimbulkan efek samping.
+Schedule::command('daily:sync-leaves')->dailyAt('01:00')
+    ->withoutOverlapping()
+    ->appendOutputTo(storage_path('logs/daily-leave-sync.log'));
+
 // Ingatkan karyawan clock-in menjelang jam masuk shift masing-masing (WA + in-app + FCM).
 // Jalan tiap menit agar tepat waktu per-shift; toggle & menit "sebelum jam masuk" dicek
 // di dalam ClockinReminderService (dedup harian mencegah pengiriman ganda).

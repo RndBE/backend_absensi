@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Http\Controllers\Admin\PayrollRunController;
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\LeaveRequest;
+use App\Models\LeaveType;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunDetail;
 use App\Models\ScheduleTemplate;
@@ -258,6 +260,132 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_report_late_excludes_approved_full_day_leave_dates(): void
+    {
+        $this->approveLeave(77, 'Cuti Tahunan', '2026-06-04', '2026-06-04');
+
+        $filtered = $this->invokePrivate(
+            new PayrollRunController,
+            'excludeFullDayLeaveFromReportLate',
+            [
+                ['days' => 2, 'dates' => ['2026-06-04', '2026-06-05']],
+                77,
+                Carbon::parse('2026-06-01'),
+                Carbon::parse('2026-06-30'),
+            ]
+        );
+
+        $this->assertSame(1, $filtered['days']);
+        $this->assertSame(['2026-06-05'], $filtered['dates']);
+    }
+
+    public function test_report_late_excludes_approved_sick_leave_dates(): void
+    {
+        $this->approveLeave(77, 'Izin Sakit', '2026-06-08', '2026-06-10');
+
+        $filtered = $this->invokePrivate(
+            new PayrollRunController,
+            'excludeFullDayLeaveFromReportLate',
+            [
+                ['days' => 4, 'dates' => ['2026-06-08', '2026-06-09', '2026-06-10', '2026-06-11']],
+                77,
+                Carbon::parse('2026-06-01'),
+                Carbon::parse('2026-06-30'),
+            ]
+        );
+
+        $this->assertSame(1, $filtered['days']);
+        $this->assertSame(['2026-06-11'], $filtered['dates']);
+    }
+
+    /**
+     * WFH dan izin parsial tetap hari kerja, jadi laporan hariannya tetap wajib dan
+     * potongannya tetap berlaku. Kalau ini bocor, orang yang cuma izin terlambat
+     * sejam ikut bebas dari sanksi laporan.
+     */
+    public function test_report_late_keeps_wfh_and_partial_leave_dates(): void
+    {
+        $this->approveLeave(77, 'Work From Home', '2026-06-04', '2026-06-04');
+        $this->approveLeave(77, 'Izin Datang Terlambat', '2026-06-05', '2026-06-05');
+        $this->approveLeave(77, 'Izin Pulang Cepat', '2026-06-06', '2026-06-06');
+
+        $filtered = $this->invokePrivate(
+            new PayrollRunController,
+            'excludeFullDayLeaveFromReportLate',
+            [
+                ['days' => 3, 'dates' => ['2026-06-04', '2026-06-05', '2026-06-06']],
+                77,
+                Carbon::parse('2026-06-01'),
+                Carbon::parse('2026-06-30'),
+            ]
+        );
+
+        $this->assertSame(3, $filtered['days']);
+        $this->assertSame(['2026-06-04', '2026-06-05', '2026-06-06'], $filtered['dates']);
+    }
+
+    public function test_report_late_ignores_leave_that_is_not_approved(): void
+    {
+        $this->approveLeave(77, 'Cuti Tahunan', '2026-06-04', '2026-06-04', 'pending');
+
+        $filtered = $this->invokePrivate(
+            new PayrollRunController,
+            'excludeFullDayLeaveFromReportLate',
+            [
+                ['days' => 1, 'dates' => ['2026-06-04']],
+                77,
+                Carbon::parse('2026-06-01'),
+                Carbon::parse('2026-06-30'),
+            ]
+        );
+
+        $this->assertSame(1, $filtered['days']);
+        $this->assertSame(['2026-06-04'], $filtered['dates']);
+    }
+
+    /**
+     * Tanpa rincian tanggal tidak ada yang bisa disaring. Angkanya dibiarkan apa
+     * adanya, bukan dianggap nol — menganggap nol berarti menghapus potongan sah.
+     */
+    public function test_report_late_without_dates_keeps_day_count(): void
+    {
+        $this->approveLeave(77, 'Cuti Tahunan', '2026-06-01', '2026-06-30');
+
+        $filtered = $this->invokePrivate(
+            new PayrollRunController,
+            'excludeFullDayLeaveFromReportLate',
+            [
+                ['days' => 3, 'dates' => []],
+                77,
+                Carbon::parse('2026-06-01'),
+                Carbon::parse('2026-06-30'),
+            ]
+        );
+
+        $this->assertSame(3, $filtered['days']);
+        $this->assertSame([], $filtered['dates']);
+    }
+
+    private function approveLeave(
+        int $employeeId,
+        string $leaveTypeName,
+        string $startDate,
+        string $endDate,
+        string $status = 'approved'
+    ): LeaveRequest {
+        $type = LeaveType::firstOrCreate(['name' => $leaveTypeName]);
+
+        return LeaveRequest::create([
+            'employee_id' => $employeeId,
+            'leave_type_id' => $type->id,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'total_days' => 1,
+            'reason' => 'test',
+            'status' => $status,
+        ]);
+    }
+
     private function createEmployeeWithWeekdaySchedule(): Employee
     {
         $shift = Shift::create([
@@ -300,12 +428,20 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
             'schedule_template_days',
             'schedule_templates',
             'leave_requests',
+            'leave_types',
             'attendances',
             'employees',
             'shifts',
         ] as $table) {
             Schema::dropIfExists($table);
         }
+
+        Schema::create('leave_types', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->integer('max_days')->nullable();
+            $table->timestamps();
+        });
 
         Schema::create('attendances', function (Blueprint $table) {
             $table->id();

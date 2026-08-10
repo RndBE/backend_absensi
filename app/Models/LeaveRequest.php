@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Jobs\SyncLeaveToDailyJob;
 use App\Support\AttendanceLeaveSync;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Facades\Log;
 
 class LeaveRequest extends Model
 {
@@ -23,13 +25,41 @@ class LeaveRequest extends Model
                 return;
             }
 
-            if ($leave->status === 'approved') {
+            $becameApproved = $leave->status === 'approved';
+            $leftApproved = ! $becameApproved && $leave->getOriginal('status') === 'approved';
+
+            if ($becameApproved) {
                 AttendanceLeaveSync::apply($leave);
-            } elseif ($leave->getOriginal('status') === 'approved') {
+            } elseif ($leftApproved) {
                 // Sebelumnya approved, kini bukan (ditolak/dibatalkan) -> kembalikan.
                 AttendanceLeaveSync::revert($leave);
             }
+
+            if ($becameApproved || $leftApproved) {
+                self::queueDailySync($leave);
+            }
         });
+    }
+
+    /**
+     * Teruskan hasil approval ke DailyCloseApp supaya hari cuti/sakit tidak ditagih
+     * laporan harian di sana.
+     *
+     * Dispatch-nya dibungkus try/catch dengan sengaja: dengan QUEUE_CONNECTION=sync
+     * job dieksekusi saat dispatch, dan Daily yang sedang tidak bisa dihubungi tidak
+     * boleh ikut menggagalkan proses ACC-nya. Di queue sungguhan, kegagalan pengiriman
+     * ditangani job itu sendiri lewat retry.
+     */
+    private static function queueDailySync(LeaveRequest $leave): void
+    {
+        try {
+            SyncLeaveToDailyJob::dispatch($leave->id);
+        } catch (\Throwable $exception) {
+            Log::warning('Gagal mengantre sinkron cuti ke Daily.', [
+                'leave_request_id' => $leave->id,
+                'message' => $exception->getMessage(),
+            ]);
+        }
     }
 
     protected function casts(): array

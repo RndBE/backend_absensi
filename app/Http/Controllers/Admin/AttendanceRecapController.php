@@ -11,10 +11,10 @@ use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
 use App\Models\ScheduleAssignment;
 use App\Support\AttendanceLateExcuse;
+use App\Support\LeaveDayCategory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Str;
 use ZipArchive;
 
 class AttendanceRecapController extends Controller
@@ -138,7 +138,7 @@ class AttendanceRecapController extends Controller
                     }
 
                     if ($leave && !$partialDayLeave) {
-                        if ($this->isSickLeave($leave)) {
+                        if (LeaveDayCategory::isSick($leave)) {
                             $row['status'] = 'sick';
                             $row['status_label'] = 'Sakit';
                             $stats['sakit']++;
@@ -849,7 +849,7 @@ class AttendanceRecapController extends Controller
                 $statusLabel = $holiday->name;
                 $stats['libur']++;
             } elseif ($leave && !$partialDayLeave) {
-                if ($this->isSickLeave($leave)) {
+                if (LeaveDayCategory::isSick($leave)) {
                     $status = 'sick';
                     $statusLabel = 'Sakit';
                     $stats['sakit']++;
@@ -916,12 +916,5 @@ class AttendanceRecapController extends Controller
         return view('admin.attendance-recap.employee-detail', compact(
             'employee', 'period', 'rows', 'stats'
         ));
-    }
-
-    private function isSickLeave(?LeaveRequest $leave): bool
-    {
-        $name = Str::lower((string) ($leave?->leaveType?->name ?? ''));
-
-        return Str::contains($name, ['sakit', 'sick', 'medical']);
     }
 }

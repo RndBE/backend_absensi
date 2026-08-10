@@ -19,6 +19,7 @@ use App\Models\PayrollRunDetail;
 use App\Models\ScheduleAssignment;
 use App\Services\BpjsCalculator;
 use App\Services\Pph21Calculator;
+use App\Support\LeaveDayCategory;
 use App\Support\LoanPayrollComponentSync;
 use App\Support\PayrollManualOverrides;
 use App\Support\PayrollBpjs;
@@ -782,8 +783,12 @@ class PayrollRunController extends Controller
                     }
                 }
 
-                $employeeDailyReportLate = $dailyReportLateData[strtolower((string) $employee->email)]
-                    ?? ['days' => 0, 'dates' => []];
+                $employeeDailyReportLate = $this->excludeFullDayLeaveFromReportLate(
+                    $dailyReportLateData[strtolower((string) $employee->email)] ?? ['days' => 0, 'dates' => []],
+                    $empId,
+                    $periodStart,
+                    $periodEnd
+                );
                 $disciplineLateDays = (int) ($employeeDailyReportLate['days'] ?? 0);
                 if ($disciplineLateDays > 0 && $latePenalty > 0) {
                     $disciplineComponent = $this->buildDisciplinePenaltyComponent(
@@ -1798,6 +1803,42 @@ class PayrollRunController extends Controller
 
             return [];
         }
+    }
+
+    /**
+     * Buang tanggal cuti/sakit penuh dari data telat laporan harian milik DailyCloseApp.
+     *
+     * DailyCloseApp menandai "telat lapor" tanpa tahu ada cuti yang di-ACC di HRIS,
+     * jadi penyaringannya dikerjakan di sisi ini. Hanya cuti/sakit sehari penuh yang
+     * dibuang: WFH dan izin parsial tetap dihitung karena orangnya tetap bekerja hari
+     * itu, jadi laporan hariannya memang tetap wajib.
+     */
+    private function excludeFullDayLeaveFromReportLate(array $lateData, int $empId, $periodStart, $periodEnd): array
+    {
+        $days = (int) ($lateData['days'] ?? 0);
+
+        if ($days <= 0) {
+            return ['days' => 0, 'dates' => []];
+        }
+
+        $dates = array_values(array_filter((array) ($lateData['dates'] ?? [])));
+
+        // Tanpa rincian tanggal tidak ada yang bisa disaring. Jangan diam-diam
+        // dianggap nol — itu menghapus potongan yang sah. Biarkan angkanya apa adanya
+        // dan catat, supaya ketimpangan datanya kelihatan waktu ditelusuri.
+        if (empty($dates)) {
+            Log::warning('Data telat laporan harian tanpa rincian tanggal; hari cuti tidak bisa dikecualikan.', [
+                'employee_id' => $empId,
+                'days' => $days,
+            ]);
+
+            return ['days' => $days, 'dates' => []];
+        }
+
+        $leaveDates = array_flip(LeaveDayCategory::fullDayAwayDates($empId, $periodStart, $periodEnd));
+        $kept = array_values(array_filter($dates, fn ($date) => ! isset($leaveDates[$date])));
+
+        return ['days' => count($kept), 'dates' => $kept];
     }
 
     private function buildDisciplinePenaltyComponent(int $lateDays, float $penaltyPerDay, array $lateDates = []): array
