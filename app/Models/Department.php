@@ -8,7 +8,18 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Department extends Model
 {
-    protected $fillable = ['company_id', 'parent_id', 'name'];
+    protected $fillable = [
+        'company_id', 'parent_id', 'name',
+        'kpi_code', 'is_division', 'is_shared_service',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_division' => 'boolean',
+            'is_shared_service' => 'boolean',
+        ];
+    }
 
     public function company(): BelongsTo
     {

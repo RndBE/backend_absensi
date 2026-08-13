@@ -530,5 +530,14 @@ class DatabaseSeeder extends Seeder
                 'is_national' => true,
             ]);
         }
+
+        // ═══════════════════════════════════════════════════
+        // KPI — master level, indikator, rubrik
+        // ═══════════════════════════════════════════════════
+        $this->call(KpiFrameworkSeeder::class);
+
+        // Garis penilai, matriks silang, dan periode uji coba. Wajib setelah
+        // KpiFrameworkSeeder — penilai silang menunjuk periode, periode butuh master siap.
+        $this->call(KpiOrgWiringSeeder::class);
     }
 }

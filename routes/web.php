@@ -18,6 +18,19 @@ use App\Http\Controllers\Admin\EmployeeApproverController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\EmployeePayrollController;
 use App\Http\Controllers\Admin\HolidayController;
+use App\Http\Controllers\Admin\KpiAppealController;
+use App\Http\Controllers\Admin\KpiAssessmentController;
+use App\Http\Controllers\Admin\KpiCalibrationController;
+use App\Http\Controllers\Admin\KpiCrossAssessmentController;
+use App\Http\Controllers\Admin\KpiCrossMatrixController;
+use App\Http\Controllers\Admin\KpiImprovementPlanController;
+use App\Http\Controllers\Admin\KpiIndicatorController;
+use App\Http\Controllers\Admin\KpiLevelController;
+use App\Http\Controllers\Admin\KpiPeriodController;
+use App\Http\Controllers\Admin\KpiProcessingController;
+use App\Http\Controllers\Admin\KpiRelationGraphController;
+use App\Http\Controllers\Admin\KpiWorkChainController;
+use App\Http\Controllers\Admin\KpiResultController;
 use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\LeavePolicyController;
 use App\Http\Controllers\Admin\LeaveRequestController;
@@ -343,6 +356,78 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Attendance Settings
     Route::get('/attendance-settings', [AttendanceSettingController::class, 'index'])->name('attendance-settings.index');
     Route::put('/attendance-settings', [AttendanceSettingController::class, 'update'])->name('attendance-settings.update');
+
+    // KPI — master
+    Route::get('/kpi/levels', [KpiLevelController::class, 'index'])->name('kpi-levels.index');
+    Route::put('/kpi/levels/{kpiLevel}', [KpiLevelController::class, 'update'])->name('kpi-levels.update');
+    Route::get('/kpi/indicators', [KpiIndicatorController::class, 'index'])->name('kpi-indicators.index');
+    Route::post('/kpi/indicators', [KpiIndicatorController::class, 'store'])->name('kpi-indicators.store');
+    Route::put('/kpi/indicators/{kpiIndicator}', [KpiIndicatorController::class, 'update'])->name('kpi-indicators.update');
+    Route::delete('/kpi/indicators/{kpiIndicator}', [KpiIndicatorController::class, 'destroy'])->name('kpi-indicators.destroy');
+    Route::get('/kpi/indicators/{kpiIndicator}/rubrics', [KpiIndicatorController::class, 'rubrics'])->name('kpi-indicators.rubrics');
+    Route::put('/kpi/indicators/{kpiIndicator}/rubrics', [KpiIndicatorController::class, 'updateRubrics'])->name('kpi-indicators.rubrics.update');
+
+    // KPI — periode
+    Route::get('/kpi/periods', [KpiPeriodController::class, 'index'])->name('kpi-periods.index');
+    Route::post('/kpi/periods', [KpiPeriodController::class, 'store'])->name('kpi-periods.store');
+    Route::get('/kpi/periods/{kpiPeriod}', [KpiPeriodController::class, 'show'])->name('kpi-periods.show');
+    Route::put('/kpi/periods/{kpiPeriod}', [KpiPeriodController::class, 'update'])->name('kpi-periods.update');
+    Route::post('/kpi/periods/{kpiPeriod}/open', [KpiPeriodController::class, 'open'])->name('kpi-periods.open');
+    Route::post('/kpi/periods/{kpiPeriod}/advance', [KpiPeriodController::class, 'advance'])->name('kpi-periods.advance');
+    Route::post('/kpi/periods/{kpiPeriod}/generate', [KpiPeriodController::class, 'generate'])->name('kpi-periods.generate');
+    Route::delete('/kpi/periods/{kpiPeriod}', [KpiPeriodController::class, 'destroy'])->name('kpi-periods.destroy');
+
+    // KPI — pengisian & hasil
+    Route::get('/kpi/assessments', [KpiAssessmentController::class, 'index'])->name('kpi-assessments.index');
+    Route::get('/kpi/assessments/{kpiAssessment}', [KpiAssessmentController::class, 'edit'])->name('kpi-assessments.edit');
+    // Draft dan submit sama-sama POST supaya satu form bisa punya dua tombol lewat
+    // formaction, tanpa input _method yang ikut terbawa ke route yang salah.
+    Route::post('/kpi/assessments/{kpiAssessment}/draft', [KpiAssessmentController::class, 'update'])->name('kpi-assessments.update');
+    Route::post('/kpi/assessments/{kpiAssessment}/submit', [KpiAssessmentController::class, 'submit'])->name('kpi-assessments.submit');
+    Route::get('/kpi/results', [KpiResultController::class, 'index'])->name('kpi-results.index');
+    // Harus di atas route {kpiResult}, kalau tidak "trend" ikut tertangkap model binding.
+    Route::get('/kpi/results/trend', [KpiResultController::class, 'trend'])->name('kpi-results.trend');
+    Route::get('/kpi/results/{kpiResult}', [KpiResultController::class, 'show'])->name('kpi-results.show');
+    Route::get('/kpi/results/{kpiResult}/pdf', [KpiResultController::class, 'pdf'])->name('kpi-results.pdf');
+
+    // KPI — penilaian silang antar divisi
+    Route::get('/kpi/cross-matrix', [KpiCrossMatrixController::class, 'index'])->name('kpi-cross-matrix.index');
+    Route::put('/kpi/cross-matrix/{department}', [KpiCrossMatrixController::class, 'update'])->name('kpi-cross-matrix.update');
+    Route::put('/kpi/cross-matrix/{department}/flags', [KpiCrossMatrixController::class, 'updateFlags'])->name('kpi-cross-matrix.update-flags');
+    Route::get('/kpi/relation-graph', [KpiRelationGraphController::class, 'index'])->name('kpi-relation-graph.index');
+
+    // Peta rantai kerja antar orang — tidak menyentuh perhitungan KPI, jadi tidak terikat status periode.
+    Route::get('/kpi/work-chains', [KpiWorkChainController::class, 'index'])->name('kpi-work-chains.index');
+    Route::post('/kpi/work-chains', [KpiWorkChainController::class, 'store'])->name('kpi-work-chains.store');
+    Route::post('/kpi/work-chains/pairs', [KpiWorkChainController::class, 'addPairs'])->name('kpi-work-chains.add-pairs');
+    Route::delete('/kpi/work-chains/chain', [KpiWorkChainController::class, 'destroyChain'])->name('kpi-work-chains.destroy-chain');
+    Route::delete('/kpi/work-chains/{kpiWorkRelation}', [KpiWorkChainController::class, 'destroy'])->name('kpi-work-chains.destroy');
+    Route::get('/kpi/cross-assessors', [KpiCrossMatrixController::class, 'assessors'])->name('kpi-cross-matrix.assessors');
+    Route::post('/kpi/cross-assessors/{kpiPeriod}', [KpiCrossMatrixController::class, 'storeAssessor'])->name('kpi-cross-matrix.assessors.store');
+    Route::delete('/kpi/cross-assessors/{kpiCrossAssessor}', [KpiCrossMatrixController::class, 'destroyAssessor'])->name('kpi-cross-matrix.assessors.destroy');
+
+    Route::get('/kpi/cross', [KpiCrossAssessmentController::class, 'index'])->name('kpi-cross.index');
+    Route::get('/kpi/cross/{kpiPeriod}/division/{department}', [KpiCrossAssessmentController::class, 'editDivision'])->name('kpi-cross.division.edit');
+    Route::post('/kpi/cross/{kpiPeriod}/division/{department}', [KpiCrossAssessmentController::class, 'storeDivision'])->name('kpi-cross.division.store');
+    Route::get('/kpi/cross/{kpiPeriod}/individual/{employee}', [KpiCrossAssessmentController::class, 'editIndividual'])->name('kpi-cross.individual.edit');
+    Route::post('/kpi/cross/{kpiPeriod}/individual/{employee}', [KpiCrossAssessmentController::class, 'storeIndividual'])->name('kpi-cross.individual.store');
+
+    // KPI — pemrosesan & kalibrasi
+    Route::get('/kpi/processing', [KpiProcessingController::class, 'index'])->name('kpi-processing.index');
+    Route::post('/kpi/processing/{kpiPeriod}/run', [KpiProcessingController::class, 'run'])->name('kpi-processing.run');
+    Route::post('/kpi/processing/comments/{layer}/{id}/hide', [KpiProcessingController::class, 'hideComment'])->name('kpi-processing.hide-comment');
+    Route::get('/kpi/calibration', [KpiCalibrationController::class, 'index'])->name('kpi-calibration.index');
+    Route::post('/kpi/calibration/{kpiFinalResult}', [KpiCalibrationController::class, 'calibrate'])->name('kpi-calibration.calibrate');
+    Route::post('/kpi/calibration/cross/{kpiCrossResult}', [KpiCalibrationController::class, 'adjustCross'])->name('kpi-calibration.adjust-cross');
+    Route::post('/kpi/calibration/cross/{kpiCrossResult}/approve', [KpiCalibrationController::class, 'approveAdjustment'])->name('kpi-calibration.approve-adjustment');
+
+    // KPI — tindak lanjut
+    Route::get('/kpi/appeals', [KpiAppealController::class, 'index'])->name('kpi-appeals.index');
+    Route::post('/kpi/appeals', [KpiAppealController::class, 'store'])->name('kpi-appeals.store');
+    Route::post('/kpi/appeals/{kpiAppeal}/decide', [KpiAppealController::class, 'decide'])->name('kpi-appeals.decide');
+    Route::get('/kpi/improvement-plans', [KpiImprovementPlanController::class, 'index'])->name('kpi-improvement-plans.index');
+    Route::post('/kpi/improvement-plans/{kpiPeriod}/generate', [KpiImprovementPlanController::class, 'generate'])->name('kpi-improvement-plans.generate');
+    Route::put('/kpi/improvement-plans/{kpiImprovementPlan}', [KpiImprovementPlanController::class, 'update'])->name('kpi-improvement-plans.update');
 
     // Security
     Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');

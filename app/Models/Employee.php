@@ -22,7 +22,8 @@ class Employee extends Authenticatable
         'religion', 'nik', 'npwp_15', 'npwp_16', 'ptkp',
         'bpjs_tk', 'bpjs_kesehatan', 'bank_account', 'bank_name',
         'postal_code', 'ktp_address', 'residential_address',
-        'position', 'job_level', 'employment_status', 'join_date', 'resign_date',
+        'position', 'job_level', 'kpi_level_id', 'is_cross_functional', 'is_kpi_excluded',
+        'employment_status', 'join_date', 'resign_date',
         'resign_reason', 'resign_notes', 'last_working_date',
         'contract_start_date', 'contract_end_date',
         'internship_institution', 'internship_supervisor', 'internship_field_supervisor', 'internship_notes',
@@ -39,6 +40,8 @@ class Employee extends Authenticatable
             'contract_start_date' => 'date',
             'contract_end_date' => 'date',
             'is_active' => 'boolean',
+            'is_cross_functional' => 'boolean',
+            'is_kpi_excluded' => 'boolean',
             'password' => 'hashed',
         ];
     }
@@ -56,6 +59,15 @@ class Employee extends Authenticatable
     public function workSchedule(): BelongsTo
     {
         return $this->belongsTo(WorkSchedule::class);
+    }
+
+    /**
+     * Level KPI (L1–L4), terpisah dari `job_level`. `job_level` adalah integer bebas yang
+     * sudah dipakai ApprovalRule dan urutan tampilan, jadi tidak diikat ke kerangka KPI.
+     */
+    public function kpiLevel(): BelongsTo
+    {
+        return $this->belongsTo(KpiLevel::class, 'kpi_level_id');
     }
 
     public function scheduleTemplate(): BelongsTo

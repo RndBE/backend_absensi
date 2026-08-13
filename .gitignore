@@ -1,8 +1,14 @@
 *.log
+._*
 .DS_Store
 .env
-.env.backup
-.env.production
+# Catch-all: varian .env apa pun (.env.local, .env.lama-documents, .env.production)
+# berisi kredensial dan tidak boleh ter-commit. .env.example tetap dilacak.
+.env.*
+!.env.example
+# Konfigurasi alat bantu per mesin: settings.local.json berisi izin lokal, launch.json
+# menyimpan IP mesin yang menjalankannya.
+/.claude
 .phpactor.json
 .phpunit.result.cache
 /.fleet
