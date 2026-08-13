@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\KpiWorkRelation;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +15,13 @@ return new class extends Migration
      * sama saja dengan "Lina → Rhomadoni" padahal yang pertama pengawasan dan yang kedua serah
      * terima barang. Manajer yang meninjau peta tidak punya cara membedakannya.
      *
+     * ══ Kenapa nilainya literal ══
+     *
+     * Kolom ini sempat memakai konstanta App\Models\KpiWorkRelation::NATURE_DIRECT. Konstanta itu
+     * dihapus dari model saat migrasi 000021 mencabut kolomnya, dan akibatnya seluruh rantai migrasi
+     * mati di basis data baru — "Undefined constant". Migrasi adalah potret skema pada satu titik
+     * waktu; ia harus berdiri sendiri, tidak ikut berubah saat kode aplikasi berubah.
+     *
      * Yang TIDAK masuk sini: pembedaan "disebut langsung / turunan divisi / tebakan". Itu soal
      * dari mana keterangannya berasal — riwayat proses konfirmasi, bukan sifat hubungannya —
      * jadi tempatnya memang di lembar konfirmasi, bukan di kolom basis data.
@@ -23,7 +29,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('kpi_work_relations', function (Blueprint $table) {
-            $table->string('nature', 16)->default(KpiWorkRelation::NATURE_DIRECT)->after('label');
+            $table->string('nature', 16)->default('direct')->after('label');
         });
 
         $this->backfillOversight();
@@ -76,7 +82,7 @@ return new class extends Migration
                 ->where('label', $label)
                 ->where('from_employee_id', $ids[$from])
                 ->where('to_employee_id', $ids[$to])
-                ->update(['nature' => KpiWorkRelation::NATURE_OVERSIGHT]);
+                ->update(['nature' => 'oversight']);
         }
     }
 };

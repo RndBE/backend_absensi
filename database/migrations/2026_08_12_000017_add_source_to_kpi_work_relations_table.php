@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\KpiWorkRelation;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -20,16 +19,21 @@ return new class extends Migration
      * Dengan kolom ini seeder hanya berkuasa atas barisnya sendiri, dan kedua sumber bisa hidup
      * berdampingan: seeder tetap otoritatif untuk peta hasil konfirmasi manajemen, admin bebas
      * menambah rantai baru tanpa takut tertimpa.
+     *
+     * Nilainya ditulis sebagai literal, bukan lewat konstanta App\Models\KpiWorkRelation. Migrasi
+     * adalah potret skema pada satu titik waktu dan harus tetap jalan meski kode aplikasi berubah;
+     * migrasi 000019 sempat memakai konstanta model, konstantanya dihapus, dan seluruh rantai
+     * migrasi mati di basis data baru.
      */
     public function up(): void
     {
         Schema::table('kpi_work_relations', function (Blueprint $table) {
-            $table->string('source', 16)->default(KpiWorkRelation::SOURCE_MANUAL)->after('label');
+            $table->string('source', 16)->default('manual')->after('label');
         });
 
         // Semua baris yang sudah ada dibuat seeder — 98 pasangan hasil konfirmasi manajemen
         // plus 6 yang sudah dinonaktifkan. Bawaan kolom 'manual' hanya berlaku untuk baris baru.
-        DB::table('kpi_work_relations')->update(['source' => KpiWorkRelation::SOURCE_SEEDER]);
+        DB::table('kpi_work_relations')->update(['source' => 'seeder']);
     }
 
     public function down(): void
