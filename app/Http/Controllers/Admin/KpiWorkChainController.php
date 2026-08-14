@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\KpiWorkRelation;
+use App\Models\KpiWorkChainEditLog;
 use App\Support\KpiWorkChainOverseers;
+use App\Support\KpiWorkChainReviewLinks;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -91,7 +93,7 @@ class KpiWorkChainController extends Controller
     }
 
     /** Rantai baru: label belum dipakai, lalu pasangan dari perkalian kedua sisi. */
-    public function store(Request $request)
+    public function store(Request $request, KpiWorkChainReviewLinks $links)
     {
         $admin = Employee::find(session('admin_id'));
 
@@ -107,13 +109,15 @@ class KpiWorkChainController extends Controller
             return back()->with('error', 'Tidak ada pasangan yang bisa dibuat — periksa pilihan kedua sisi.')->withInput();
         }
 
+        $this->record($links, $request, $admin, KpiWorkChainEditLog::ACTION_CREATE_CHAIN, $data['label'], ['count' => $created]);
+
         return redirect()
             ->route('admin.kpi-work-chains.index', ['chain' => Str::slug($data['label'])])
             ->with('success', "Rantai \"{$data['label']}\" dibuat dengan {$created} pasangan.");
     }
 
     /** Tambah pasangan ke rantai yang sudah ada. Label diambil dari rantai, bukan dari input. */
-    public function addPairs(Request $request)
+    public function addPairs(Request $request, KpiWorkChainReviewLinks $links)
     {
         $admin = Employee::find(session('admin_id'));
 
@@ -133,6 +137,10 @@ class KpiWorkChainController extends Controller
 
         $created = $this->writePairs($admin->company_id, $data['label'], $data['from'], $data['to']);
 
+        if ($created > 0) {
+            $this->record($links, $request, $admin, KpiWorkChainEditLog::ACTION_ADD, $data['label'], ['count' => $created]);
+        }
+
         $message = $created > 0
             ? "{$created} pasangan ditambahkan ke \"{$data['label']}\"."
             : 'Semua pasangan yang dipilih sudah ada di rantai ini.';
@@ -151,13 +159,22 @@ class KpiWorkChainController extends Controller
      * pasangannya masih tercantum di `$workChains` — di situ berkas seeder yang berkuasa. Pesan
      * baliknya menyebut itu supaya admin tidak menebak-nebak kenapa pasangannya muncul lagi.
      */
-    public function destroy(KpiWorkRelation $kpiWorkRelation)
+    public function destroy(Request $request, KpiWorkRelation $kpiWorkRelation, KpiWorkChainReviewLinks $links)
     {
         $admin = Employee::find(session('admin_id'));
         abort_if($kpiWorkRelation->company_id !== $admin->company_id, 403);
 
         $fromSeeder = $kpiWorkRelation->isFromSeeder();
+        $detail = [
+            'from' => $kpiWorkRelation->from?->full_name,
+            'to' => $kpiWorkRelation->to?->full_name,
+            'was_from_seeder' => $fromSeeder,
+        ];
+        $label = $kpiWorkRelation->label;
+
         $kpiWorkRelation->delete();
+
+        $this->record($links, $request, $admin, KpiWorkChainEditLog::ACTION_DELETE_PAIR, $label, $detail);
 
         $message = 'Pasangan dihapus.';
 
@@ -169,7 +186,7 @@ class KpiWorkChainController extends Controller
     }
 
     /** Hapus seluruh pasangan satu rantai sekaligus. */
-    public function destroyChain(Request $request)
+    public function destroyChain(Request $request, KpiWorkChainReviewLinks $links)
     {
         $admin = Employee::find(session('admin_id'));
 
@@ -186,6 +203,8 @@ class KpiWorkChainController extends Controller
         $fromSeeder = $rows->contains(fn ($row) => $row->isFromSeeder());
 
         KpiWorkRelation::whereIn('id', $rows->pluck('id'))->delete();
+
+        $this->record($links, $request, $admin, KpiWorkChainEditLog::ACTION_DELETE_CHAIN, $label, ['count' => $rows->count()]);
 
         $message = "Rantai \"{$label}\" dihapus — {$rows->count()} pasangan.";
 
@@ -256,6 +275,31 @@ class KpiWorkChainController extends Controller
             'from' => $from->all(),
             'to' => $to->all(),
         ];
+    }
+
+    /**
+     * Catat perubahan ke riwayat yang sama dengan tautan tinjauan Manajer. Satu tabel untuk kedua
+     * jalur: riwayat yang terpecah dua tempat tidak bisa dibaca sebagai satu urutan kejadian.
+     *
+     * @param  array<string, mixed>  $detail
+     */
+    private function record(
+        KpiWorkChainReviewLinks $links,
+        Request $request,
+        Employee $admin,
+        string $action,
+        string $label,
+        array $detail,
+    ): void {
+        $links->log(
+            $admin->company_id,
+            KpiWorkChainEditLog::SOURCE_ADMIN,
+            $action,
+            $label,
+            $detail,
+            $request,
+            $admin->id,
+        );
     }
 
     /**

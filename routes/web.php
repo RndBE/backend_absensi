@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\KpiPeriodController;
 use App\Http\Controllers\Admin\KpiProcessingController;
 use App\Http\Controllers\Admin\KpiRelationGraphController;
 use App\Http\Controllers\Admin\KpiWorkChainController;
+use App\Http\Controllers\KpiWorkChainReviewController;
 use App\Http\Controllers\Admin\KpiResultController;
 use App\Http\Controllers\Admin\LeaveBalanceController;
 use App\Http\Controllers\Admin\LeavePolicyController;
@@ -77,6 +78,23 @@ use Illuminate\Support\Facades\Route;
 
 // Redirect root to employee portal
 Route::get('/', fn () => redirect()->route('employee.login'));
+
+/*
+ * Tinjauan peta rantai kerja untuk para Manajer — TANPA LOGIN, dibuka lewat tautan bertoken.
+ *
+ * Di luar middleware admin dengan sengaja: manajer tidak punya akun admin, dan membuatkan mereka
+ * satu berarti memberi jalan masuk permanen ke seluruh HRIS termasuk payroll, hanya untuk
+ * pekerjaan sepekan. Kewenangan halamannya dipangkas (tidak bisa membuat/menghapus rantai) dan
+ * setiap perubahan dicatat — lihat KpiWorkChainReviewController.
+ *
+ * `throttle` menahan penebakan token: 64 karakter acak praktis tidak bisa ditebak, tapi pembatasan
+ * laju membuat percobaan massal berhenti lebih awal daripada mengandalkan panjang token saja.
+ */
+Route::middleware('throttle:30,1')->group(function () {
+    Route::get('/tinjau/rantai-kerja/{token}', [KpiWorkChainReviewController::class, 'show'])->name('kpi-review.show');
+    Route::post('/tinjau/rantai-kerja/{token}/pasangan', [KpiWorkChainReviewController::class, 'addPairs'])->name('kpi-review.add-pairs');
+    Route::delete('/tinjau/rantai-kerja/{token}/pasangan/{kpiWorkRelation}', [KpiWorkChainReviewController::class, 'destroyPair'])->name('kpi-review.destroy-pair');
+});
 
 // Employee Portal Auth
 Route::get('/employee/login', [EmployeeAuthController::class, 'showLogin'])->name('employee.login');

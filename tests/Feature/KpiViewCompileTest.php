@@ -34,21 +34,30 @@ class KpiViewCompileTest extends TestCase
     }
 
     /** @return array<int, string> */
+    /**
+     * Halaman tinjauan Manajer ikut diperiksa meski letaknya di luar `admin/kpi`: ia bagian modul
+     * KPI, dibuka tanpa login, dan galat Blade di sana muncul di hadapan orang luar tim.
+     *
+     * @return array<int, string>
+     */
     private function viewFiles(): array
     {
-        $directory = resource_path('views/admin/kpi');
-
-        if (! is_dir($directory)) {
-            return [];
-        }
-
-        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory));
         $files = [];
 
-        foreach ($iterator as $file) {
-            if ($file->isFile() && str_ends_with($file->getFilename(), '.blade.php')
-                && ! str_starts_with($file->getFilename(), '._')) {
-                $files[] = $file->getPathname();
+        foreach (['views/admin/kpi', 'views/review'] as $relative) {
+            $directory = resource_path($relative);
+
+            if (! is_dir($directory)) {
+                continue;
+            }
+
+            $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory));
+
+            foreach ($iterator as $file) {
+                if ($file->isFile() && str_ends_with($file->getFilename(), '.blade.php')
+                    && ! str_starts_with($file->getFilename(), '._')) {
+                    $files[] = $file->getPathname();
+                }
             }
         }
 
