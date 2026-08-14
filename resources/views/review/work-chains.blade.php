@@ -54,9 +54,10 @@
         </p>
         <p class="text-[12px] text-indigo-800 mt-2">
             Baris <em>Diketahui</em> tidak perlu diisi — dihitung otomatis dari garis atasan tiap peserta.
-            Halaman ini bisa <strong>menghapus pasangan yang salah</strong> dan
-            <strong>menambah yang terlewat</strong>. Membuat atau menghapus rantai utuh hanya bisa dari
-            HRIS internal.
+            Halaman ini bisa <strong>menghapus pasangan yang salah</strong>,
+            <strong>menambah yang terlewat</strong>, dan <strong>membuat rantai baru</strong> kalau ada
+            alur kerja yang belum tercatat sama sekali. Menghapus rantai utuh sekaligus hanya bisa dari
+            HRIS internal — kalau seluruh rantai memang salah, hapus pasangannya satu per satu.
         </p>
     </div>
 
@@ -155,6 +156,39 @@
     </article>
     @endforeach
 
+    {{-- ── Rantai baru ── --}}
+    <article id="rantai-baru" class="bg-white rounded-xl border-2 border-dashed border-indigo-200 shadow-sm mt-6 scroll-mt-4">
+        <div class="px-5 py-3.5 border-b border-indigo-100">
+            <h2 class="text-[14px] font-bold text-gray-900">Ada alur kerja yang belum tercatat?</h2>
+            <p class="text-[11px] text-gray-400 mt-0.5">
+                Namai prosesnya, bukan orangnya. Pasangan dibuat dari perkalian kedua sisi — 3 orang di
+                kiri dan 2 di kanan menghasilkan 6 pasangan.
+            </p>
+        </div>
+        <form action="{{ route('kpi-review.store', ['token' => $token]) }}" method="POST" class="px-5 py-4" data-pair-form>
+            @csrf
+            <div class="mb-4">
+                <label for="rantai-baru-label" class="block text-[11px] font-semibold text-gray-600 mb-1">Nama rantai</label>
+                <input type="text" name="label" id="rantai-baru-label" required maxlength="80"
+                    value="{{ old('label') }}"
+                    placeholder="misal: Serah terima dokumen proyek"
+                    class="w-full sm:max-w-md px-3 py-2 border border-gray-300 rounded-lg text-[13px] outline-none focus:border-indigo-500">
+            </div>
+            {{-- Pemilih dirender langsung, bukan dikloning: form ini selalu terbuka dan hanya di sini
+                 old() perlu bekerja, karena inilah yang paling mungkin ditolak validasi. --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                @include('admin.kpi.work-chains._side', ['side' => 'from', 'candidates' => $candidates, 'withOld' => true])
+                @include('admin.kpi.work-chains._side', ['side' => 'to', 'candidates' => $candidates, 'withOld' => true])
+            </div>
+            <div class="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                <p class="text-[11px] text-gray-500" data-pair-count>Pilih kedua sisi.</p>
+                <button type="submit" class="px-4 py-2 text-[12px] font-semibold text-white bg-gradient-to-br from-indigo-600 to-indigo-400 rounded-lg shadow-sm cursor-pointer">
+                    Buat rantai
+                </button>
+            </div>
+        </form>
+    </article>
+
     {{-- ── Catatan perubahan, diperlihatkan apa adanya ── --}}
     <section class="bg-white rounded-xl border border-gray-200 shadow-sm mt-6">
         <div class="px-5 py-3.5 border-b border-gray-100">
@@ -252,6 +286,14 @@
             panel.addEventListener('toggle', function () {
                 if (panel.open) { fill(form); }
             });
+        });
+
+        // Form rantai baru berada di luar <details> dan pemilihnya sudah dirender server.
+        document.querySelectorAll('[data-pair-form]').forEach(function (form) {
+            if (! form.closest('details')) {
+                wireFilters(form);
+                wireCounter(form);
+            }
         });
     })();
 </script>

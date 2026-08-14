@@ -84,7 +84,7 @@ Route::get('/', fn () => redirect()->route('employee.login'));
  *
  * Di luar middleware admin dengan sengaja: manajer tidak punya akun admin, dan membuatkan mereka
  * satu berarti memberi jalan masuk permanen ke seluruh HRIS termasuk payroll, hanya untuk
- * pekerjaan sepekan. Kewenangan halamannya dipangkas (tidak bisa membuat/menghapus rantai) dan
+ * pekerjaan sepekan. Kewenangan halamannya dipangkas (tidak bisa menghapus rantai utuh) dan
  * setiap perubahan dicatat — lihat KpiWorkChainReviewController.
  *
  * `throttle` menahan penebakan token: 64 karakter acak praktis tidak bisa ditebak, tapi pembatasan
@@ -92,6 +92,7 @@ Route::get('/', fn () => redirect()->route('employee.login'));
  */
 Route::middleware('throttle:30,1')->group(function () {
     Route::get('/tinjau/rantai-kerja/{token}', [KpiWorkChainReviewController::class, 'show'])->name('kpi-review.show');
+    Route::post('/tinjau/rantai-kerja/{token}/rantai', [KpiWorkChainReviewController::class, 'store'])->name('kpi-review.store');
     Route::post('/tinjau/rantai-kerja/{token}/pasangan', [KpiWorkChainReviewController::class, 'addPairs'])->name('kpi-review.add-pairs');
     Route::delete('/tinjau/rantai-kerja/{token}/pasangan/{kpiWorkRelation}', [KpiWorkChainReviewController::class, 'destroyPair'])->name('kpi-review.destroy-pair');
 });

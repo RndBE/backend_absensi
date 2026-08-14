@@ -21,12 +21,14 @@ use Illuminate\Validation\Rule;
  * Tautan tanpa login bisa diteruskan ke grup obrolan tanpa disadari, jadi kewenangannya sengaja
  * dipangkas ke yang benar-benar dibutuhkan untuk memeriksa peta:
  *
- *   boleh  : menambah pasangan ke rantai yang ada, menghapus satu pasangan
- *   tidak  : membuat rantai baru, menghapus seluruh rantai
+ *   boleh  : membuat rantai baru, menambah pasangan, menghapus satu pasangan
+ *   tidak  : menghapus seluruh rantai sekaligus
  *
- * Membuat dan menghapus rantai adalah tindakan struktural — satu klik bisa melenyapkan 15 baris —
- * dan itu tetap di halaman admin yang berlogin. Manajer yang merasa sebuah rantai harus dihapus
- * bisa menghapus pasangannya satu per satu; jejaknya lengkap di catatan perubahan.
+ * Pembuatan rantai dibuka atas permintaan manajemen 14 Agustus 2026. Risikonya tidak sebanding
+ * dengan penghapusan: rantai baru menambah baris yang kelihatan dan bisa dihapus satu-satu,
+ * sedangkan sekali klik hapus-rantai melenyapkan belasan baris. Karena itu penghapusan rantai utuh
+ * tetap di halaman admin yang berlogin; manajer yang merasa sebuah rantai harus hilang bisa
+ * menghapus pasangannya satu per satu, dan jejaknya lengkap di catatan perubahan.
  *
  * Setiap perubahan dicatat beserta pelaku, sumber, IP, dan peramban. Halaman ini juga menampilkan
  * catatan itu apa adanya kepada manajernya — kalau ada yang salah ubah, dia yang paling cepat tahu.
@@ -57,6 +59,49 @@ class KpiWorkChainReviewController extends Controller
         $links->markUsed($reviewer, $request);
 
         return view('review.work-chains', $this->pageData($reviewer, $token, $overseers));
+    }
+
+    /** Rantai baru dari tautan tinjauan. Label wajib belum terpakai — bukan alat mengubah nama. */
+    public function store(Request $request, string $token, KpiWorkChainReviewLinks $links)
+    {
+        $reviewer = $this->usableOrFail($token, $links);
+
+        $data = $this->validatePayload($request, $reviewer->company_id);
+
+        if (is_string($data)) {
+            return back()->with('error', $data)->withInput();
+        }
+
+        $taken = KpiWorkRelation::where('company_id', $reviewer->company_id)
+            ->where('label', $data['label'])
+            ->exists();
+
+        if ($taken) {
+            return back()
+                ->with('error', "Rantai \"{$data['label']}\" sudah ada. Tambahkan pasangannya dari kartu rantai itu.")
+                ->withInput();
+        }
+
+        $created = $this->writePairs($reviewer->company_id, $data['label'], $data['from'], $data['to']);
+
+        if ($created === 0) {
+            return back()->with('error', 'Tidak ada pasangan yang bisa dibuat — periksa pilihan kedua sisi.')->withInput();
+        }
+
+        $links->log(
+            $reviewer->company_id,
+            KpiWorkChainEditLog::SOURCE_REVIEW,
+            KpiWorkChainEditLog::ACTION_CREATE_CHAIN,
+            $data['label'],
+            ['count' => $created, 'from' => count($data['from']), 'to' => count($data['to'])],
+            $request,
+            $reviewer->employee_id,
+            $reviewer->id,
+        );
+
+        return redirect()
+            ->route('kpi-review.show', ['token' => $token, 'chain' => Str::slug($data['label'])])
+            ->with('success', "Rantai \"{$data['label']}\" dibuat dengan {$created} pasangan.");
     }
 
     public function addPairs(Request $request, string $token, KpiWorkChainReviewLinks $links)
