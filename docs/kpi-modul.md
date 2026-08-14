@@ -4,7 +4,7 @@ Dokumen ini mencatat **apa yang sudah dibangun** dan **keputusan yang diambil** 
 `kpi-framework.md` ke aplikasi. Kerangka itu tetap acuan normatif; berkas ini menjelaskan wujud
 nyatanya di kode dan di mana implementasinya sengaja menyimpang.
 
-Terakhir diperbarui: 12 Agustus 2026.
+Terakhir diperbarui: 14 Agustus 2026.
 
 ---
 
@@ -12,12 +12,12 @@ Terakhir diperbarui: 12 Agustus 2026.
 
 | Hal | Angka |
 |---|---|
-| Migration | 21 (`2026_08_10_000001` … `2026_08_12_000021`) |
-| Model | 22 (`app/Models/Kpi*.php`) |
-| Controller admin | 13 (`app/Http/Controllers/Admin/Kpi*.php`) |
-| Kelas pendukung | 9 (`app/Support/Kpi*.php`) |
-| View | 23 (`resources/views/admin/kpi/`) |
-| Route admin | 55 |
+| Migration | 22 (`2026_08_10_000001` … `2026_08_13_000022`) |
+| Model | 24 (`app/Models/Kpi*.php`) |
+| Controller admin | 13 (`app/Http/Controllers/Admin/Kpi*.php`) + 1 publik (`KpiWorkChainReviewController`) |
+| Kelas pendukung | 10 (`app/Support/Kpi*.php`) |
+| View | 25 — 23 di `admin/kpi/`, 2 di `review/` |
+| Route admin | 55 + 4 publik bertoken |
 | Seeder | 2 (`KpiFrameworkSeeder`, `KpiOrgWiringSeeder`) |
 | Test | 56 di 8 berkas (`tests/Feature/Kpi*Test.php`) |
 | Izin akses | 12 kunci `kpi.*` di `config/admin_permissions.php` |
@@ -150,6 +150,7 @@ php artisan view:cache && npm run build
 | `2026_08_12_000019_add_nature_to_kpi_work_relations_table` | `nature` — salah rancang, digantikan `000020` |
 | `2026_08_12_000020_replace_nature_with_oversight_side_...` | `oversight_side` — juga salah rancang, digantikan `000021` |
 | `2026_08_12_000021_drop_oversight_side_...` | pengawasan tidak disimpan — diturunkan dari `manager_id` |
+| `2026_08_13_000022_create_kpi_work_chain_review_tables` | tautan tinjauan Manajer + catatan perubahan |
 
 ### 3.2 Kelas pendukung (`app/Support/`)
 
@@ -164,6 +165,7 @@ php artisan view:cache && npm run build
 | `KpiFollowUp` | ambang rencana perbaikan dan PIP |
 | `KpiAttendanceScore` | tangga skor dari data absensi |
 | `KpiWorkChainOverseers` | atasan yang dianggap mengetahui sebuah rantai kerja |
+| `KpiWorkChainReviewLinks` | menerbitkan/memverifikasi tautan tinjauan, mencatat perubahan |
 
 ---
 
@@ -451,8 +453,8 @@ ditinjau.
 arahnya dicatat karena berguna saat menelusuri hambatan, meski di graf digambar sebagai satu garis.
 
 Nama **bertanda tebal** adalah Manajer yang masuk atas dasar pengawasan, bukan serah terima langsung
-— lihat [§6.2](#62-manajer-masuk-atas-dasar-pengawasan). Beberapa rantai punya lebih dari satu baris
-karena sisinya berbeda — lihat [§6.3](#63-satu-label-boleh-muncul-lebih-dari-sekali).
+— lihat [§6.3](#63-manajer-masuk-atas-dasar-pengawasan). Beberapa rantai punya lebih dari satu baris
+karena sisinya berbeda — lihat [§6.4](#64-satu-label-boleh-muncul-lebih-dari-sekali).
 
 | Label | Dari | Ke | Pasangan |
 |---|---|---|---|
@@ -542,7 +544,7 @@ keterangan itu terang-terangan, bukan dibiarkan kosong.
 
 **Penambahan selalu meminta kedua sisi sekaligus**, tidak menambah orang ke satu sisi saja. Alasannya
 sama dengan yang membuat `$workChains` perlu dipecah jadi beberapa baris berlabel sama
-([§6.3](#63-satu-label-boleh-muncul-lebih-dari-sekali)): menambah satu nama ke sisi "dari" ikut
+([§6.4](#64-satu-label-boleh-muncul-lebih-dari-sekali)): menambah satu nama ke sisi "dari" ikut
 melahirkan pasangan ke seluruh sisi "ke". Jumlah pasangan yang akan lahir ditampilkan sebelum
 disimpan, dan sekali simpan dibatasi 60 pasangan (`MAX_PAIRS_PER_SUBMIT`).
 
@@ -563,7 +565,48 @@ Menghapus baris `source = seeder` hanya bertahan sampai `db:seed` berikutnya kal
 tercantum di `$workChains` — di situ berkas seeder yang berkuasa. Pesan balik dan dialog konfirmasi
 menyebutkan itu, supaya admin tidak menebak-nebak kenapa pasangannya muncul lagi.
 
-### 6.2 Manajer masuk atas dasar pengawasan
+### 6.2 Tautan tinjauan Manajer — tanpa login
+
+Menu tidak ada: halaman ini hanya dijangkau lewat tautan bertoken, satu per Manajer.
+
+```bash
+php artisan kpi:review-links                 # terbitkan untuk semua Manajer (L2)
+php artisan kpi:review-links --name="NOFIYANTO" --days=14
+php artisan kpi:review-links --list          # jejak pemakaian; tautannya TIDAK bisa ditampilkan ulang
+php artisan kpi:review-links --revoke-all
+```
+
+**Kenapa tanpa login.** Manajer perlu memeriksa peta sekali dua kali lalu selesai. Membuatkan mereka
+akun admin berarti memberi jalan masuk permanen ke seluruh HRIS — termasuk payroll — untuk pekerjaan
+sepekan.
+
+**Yang menahan risikonya.** Token 64 karakter disimpan sebagai `sha256`, mengikuti
+`employee_magic_links`; kebocoran basis data tidak menyerahkan tautan yang bisa dipakai. Tautan bisa
+kedaluwarsa dan dicabut, punya `throttle:30,1`, ber-`noindex` dan `no-referrer`, dan setiap pembukaan
+dicatat. Berbeda dari magic link portal, tautan ini **bukan sekali pakai** — manajer membukanya
+berkali-kali selama masa tinjauan.
+
+| Kewenangan | Tautan tinjauan | Halaman admin |
+|---|---|---|
+| Lihat seluruh rantai | ✔ | ✔ |
+| Hapus satu pasangan | ✔ | ✔ |
+| Tambah pasangan | ✔ | ✔ |
+| Buat rantai baru | ✔ (sejak 14 Agu 2026) | ✔ |
+| Hapus rantai utuh | — | ✔ |
+
+Penghapusan rantai utuh sengaja ditahan: membuat rantai menambah baris yang kelihatan dan bisa
+dihapus satu-satu, sedangkan sekali klik hapus-rantai melenyapkan belasan baris — dan tautan tanpa
+login bisa diteruskan ke grup obrolan tanpa disadari.
+
+**Catatan perubahan** masuk `kpi_work_chain_edit_logs` beserta pelaku, sumber (`review` / `admin`),
+IP, dan peramban. Halaman admin ikut mencatat ke tabel yang sama supaya riwayatnya bisa dibaca
+sebagai satu urutan kejadian, bukan terpecah dua tempat. Catatannya **ditampilkan di halaman
+tinjauan itu sendiri**: kalau ada yang salah ubah atas nama seorang manajer, dia yang paling cepat
+menyadarinya.
+
+Rantai yang menyentuh divisi si peninjau diurutkan paling atas — itu yang paling dia kenal.
+
+### 6.3 Manajer masuk atas dasar pengawasan
 
 Keputusan manajemen 12 Agustus 2026, menjawab temuan bahwa Subarkah dan Nofiyanto tidak muncul di
 rantai mana pun sementara Manajer Marketing dan Manajer FAT muncul: **keduanya memang ikut, karena
@@ -582,7 +625,7 @@ disebut manajemen. Memasukkan Subarkah dan Nofiyanto ke setiap rantai yang diiku
 adalah keputusan terpisah yang belum diambil: puluhan pasangan tambahan akan membuat keduanya tampak
 lebih padat daripada orang yang benar-benar mengerjakan serah terima.
 
-### 6.3 Satu label boleh muncul lebih dari sekali
+### 6.4 Satu label boleh muncul lebih dari sekali
 
 Pasangan dihasilkan dari perkalian `from` × `to`, jadi satu baris tidak bisa menyatakan "Zainni ke
 Marketing" tanpa sekaligus membuat "Maritza ke Marketing" kalau keduanya berada di `from` yang sama.
@@ -594,7 +637,7 @@ Rantai yang punya beberapa sisi berbeda karena itu dipecah jadi beberapa baris b
 ada pasangan yang terulang. **Jangan gabungkan baris berlabel sama "supaya rapi"** — itu akan
 memunculkan pasangan yang tidak pernah dikonfirmasi siapa pun.
 
-### 6.4 Dasar setiap pasangan
+### 6.5 Dasar setiap pasangan
 
 Dicatat di lembar konfirmasi, bukan di basis data — kolom `label` hanya menyimpan nama rantai.
 
