@@ -22,8 +22,25 @@ class KpiIndicatorController extends Controller
 
         $selectedLevel = $levels->firstWhere('code', $request->query('level')) ?? $levels->firstWhere('is_assessed', true) ?? $levels->first();
 
+        /*
+         * Halaman ini punya dua mode. Tanpa ?employee= ia menampilkan indikator BAWAAN level;
+         * dengan ?employee= ia menampilkan indikator milik orang itu.
+         *
+         * Keduanya sengaja tidak dicampur dalam satu tabel. Bobot tiap set harus berjumlah 100
+         * sendiri-sendiri, dan menampilkannya berdampingan membuat admin menjumlahkan dua set
+         * berbeda lalu mengira bobotnya lewat dari 100.
+         */
+        $selectedEmployee = $request->filled('employee')
+            ? Employee::where('company_id', $admin->company_id)->find((int) $request->query('employee'))
+            : null;
+
+        if ($selectedEmployee && $selectedEmployee->kpi_level_id) {
+            $selectedLevel = $levels->firstWhere('id', $selectedEmployee->kpi_level_id) ?? $selectedLevel;
+        }
+
         $indicators = $selectedLevel
             ? KpiIndicator::where('kpi_level_id', $selectedLevel->id)
+                ->when($selectedEmployee, fn ($q) => $q->ownedBy($selectedEmployee->id), fn ($q) => $q->levelDefault())
                 ->withCount('rubrics')
                 ->orderBy('category')
                 ->orderBy('sort_order')
@@ -31,11 +48,26 @@ class KpiIndicatorController extends Controller
                 ->groupBy('category')
             : collect();
 
+        // Daftar karyawan yang sudah punya indikator sendiri, supaya admin tahu siapa saja yang
+        // menyimpang dari bawaan level tanpa harus membuka satu per satu.
+        $withOwnIndicators = Employee::where('company_id', $admin->company_id)
+            ->whereHas('kpiIndicators')
+            ->withCount('kpiIndicators')
+            ->orderBy('full_name')
+            ->get(['id', 'full_name', 'position', 'kpi_level_id']);
+
+        $candidates = Employee::where('company_id', $admin->company_id)
+            ->where('is_active', true)
+            ->where('is_kpi_excluded', false)
+            ->whereNotNull('kpi_level_id')
+            ->orderBy('full_name')
+            ->get(['id', 'full_name', 'position', 'kpi_level_id']);
+
         // Jumlah bobot per kategori ditampilkan langsung di header tabel — kesalahan bobot
         // paling mudah terlihat saat admin sedang mengedit, bukan saat periode gagal dibuka.
         $weightTotals = $indicators->map(fn ($rows) => (float) $rows->where('is_active', true)->sum('weight'));
 
-        return view('admin.kpi.indicators.index', compact('levels', 'selectedLevel', 'indicators', 'weightTotals'));
+        return view('admin.kpi.indicators.index', compact('levels', 'selectedLevel', 'selectedEmployee', 'indicators', 'weightTotals', 'withOwnIndicators', 'candidates'));
     }
 
     public function store(Request $request)
@@ -46,9 +78,21 @@ class KpiIndicatorController extends Controller
 
         $level = KpiLevel::where('company_id', $admin->company_id)->findOrFail($data['kpi_level_id']);
 
+        $owner = $request->filled('employee_id')
+            ? Employee::where('company_id', $admin->company_id)->findOrFail((int) $request->input('employee_id'))
+            : null;
+
+        // Indikator pribadi hanya untuk General Excellence — itu satu-satunya kategori yang isinya
+        // "tugas inti jabatan" (Bab 1.1), yang memang berbeda tiap orang. Kolomnya sendiri tidak
+        // dibatasi di basis data; yang dibatasi di sini, supaya perluasan nanti tidak perlu migrasi.
+        if ($owner && $data['category'] !== KpiLevel::CATEGORY_EXCELLENCE) {
+            return back()->with('error', 'Indikator per orang hanya untuk General Excellence. Kategori lain tetap seragam per level.');
+        }
+
         $indicator = KpiIndicator::create([
             'company_id' => $admin->company_id,
             'kpi_level_id' => $level->id,
+            'employee_id' => $owner?->id,
             'category' => $data['category'],
             'code' => $data['code'],
             'name' => $data['name'],
@@ -57,13 +101,17 @@ class KpiIndicatorController extends Controller
             'is_core' => $request->boolean('is_core'),
             'is_auto_filled' => $request->filled('auto_source'),
             'auto_source' => $request->input('auto_source') ?: null,
-            'sort_order' => (int) KpiIndicator::where('kpi_level_id', $level->id)->where('category', $data['category'])->max('sort_order') + 1,
+            'sort_order' => (int) KpiIndicator::where('kpi_level_id', $level->id)
+                ->when($owner, fn ($q) => $q->ownedBy($owner->id), fn ($q) => $q->levelDefault())
+                ->where('category', $data['category'])->max('sort_order') + 1,
             'is_active' => true,
         ]);
 
         $this->seedGenericRubric($indicator);
 
-        return back()->with('success', "Indikator {$indicator->code} berhasil ditambahkan.");
+        return back()->with('success', $owner
+            ? "Indikator {$indicator->code} ditambahkan untuk {$owner->full_name}."
+            : "Indikator {$indicator->code} berhasil ditambahkan.");
     }
 
     public function update(Request $request, KpiIndicator $kpiIndicator)

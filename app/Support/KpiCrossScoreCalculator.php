@@ -217,12 +217,23 @@ class KpiCrossScoreCalculator
             ->with('employee:id,kpi_level_id')
             ->get();
 
-        $indicators = $period->indicatorSnapshots()
+        $autoFilled = $period->indicatorSnapshots()
             ->where('is_auto_filled', true)
             ->where('auto_source', KpiIndicator::SOURCE_CROSS_ASSESSMENT)
             ->with('levelSnapshot:id,kpi_level_id')
-            ->get()
+            ->get();
+
+        // Bawaan level, dipakai orang yang tidak punya indikator sendiri.
+        $indicators = $autoFilled
+            ->whereNull('employee_id')
             ->groupBy(fn ($snapshot) => $snapshot->levelSnapshot?->kpi_level_id);
+
+        // Indikator pribadi menang atas bawaan levelnya — aturan yang sama dengan KpiIndicatorSet.
+        // Tanpa ini, karyawan yang punya set sendiri akan diisi indikator milik levelnya, yang
+        // bahkan tidak ada di formulir yang dia isi.
+        $ownedIndicators = $autoFilled
+            ->whereNotNull('employee_id')
+            ->groupBy('employee_id');
 
         $filled = 0;
 
@@ -234,7 +245,11 @@ class KpiCrossScoreCalculator
                 continue;
             }
 
-            foreach ($indicators->get($assessment->employee?->kpi_level_id) ?? [] as $indicator) {
+            $applicable = $ownedIndicators->get($assessment->employee_id)
+                ?? $indicators->get($assessment->employee?->kpi_level_id)
+                ?? [];
+
+            foreach ($applicable as $indicator) {
                 KpiAssessmentScore::updateOrCreate(
                     [
                         'kpi_assessment_id' => $assessment->id,

@@ -95,6 +95,8 @@ trait CreatesKpiSchema
             $table->id();
             $table->unsignedBigInteger('company_id');
             $table->unsignedBigInteger('kpi_level_id');
+            // NULL = indikator bawaan level; terisi = milik satu orang (App\Support\KpiIndicatorSet).
+            $table->unsignedBigInteger('employee_id')->nullable();
             $table->string('category', 2);
             $table->string('code', 20);
             $table->string('name');
@@ -152,6 +154,7 @@ trait CreatesKpiSchema
             $table->id();
             $table->unsignedBigInteger('kpi_period_id');
             $table->unsignedBigInteger('kpi_indicator_id')->nullable();
+            $table->unsignedBigInteger('employee_id')->nullable();
             $table->unsignedBigInteger('kpi_period_level_snapshot_id');
             $table->string('category', 2);
             $table->string('code', 20);

@@ -12,14 +12,14 @@ Terakhir diperbarui: 14 Agustus 2026.
 
 | Hal | Angka |
 |---|---|
-| Migration | 22 (`2026_08_10_000001` … `2026_08_13_000022`) |
+| Migration | 23 (`2026_08_10_000001` … `2026_08_14_000023`) |
 | Model | 24 (`app/Models/Kpi*.php`) |
 | Controller admin | 13 (`app/Http/Controllers/Admin/Kpi*.php`) + 1 publik (`KpiWorkChainReviewController`) |
-| Kelas pendukung | 10 (`app/Support/Kpi*.php`) |
+| Kelas pendukung | 11 (`app/Support/Kpi*.php`) |
 | View | 25 — 23 di `admin/kpi/`, 2 di `review/` |
 | Route admin | 55 + 4 publik bertoken |
 | Seeder | 2 (`KpiFrameworkSeeder`, `KpiOrgWiringSeeder`) |
-| Test | 56 di 8 berkas (`tests/Feature/Kpi*Test.php`) |
+| Test | 62 di 9 berkas (`tests/Feature/Kpi*Test.php`) |
 | Izin akses | 12 kunci `kpi.*` di `config/admin_permissions.php` |
 | Menu sidebar | 14 entri |
 
@@ -151,6 +151,7 @@ php artisan view:cache && npm run build
 | `2026_08_12_000020_replace_nature_with_oversight_side_...` | `oversight_side` — juga salah rancang, digantikan `000021` |
 | `2026_08_12_000021_drop_oversight_side_...` | pengawasan tidak disimpan — diturunkan dari `manager_id` |
 | `2026_08_13_000022_create_kpi_work_chain_review_tables` | tautan tinjauan Manajer + catatan perubahan |
+| `2026_08_14_000023_add_employee_to_kpi_indicators` | `employee_id` — indikator Excellence per orang |
 
 ### 3.2 Kelas pendukung (`app/Support/`)
 
@@ -166,6 +167,7 @@ php artisan view:cache && npm run build
 | `KpiAttendanceScore` | tangga skor dari data absensi |
 | `KpiWorkChainOverseers` | atasan yang dianggap mengetahui sebuah rantai kerja |
 | `KpiWorkChainReviewLinks` | menerbitkan/memverifikasi tautan tinjauan, mencatat perubahan |
+| `KpiIndicatorSet` | **satu-satunya** aturan indikator mana yang berlaku untuk seorang karyawan |
 
 ---
 
@@ -201,7 +203,42 @@ Kalau atasan dua tingkat tidak ada, atau ada tetapi levelnya bukan L2, penilai u
 seluruh 100%. Bobot 30% tidak pernah dibiarkan hilang: kalau hilang, nilai akhir orang itu hanya
 terbentuk dari 70% bobot dan tidak sebanding dengan rekan selevelnya.
 
-### 4.2 Bobot perspektif per level
+### 4.2 Indikator Excellence per orang
+
+General Excellence adalah "seberapa baik seseorang mengerjakan **tugas inti jabatannya**" (Bab 1.1).
+Tugas inti welder tidak sama dengan tugas inti staf purchasing, jadi menilai keduanya dengan delapan
+indikator yang sama membuat kategori berbobot terbesar — 70% untuk L4 — justru paling tidak spesifik.
+Keputusan manajemen 14 Agustus 2026: indikator Excellence boleh dirumuskan per orang.
+
+**Bawaan level tetap ada.** `kpi_indicators.employee_id` boleh NULL, dan yang NULL adalah bawaan
+levelnya. Orang tanpa indikator sendiri tetap dinilai dengan bawaan itu — kalau tidak, seluruh 31
+karyawan harus dirumuskan lebih dulu sebelum periode mana pun bisa dibuka.
+
+**Aturannya mengganti, bukan menambah.** Kalau seseorang punya indikator sendiri di sebuah kategori,
+indikator itu menggantikan seluruh set kategori tersebut dari level. Menambah akan membuat jumlah
+bobot kategori lewat dari 100 dan menggeser arti skornya tanpa ada yang menyadari. Kategori yang
+tidak punya indikator pribadi tetap memakai bawaan level, jadi seorang welder bisa punya Excellence
+sendiri sambil tetap dinilai Contribution dan Leadership yang seragam.
+
+Aturan itu hidup **hanya di** [`KpiIndicatorSet`](app/Support/KpiIndicatorSet.php). Indikator dibaca
+di lima tempat — formulir pengisian, penjagaan saat submit, penyimpanan draf, perhitungan skor, dan
+pengisian otomatis CO dari penilaian silang. Kalau aturannya disalin, cukup satu yang tertinggal saat
+aturan berubah dan seseorang dinilai memakai indikator yang bukan miliknya. Persoalan yang sama
+pernah terjadi pada sasaran Lapis B sebelum `KpiCrossTargets` dibuat.
+
+**Penjagaan bobot berlaku sama.** Set pribadi juga harus berjumlah 100 per kategori; kalau tidak,
+periode menolak dibuka dengan pesan yang menyebut nama orangnya. Tanpa itu seseorang bisa dinilai
+dengan kategori berbobot 80% sementara rekan selevelnya 100%, dan selisihnya tidak terlihat di mana
+pun kecuali pada skor akhirnya.
+
+**Snapshot ikut membawa pemiliknya**, jadi mengalihkan atau menghapus indikator setelah periode
+dibuka tidak menggeser penilaian yang sedang berjalan (Bab 7.2).
+
+Diatur di menu **Indikator KPI**: pilih orang di daftar "Lihat indikator milik", lalu tambahkan
+seperti biasa. Antarmuka hanya menerima kategori **EX** — kolomnya sendiri tidak dibatasi di basis
+data, supaya perluasan ke kategori lain nanti tidak perlu migrasi.
+
+### 4.3 Bobot perspektif per level
 
 | Level | Excellence (EX) | Contribution (CO) | Leadership (LD) |
 |---|---|---|---|
@@ -211,7 +248,7 @@ terbentuk dari 70% bobot dan tidak sebanding dengan rekan selevelnya.
 
 Bobot butir di dalam setiap kategori berjumlah 100 untuk semua level.
 
-### 4.3 Penilaian silang dua lapis
+### 4.4 Penilaian silang dua lapis
 
 |  | Lapis A | Lapis B |
 |---|---|---|
@@ -227,7 +264,7 @@ pengisian dan graf relasi. **Jangan disalin lagi ke tempat lain.**
 Sasaran Lapis B = karyawan aktif, tidak dikecualikan, di divisi mitra, yang **L2/L3 atau bertanda
 `is_cross_functional`**.
 
-### 4.4 Campuran A/B per level (Bab 7.9 Langkah 3)
+### 4.5 Campuran A/B per level (Bab 7.9 Langkah 3)
 
 | Level | Lapis A | Lapis B |
 |---|---|---|
@@ -236,14 +273,14 @@ Sasaran Lapis B = karyawan aktif, tidak dikecualikan, di divisi mitra, yang **L2
 | L4 lintas fungsi | 50% | 50% |
 | L4 biasa | 100% | 0% |
 
-### 4.5 Kuorum dan nilai bawaan
+### 4.6 Kuorum dan nilai bawaan
 
 Kuorum Bab 7.7: **minimal 3 penilai dari minimal 2 divisi berbeda**. Gagal kuorum → skor bawaan
 **3,0**. Ketiadaan data bukan berarti kinerja buruk.
 
 Kuorum dihitung pada divisi yang **dinilai**, bukan pada divisi penilai.
 
-### 4.6 Bobot skor silang terhadap nilai akhir
+### 4.7 Bobot skor silang terhadap nilai akhir
 
 Skor kolaborasi masuk lewat indikator kategori CO yang bertanda `auto_source = cross_assessment`:
 
@@ -256,7 +293,7 @@ Skor kolaborasi masuk lewat indikator kategori CO yang bertanda `auto_source = c
 Artinya seluruh mesin penilaian silang — dua lapis, 14 butir, deteksi penyalahgunaan — hanya
 menentukan **5%** nilai akhir seorang staf L4. Lihat [§8](#8-hal-terbuka).
 
-### 4.7 Deteksi penyalahgunaan
+### 4.8 Deteksi penyalahgunaan
 
 | Mekanisme | Ambang | Tindakan |
 |---|---|---|
@@ -268,7 +305,7 @@ menentukan **5%** nilai akhir seorang staf L4. Lihat [§8](#8-hal-terbuka).
 Koreksi kemurahan hati **tidak** ditulis ke baris skor supaya angka mentah penilai tetap utuh dan
 koreksinya bisa dibatalkan.
 
-### 4.8 Ambang tindak lanjut
+### 4.9 Ambang tindak lanjut
 
 | Ambang | Nilai |
 |---|---|
@@ -734,7 +771,7 @@ menandai indikator yang memang bersumber absensi.
 ### 8.5 Porsi skor silang mungkin terlalu kecil
 
 Seluruh mesin penilaian silang hanya menentukan 5% nilai akhir staf L4
-([§4.6](#46-bobot-skor-silang-terhadap-nilai-akhir)). Perlu diputuskan apakah angka itu memang yang
+([§4.7](#47-bobot-skor-silang-terhadap-nilai-akhir)). Perlu diputuskan apakah angka itu memang yang
 dimaksud.
 
 ### 8.6 Kecil

@@ -135,6 +135,12 @@ class Employee extends Authenticatable
         return $this->hasMany(PayrollRunDetail::class);
     }
 
+    /** Indikator General Excellence yang khusus dirumuskan untuk orang ini. */
+    public function kpiIndicators(): HasMany
+    {
+        return $this->hasMany(KpiIndicator::class);
+    }
+
     public function magicLinks(): HasMany
     {
         return $this->hasMany(EmployeeMagicLink::class);

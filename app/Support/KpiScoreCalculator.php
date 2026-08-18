@@ -8,6 +8,7 @@ use App\Models\KpiFinalResult;
 use App\Models\KpiLevel;
 use App\Models\KpiPeriod;
 use App\Models\KpiPeriodIndicatorSnapshot;
+use App\Support\KpiIndicatorSet;
 use App\Models\KpiPeriodLevelSnapshot;
 use Illuminate\Support\Collection;
 
@@ -56,10 +57,8 @@ class KpiScoreCalculator
             return null;
         }
 
-        $indicators = KpiPeriodIndicatorSnapshot::query()
-            ->where('kpi_period_level_snapshot_id', $levelSnapshot->id)
-            ->orderBy('sort_order')
-            ->get();
+        // Set yang dipakai menghitung HARUS sama dengan yang diisi penilai — lihat KpiIndicatorSet.
+        $indicators = app(KpiIndicatorSet::class)->forEmployee($period, $employee);
 
         $indicatorScores = $this->indicatorScores($assessments, $indicators);
         $categoryScores = [];

@@ -40,7 +40,10 @@ class KpiPeriodSnapshot
             ->where('company_id', $period->company_id)
             ->where('is_active', true)
             ->where('is_assessed', true)
-            ->with(['indicators' => fn ($q) => $q->active()->orderBy('sort_order'), 'indicators.rubrics'])
+            // levelDefault() wajib: tanpa itu relasi `indicators` ikut menarik indikator milik
+            // orang, dan penjaga bobot akan menjumlahkan dua set berbeda jadi satu lalu melaporkan
+            // "bobot lewat dari 100" yang tidak bisa dijelaskan admin.
+            ->with(['indicators' => fn ($q) => $q->levelDefault()->active()->orderBy('sort_order'), 'indicators.rubrics'])
             ->orderBy('sort_order')
             ->get();
 
@@ -48,7 +51,18 @@ class KpiPeriodSnapshot
             throw new RuntimeException('Belum ada level KPI aktif yang dinilai untuk perusahaan ini.');
         }
 
-        $this->guardWeights($levels);
+        $owned = KpiIndicator::query()
+            ->where('company_id', $period->company_id)
+            ->whereNotNull('employee_id')
+            ->active()
+            ->with(['rubrics', 'employee:id,full_name,kpi_level_id,is_active,is_kpi_excluded'])
+            ->orderBy('sort_order')
+            ->get()
+            // Indikator milik orang yang sudah tidak aktif atau dikecualikan tidak perlu dibekukan;
+            // dia tidak akan dinilai periode ini.
+            ->filter(fn (KpiIndicator $i) => $i->employee && $i->employee->is_active && ! $i->employee->is_kpi_excluded);
+
+        $this->guardWeights($levels, $owned);
 
         $crossItems = KpiCrossItem::query()
             ->where('company_id', $period->company_id)
@@ -57,7 +71,7 @@ class KpiPeriodSnapshot
             ->orderBy('sort_order')
             ->get();
 
-        DB::transaction(function () use ($period, $levels, $crossItems) {
+        DB::transaction(function () use ($period, $levels, $crossItems, $owned) {
             // Urutan penting: indikator menunjuk ke snapshot level.
             KpiPeriodIndicatorSnapshot::where('kpi_period_id', $period->id)->delete();
             KpiPeriodLevelSnapshot::where('kpi_period_id', $period->id)->delete();
@@ -107,6 +121,40 @@ class KpiPeriodSnapshot
                     ]);
                 }
             }
+
+            /*
+             * Indikator pribadi menempel pada snapshot level pemiliknya, supaya bobot kategori
+             * (70/25/5 untuk L4) tetap terbaca dari tempat yang sama. Yang membedakannya hanya
+             * `employee_id`; App\Support\KpiIndicatorSet yang memutuskan set mana yang dipakai.
+             */
+            $levelSnapshots = KpiPeriodLevelSnapshot::where('kpi_period_id', $period->id)
+                ->get()
+                ->keyBy('kpi_level_id');
+
+            foreach ($owned as $indicator) {
+                $levelSnapshot = $levelSnapshots[$indicator->employee->kpi_level_id] ?? null;
+
+                if (! $levelSnapshot) {
+                    continue; // levelnya tidak dinilai periode ini
+                }
+
+                KpiPeriodIndicatorSnapshot::create([
+                    'kpi_period_id' => $period->id,
+                    'kpi_indicator_id' => $indicator->id,
+                    'employee_id' => $indicator->employee_id,
+                    'kpi_period_level_snapshot_id' => $levelSnapshot->id,
+                    'category' => $indicator->category,
+                    'code' => $indicator->code,
+                    'name' => $indicator->name,
+                    'description' => $indicator->description,
+                    'weight' => $indicator->weight,
+                    'is_core' => $indicator->is_core,
+                    'is_auto_filled' => $indicator->is_auto_filled,
+                    'auto_source' => $indicator->auto_source,
+                    'rubrics' => $indicator->rubricMap(),
+                    'sort_order' => $indicator->sort_order,
+                ]);
+            }
         });
     }
 
@@ -122,11 +170,19 @@ class KpiPeriodSnapshot
             ->where('company_id', $companyId)
             ->where('is_active', true)
             ->where('is_assessed', true)
-            ->with(['indicators' => fn ($q) => $q->active()])
+            ->with(['indicators' => fn ($q) => $q->levelDefault()->active()])
             ->get();
 
+        $owned = KpiIndicator::query()
+            ->where('company_id', $companyId)
+            ->whereNotNull('employee_id')
+            ->active()
+            ->with('employee:id,full_name,kpi_level_id,is_active,is_kpi_excluded')
+            ->get()
+            ->filter(fn (KpiIndicator $i) => $i->employee && $i->employee->is_active && ! $i->employee->is_kpi_excluded);
+
         try {
-            $this->guardWeights($levels);
+            $this->guardWeights($levels, $owned);
         } catch (RuntimeException $e) {
             return explode("\n", $e->getMessage());
         }
@@ -139,9 +195,15 @@ class KpiPeriodSnapshot
      * kategori. Diperiksa sekaligus supaya admin melihat SELURUH kesalahan, bukan satu per
      * satu tiap kali menekan tombol.
      *
+     * Set indikator pribadi diperiksa dengan aturan yang sama: ia MENGGANTI set kategori milik
+     * level, jadi jumlahnya pun harus 100. Kalau tidak diperiksa, seseorang bisa dinilai dengan
+     * kategori berbobot 80% sementara rekan selevelnya 100% — dan selisihnya tidak akan terlihat
+     * di mana pun kecuali pada skor akhirnya.
+     *
      * @param  \Illuminate\Support\Collection<int, KpiLevel>  $levels
+     * @param  \Illuminate\Support\Collection<int, KpiIndicator>  $owned
      */
-    private function guardWeights($levels): void
+    private function guardWeights($levels, $owned = null): void
     {
         $problems = [];
 
@@ -173,6 +235,23 @@ class KpiPeriodSnapshot
                         'Bobot indikator %s/%s berjumlah %s%%, seharusnya 100%%.',
                         $level->code,
                         $category,
+                        $this->format($total)
+                    );
+                }
+            }
+        }
+
+        foreach (($owned ?? collect())->groupBy('employee_id') as $rows) {
+            $employee = $rows->first()->employee;
+
+            foreach ($rows->groupBy('category') as $category => $categoryRows) {
+                $total = (float) $categoryRows->sum('weight');
+
+                if (abs($total - 100.0) >= self::EPSILON) {
+                    $problems[] = sprintf(
+                        'Bobot indikator %s milik %s berjumlah %s%%, seharusnya 100%%.',
+                        $category,
+                        $employee?->full_name ?? 'karyawan',
                         $this->format($total)
                     );
                 }

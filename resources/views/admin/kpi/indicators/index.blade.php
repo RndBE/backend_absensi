@@ -15,6 +15,59 @@
     @endforeach
 </div>
 
+{{-- ── Bawaan level vs indikator per orang ── --}}
+<div class="mb-4 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="min-w-0">
+            <h3 class="text-[13px] font-bold text-gray-900">
+                @if($selectedEmployee)
+                Indikator milik {{ $selectedEmployee->full_name }}
+                @else
+                Indikator bawaan level
+                @endif
+            </h3>
+            <p class="text-[11px] text-gray-400 mt-0.5">
+                @if($selectedEmployee)
+                Menggantikan indikator <strong>General Excellence</strong> bawaan levelnya. Kategori
+                lain tetap memakai bawaan. Bobotnya harus berjumlah 100 sendiri.
+                @else
+                Dipakai semua orang di level ini yang tidak punya indikator sendiri.
+                @endif
+            </p>
+        </div>
+        <form method="GET" action="{{ route('admin.kpi-indicators.index') }}" class="flex items-end gap-2 flex-wrap">
+            <input type="hidden" name="level" value="{{ $selectedLevel?->code }}">
+            <div>
+                <label for="employeePicker" class="block text-[11px] font-semibold text-gray-600 mb-1">Lihat indikator milik</label>
+                <select name="employee" id="employeePicker" onchange="this.form.submit()"
+                    class="px-3 py-2 border border-gray-300 rounded-lg text-[13px] outline-none focus:border-indigo-500 min-w-[240px]">
+                    <option value="">— bawaan level —</option>
+                    @foreach($candidates as $candidate)
+                    <option value="{{ $candidate->id }}" @selected($selectedEmployee?->id === $candidate->id)>
+                        {{ $candidate->full_name }}{{ $candidate->position ? ' — '.$candidate->position : '' }}
+                    </option>
+                    @endforeach
+                </select>
+            </div>
+        </form>
+    </div>
+
+    @if($withOwnIndicators->isNotEmpty())
+    <div class="mt-3 pt-3 border-t border-gray-100">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sudah punya indikator sendiri</span>
+        <div class="mt-1.5 flex flex-wrap gap-1.5">
+            @foreach($withOwnIndicators as $person)
+            <a href="{{ route('admin.kpi-indicators.index', ['employee' => $person->id]) }}"
+                class="inline-flex items-baseline gap-1 px-2 py-0.5 border rounded text-[11px] transition-colors {{ $selectedEmployee?->id === $person->id ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-gray-200 hover:bg-gray-50' }}">
+                <span class="font-semibold text-gray-800">{{ $person->full_name }}</span>
+                <span class="text-gray-400 tabular-nums">{{ $person->kpi_indicators_count }}</span>
+            </a>
+            @endforeach
+        </div>
+    </div>
+    @endif
+</div>
+
 @if(! $selectedLevel)
 <div class="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">
     <p class="text-sm">Belum ada level KPI. Buat lewat menu Level &amp; Bobot.</p>
@@ -129,6 +182,8 @@
             @csrf
             <input type="hidden" name="_method" id="indMethod" value="POST">
             <input type="hidden" name="kpi_level_id" value="{{ $selectedLevel->id }}">
+            {{-- Kosong = indikator bawaan level; terisi = milik orang yang sedang dipilih. --}}
+            <input type="hidden" name="employee_id" value="{{ $selectedEmployee?->id }}">
             <input type="hidden" name="category" id="indCategory">
 
             <div class="px-6 py-5 space-y-3.5 max-h-[65vh] overflow-y-auto">

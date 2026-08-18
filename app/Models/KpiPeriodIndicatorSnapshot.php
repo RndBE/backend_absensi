@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class KpiPeriodIndicatorSnapshot extends Model
 {
     protected $fillable = [
-        'kpi_period_id', 'kpi_indicator_id', 'kpi_period_level_snapshot_id',
+        'kpi_period_id', 'kpi_indicator_id', 'employee_id', 'kpi_period_level_snapshot_id',
         'category', 'code', 'name', 'description', 'weight',
         'is_core', 'is_auto_filled', 'auto_source', 'rubrics', 'sort_order',
     ];

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Support\KpiIndicatorSet;
 use App\Models\KpiAssessment;
 use App\Models\KpiAssessmentScore;
 use App\Models\KpiPeriod;
@@ -53,7 +54,11 @@ class KpiAssessmentController extends Controller
 
         abort_if(! $levelSnapshot, 404, 'Snapshot level untuk karyawan ini tidak ditemukan pada periode tersebut.');
 
-        $indicators = $levelSnapshot->indicatorSnapshots()->orderBy('category')->orderBy('sort_order')->get()->groupBy('category');
+        // Lewat KpiIndicatorSet, bukan langsung dari snapshot level: karyawan yang punya indikator
+        // Excellence sendiri harus melihat miliknya, bukan bawaan levelnya.
+        $indicators = app(KpiIndicatorSet::class)
+            ->forEmployee($kpiAssessment->period, $kpiAssessment->employee)
+            ->groupBy('category');
         $scores = $kpiAssessment->scores->keyBy('kpi_period_indicator_snapshot_id');
 
         return view('admin.kpi.assessments.edit', compact('kpiAssessment', 'levelSnapshot', 'indicators', 'scores'));
@@ -93,10 +98,9 @@ class KpiAssessmentController extends Controller
         $missingScore = [];
         $missingEvidence = [];
 
-        $required = $kpiAssessment->period->indicatorSnapshots()
-            ->whereHas('levelSnapshot', fn ($q) => $q->where('kpi_level_id', $kpiAssessment->employee->kpi_level_id))
-            ->where('is_auto_filled', false)
-            ->get();
+        $required = app(KpiIndicatorSet::class)
+            ->forEmployee($kpiAssessment->period, $kpiAssessment->employee)
+            ->where('is_auto_filled', false);
 
         $scores = $kpiAssessment->scores->keyBy('kpi_period_indicator_snapshot_id');
 
@@ -145,8 +149,10 @@ class KpiAssessmentController extends Controller
             'evidence.*' => 'nullable|string|max:2000',
         ]);
 
-        $editable = $kpiAssessment->period->indicatorSnapshots()
-            ->whereHas('levelSnapshot', fn ($q) => $q->where('kpi_level_id', $kpiAssessment->employee->kpi_level_id))
+        // Daftar yang boleh disimpan dibatasi set milik karyawan ini. Tanpa itu, id indikator milik
+        // orang lain yang dikirim lewat form bisa ikut tersimpan.
+        $editable = app(KpiIndicatorSet::class)
+            ->forEmployee($kpiAssessment->period, $kpiAssessment->employee)
             ->where('is_auto_filled', false)
             ->pluck('id')
             ->all();
