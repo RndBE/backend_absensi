@@ -35,10 +35,14 @@
                 @endif
             </p>
         </div>
+        @if($candidates->isNotEmpty())
         <form method="GET" action="{{ route('admin.kpi-indicators.index') }}" class="flex items-end gap-2 flex-wrap">
             <input type="hidden" name="level" value="{{ $selectedLevel?->code }}">
             <div>
-                <label for="employeePicker" class="block text-[11px] font-semibold text-gray-600 mb-1">Lihat indikator milik</label>
+                <label for="employeePicker" class="block text-[11px] font-semibold text-gray-600 mb-1">
+                    Lihat indikator milik
+                    <span class="font-normal text-gray-400">— {{ $candidates->count() }} orang di {{ $selectedLevel->code }}</span>
+                </label>
                 <select name="employee" id="employeePicker" onchange="this.form.submit()"
                     class="px-3 py-2 border border-gray-300 rounded-lg text-[13px] outline-none focus:border-indigo-500 min-w-[240px]">
                     <option value="">— bawaan level —</option>
@@ -50,6 +54,16 @@
                 </select>
             </div>
         </form>
+        @elseif($selectedLevel && ! $selectedLevel->is_assessed)
+        <p class="text-[11px] text-gray-400 max-w-[260px]">
+            Level {{ $selectedLevel->code }} tidak masuk penilaian, jadi tidak punya indikator —
+            baik bawaan maupun per orang.
+        </p>
+        @else
+        <p class="text-[11px] text-gray-400 max-w-[260px]">
+            Belum ada karyawan aktif di level {{ $selectedLevel?->code }}.
+        </p>
+        @endif
     </div>
 
     @if($withOwnIndicators->isNotEmpty())

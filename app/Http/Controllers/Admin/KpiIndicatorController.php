@@ -56,12 +56,22 @@ class KpiIndicatorController extends Controller
             ->orderBy('full_name')
             ->get(['id', 'full_name', 'position', 'kpi_level_id']);
 
-        $candidates = Employee::where('company_id', $admin->company_id)
-            ->where('is_active', true)
-            ->where('is_kpi_excluded', false)
-            ->whereNotNull('kpi_level_id')
-            ->orderBy('full_name')
-            ->get(['id', 'full_name', 'position', 'kpi_level_id']);
+        /*
+         * Hanya karyawan di level yang sedang dibuka. Halaman ini berbasis tab level, jadi daftar
+         * yang memuat seluruh perusahaan memaksa admin menyaring sendiri 30 nama untuk menemukan
+         * segelintir yang relevan — dan memilih orang dari level lain diam-diam memindahkan tabnya.
+         *
+         * Level yang tidak dinilai (Direksi) tidak punya indikator sama sekali, jadi tidak ada
+         * gunanya ditawarkan.
+         */
+        $candidates = $selectedLevel && $selectedLevel->is_assessed
+            ? Employee::where('company_id', $admin->company_id)
+                ->where('is_active', true)
+                ->where('is_kpi_excluded', false)
+                ->where('kpi_level_id', $selectedLevel->id)
+                ->orderBy('full_name')
+                ->get(['id', 'full_name', 'position', 'kpi_level_id'])
+            : collect();
 
         // Jumlah bobot per kategori ditampilkan langsung di header tabel — kesalahan bobot
         // paling mudah terlihat saat admin sedang mengedit, bukan saat periode gagal dibuka.
