@@ -106,12 +106,22 @@
                                 default => route('employee.approvals.decision.print', [$typeKey, $item->id]),
                             };
                         @endphp
-                        <a href="{{ $historyPrintUrl }}" target="_blank" rel="noopener"
-                           class="approval-history-print inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 text-[11.5px] font-bold text-teal-700 transition-colors hover:bg-teal-100"
-                           aria-label="Cetak persetujuan {{ $typeLabels[$typeKey] ?? $typeKey }} {{ $item->employee?->full_name }}">
-                            <span class="material-symbols-outlined text-[15px]">print</span>
-                            Cetak
-                        </a>
+                        <div class="flex items-center gap-2">
+                            <a href="{{ $historyPrintUrl }}" target="_blank" rel="noopener"
+                               class="approval-history-print inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 text-[11.5px] font-bold text-teal-700 transition-colors hover:bg-teal-100"
+                               aria-label="Cetak persetujuan {{ $typeLabels[$typeKey] ?? $typeKey }} {{ $item->employee?->full_name }}">
+                                <span class="material-symbols-outlined text-[15px]">print</span>
+                                Cetak
+                            </a>
+                            @if($typeKey === 'lpj')
+                            <a href="{{ route('employee.approvals.lpj.export-excel', $item->id) }}"
+                               class="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[11.5px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+                               aria-label="Unduh Excel LPJ {{ $item->employee?->full_name }}">
+                                <span class="material-symbols-outlined text-[15px]">table_view</span>
+                                Excel
+                            </a>
+                            @endif
+                        </div>
                     @endif
                 </div>
             </div>
@@ -287,10 +297,16 @@
                         Lihat/Cetak
                     </a>
                     @elseif($type === 'lpj')
-                    <a href="{{ route('employee.approvals.lpj.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
-                        <span class="material-symbols-outlined text-[16px]">print</span>
-                        Lihat/Cetak
-                    </a>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <a href="{{ route('employee.approvals.lpj.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
+                            <span class="material-symbols-outlined text-[16px]">print</span>
+                            Lihat/Cetak
+                        </a>
+                        <a href="{{ route('employee.approvals.lpj.export-excel', $request->id) }}" class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-emerald-700">
+                            <span class="material-symbols-outlined text-[16px]">table_view</span>
+                            Excel
+                        </a>
+                    </div>
                     @endif
                 </div>
 

@@ -10,6 +10,7 @@ use App\Models\Lpj;
 use App\Models\Notification;
 use App\Models\TravelReport;
 use App\Services\FcmService;
+use App\Services\LpjExcelExporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -169,5 +170,18 @@ class LpjController extends Controller
         ])->where('employee_id', $employee->id)->findOrFail($id);
 
         return view('employee.lpj.show', compact('employee', 'lpj'));
+    }
+
+    /**
+     * Unduh LPJ milik sendiri sebagai Excel (.xlsx), format sama dengan export admin.
+     */
+    public function exportExcel(Request $request, $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+
+        $lpj = Lpj::where('employee_id', $employee->id)->findOrFail($id);
+
+        return LpjExcelExporter::download($lpj);
     }
 }

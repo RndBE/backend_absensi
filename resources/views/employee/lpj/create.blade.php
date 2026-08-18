@@ -218,8 +218,9 @@ function addRow(data = {}) {
                 onchange="recalcTotals()" onkeyup="recalcTotals()">
         </td>
         <td class="py-2 px-3">
-            <input type="file" name="items[${i}][bukti_file]" accept="image/*,.pdf"
+            <input type="file" name="items[${i}][bukti_file]" accept="image/*,.pdf" onchange="previewBukti(this)"
                 class="text-[11px] text-gray-500 file:mr-1 file:py-1 file:px-2 file:rounded file:border-0 file:bg-indigo-50 file:text-indigo-600 file:text-[11px] file:font-semibold">
+            <img class="bukti-preview mt-1 hidden h-14 w-14 rounded border border-gray-200 object-cover" alt="Pratinjau bukti">
         </td>
         <td class="py-2 px-3 text-center">
             <button type="button" onclick="removeRow(this)" class="text-red-400 hover:text-red-600">
@@ -230,6 +231,28 @@ function addRow(data = {}) {
     tbody.appendChild(tr);
     recalcTotals();
     renumberRows();
+}
+
+// Pratinjau nota langsung setelah dipilih, tanpa harus submit dulu.
+function previewBukti(input) {
+    const img = input.parentElement.querySelector('.bukti-preview');
+    if (!img) return;
+
+    if (img.dataset.url) {
+        URL.revokeObjectURL(img.dataset.url);
+        delete img.dataset.url;
+    }
+
+    const file = input.files && input.files[0];
+    if (file && file.type.startsWith('image/')) {
+        const url = URL.createObjectURL(file);
+        img.dataset.url = url;
+        img.src = url;
+        img.classList.remove('hidden');
+    } else {
+        img.removeAttribute('src');
+        img.classList.add('hidden');
+    }
 }
 
 function removeRow(btn) {

@@ -60,7 +60,7 @@
                     <th class="py-2.5 px-3 text-center">Sat</th>
                     <th class="py-2.5 px-3 text-center">Vol</th>
                     <th class="py-2.5 px-3 text-right min-w-[120px]">Jumlah</th>
-                    <th class="py-2.5 px-3 text-center min-w-[80px]">Bukti</th>
+                    <th class="py-2.5 px-3 text-center min-w-[90px]">Bukti</th>
                     <th class="py-2.5 px-3 text-left min-w-[140px]">Keterangan</th>
                 </tr>
             </thead>
@@ -75,9 +75,22 @@
                     <td class="py-2.5 px-3 text-right font-semibold text-gray-800">{{ number_format($item->realisasi, 0, ',', '.') }}</td>
                     <td class="py-2.5 px-3 text-center">
                         @if($item->bukti_file)
-                        <a href="{{ asset('storage/' . $item->bukti_file) }}" target="_blank" class="inline-flex items-center gap-0.5 text-indigo-600 hover:underline text-[11px] font-semibold">
-                            <span class="material-symbols-outlined text-[13px]">attach_file</span> Bukti
-                        </a>
+                            @php
+                                $buktiUrl = asset('storage/' . $item->bukti_file);
+                                $buktiExt = strtolower(pathinfo($item->bukti_file, PATHINFO_EXTENSION));
+                                $isGambar = in_array($buktiExt, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true);
+                            @endphp
+                            @if($isGambar)
+                            {{-- Nota gambar ditampilkan langsung supaya approver tidak perlu membuka tab baru. --}}
+                            <a href="{{ $buktiUrl }}" target="_blank" rel="noopener" title="Klik untuk memperbesar">
+                                <img src="{{ $buktiUrl }}" alt="Bukti {{ $item->uraian }}" loading="lazy"
+                                     class="mx-auto h-16 w-16 rounded-md border border-gray-200 object-cover hover:opacity-80">
+                            </a>
+                            @else
+                            <a href="{{ $buktiUrl }}" target="_blank" rel="noopener" class="inline-flex items-center gap-0.5 text-indigo-600 hover:underline text-[11px] font-semibold">
+                                <span class="material-symbols-outlined text-[13px]">picture_as_pdf</span> {{ strtoupper($buktiExt ?: 'File') }}
+                            </a>
+                            @endif
                         @else
                         <span class="text-gray-300 text-[11px]">-</span>
                         @endif

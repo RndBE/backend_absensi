@@ -3,12 +3,19 @@
 
 @section('content')
 <div class="space-y-4">
-    <div>
-        <a href="{{ route('employee.lpj.index') }}" class="inline-flex items-center gap-1 text-[12px] font-semibold text-gray-500 hover:text-indigo-600 mb-2">
-            <span class="material-symbols-outlined text-[16px]">arrow_back</span>
-            Kembali
+    <div class="flex items-end justify-between gap-3">
+        <div>
+            <a href="{{ route('employee.lpj.index') }}" class="inline-flex items-center gap-1 text-[12px] font-semibold text-gray-500 hover:text-indigo-600 mb-2">
+                <span class="material-symbols-outlined text-[16px]">arrow_back</span>
+                Kembali
+            </a>
+            <h1 class="text-[22px] font-black text-gray-900">Detail LPJ</h1>
+        </div>
+        <a href="{{ route('employee.lpj.export-excel', $lpj->id) }}"
+           class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-emerald-700">
+            <span class="material-symbols-outlined text-[16px]">table_view</span>
+            Export Excel
         </a>
-        <h1 class="text-[22px] font-black text-gray-900">Detail LPJ</h1>
     </div>
 
     @if(session('success'))

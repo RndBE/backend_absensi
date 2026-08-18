@@ -12,6 +12,7 @@
         .no-print { position: fixed; top: 14px; z-index: 50; border: 0; border-radius: 8px; padding: 10px 16px; font: 700 12px Arial, sans-serif; text-decoration: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
         .back-btn { left: 14px; background: #374151; color: #fff; }
         .print-btn { right: 14px; background: #0f766e; color: #fff; }
+        .excel-btn { right: 120px; background: #059669; color: #fff; }
         @media print {
             .no-print { display: none !important; }
             body { background: #fff !important; }
@@ -21,6 +22,7 @@
 </head>
 <body class="bg-gray-50">
     <a href="{{ $backUrl ?? route('employee.approvals.index') }}" class="back-btn no-print">← Kembali</a>
+    <a href="{{ route('employee.approvals.lpj.export-excel', $lpj->id) }}" class="excel-btn no-print">⬇️ Excel</a>
     <button type="button" onclick="window.print()" class="print-btn no-print">🖨️ Cetak</button>
 
     <div class="print-shell max-w-5xl mx-auto px-4 py-16">

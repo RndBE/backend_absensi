@@ -160,6 +160,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/lpj/create', [EmployeeLpjController::class, 'create'])->name('lpj.create');
     Route::post('/lpj', [EmployeeLpjController::class, 'store'])->name('lpj.store');
     Route::get('/lpj/{id}', [EmployeeLpjController::class, 'show'])->name('lpj.show');
+    Route::get('/lpj/{id}/export-excel', [EmployeeLpjController::class, 'exportExcel'])->name('lpj.export-excel');
     // Presensi tim — hanya manager (dijaga di dalam controller: role + departemen).
     Route::get('/team-attendance', [EmployeeTeamAttendanceController::class, 'index'])->name('team-attendance.index');
     Route::get('/team-attendance/{employee}', [EmployeeTeamAttendanceController::class, 'show'])
@@ -170,6 +171,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/approvals/budget/{id}/print', [EmployeeApprovalController::class, 'printBudget'])->name('approvals.budget.print');
     Route::get('/approvals/travel-report/{id}/print', [EmployeeApprovalController::class, 'printTravelReport'])->name('approvals.travel_report.print');
     Route::get('/approvals/lpj/{id}/print', [EmployeeApprovalController::class, 'printLpj'])->name('approvals.lpj.print');
+    Route::get('/approvals/lpj/{id}/export-excel', [EmployeeApprovalController::class, 'exportLpjExcel'])->name('approvals.lpj.export-excel');
     Route::get('/approvals/{type}/{id}/print', [EmployeeApprovalController::class, 'printDecision'])
         ->whereIn('type', ['leave', 'overtime', 'attendance'])
         ->name('approvals.decision.print');

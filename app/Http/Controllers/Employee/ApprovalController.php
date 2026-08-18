@@ -13,6 +13,7 @@ use App\Models\LeaveRequest;
 use App\Models\Lpj;
 use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
+use App\Services\LpjExcelExporter;
 use App\Support\LeaveQuota;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -164,6 +165,25 @@ class ApprovalController extends Controller
             'lpj' => $lpj,
             'backUrl' => route('employee.approvals.index', $isCurrentApprover ? [] : ['tab' => 'history']),
         ]);
+    }
+
+    /**
+     * Unduh LPJ sebagai Excel (.xlsx) — format yang sama dengan export admin,
+     * termasuk foto nota tertanam di kolom bukti.
+     */
+    public function exportLpjExcel(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $lpj = Lpj::with(['employee', 'employee.department', 'budgetRequest.items', 'travelReport', 'items', 'approvalLogs.approver'])
+            ->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'lpj', $lpj) && ! $this->hasApproved($employee, 'lpj', $lpj)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Anda tidak memiliki akses untuk mengunduh pengajuan ini.');
+        }
+
+        return LpjExcelExporter::download($lpj);
     }
 
     public function printDecision(Request $request, string $type, int $id)
