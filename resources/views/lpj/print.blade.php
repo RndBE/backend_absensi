@@ -9,7 +9,8 @@
     @vite(['resources/css/app.css'])
     <style>
         .material-symbols-outlined { font-size: 20px; }
-        .no-print { position: fixed; top: 14px; z-index: 50; border: 0; border-radius: 8px; padding: 10px 16px; font: 700 12px Arial, sans-serif; text-decoration: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+        .no-print { position: fixed; top: 14px; z-index: 50; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; padding: 10px 16px; font: 700 12px Arial, sans-serif; text-decoration: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+        .no-print .material-symbols-outlined { font-size: 17px; }
         .back-btn { left: 14px; background: #374151; color: #fff; }
         .excel-btn { right: 14px; background: #059669; color: #fff; }
         @media print {
@@ -20,8 +21,12 @@
     </style>
 </head>
 <body class="bg-gray-50">
-    <a href="{{ $backUrl ?? route('employee.approvals.index') }}" class="back-btn no-print">← Kembali</a>
-    <a href="{{ route('employee.approvals.lpj.export-excel', $lpj->id) }}" class="excel-btn no-print">⬇️ Excel</a>
+    <a href="{{ $backUrl ?? route('employee.approvals.index') }}" class="back-btn no-print">
+        <span class="material-symbols-outlined">arrow_back</span> Kembali
+    </a>
+    <a href="{{ route('employee.approvals.lpj.export-excel', $lpj->id) }}" class="excel-btn no-print">
+        <span class="material-symbols-outlined">table_view</span> Excel
+    </a>
 
     <div class="print-shell max-w-5xl mx-auto px-4 py-16">
         <div class="text-center mb-6">
