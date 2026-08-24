@@ -13,22 +13,121 @@
 @endphp
 
 <div class="space-y-5">
-    <section class="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden">
-        <div class="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div class="min-w-0">
-                <div class="text-[12px] font-semibold text-gray-400">{{ $today->locale('id')->translatedFormat('l, d F Y') }}</div>
-                <h1 class="mt-1 text-[22px] sm:text-[26px] font-black text-gray-900 tracking-tight">Halo, {{ $employee->full_name }}</h1>
-                <p class="text-[13px] text-gray-500 mt-1">{{ $employee->position ?? 'Karyawan' }}</p>
+    {{--
+        Kartu presensi hari ini — satu kartu untuk satu pertanyaan: "hari ini aku gimana?"
+        Urutannya mengikuti cara orang membacanya: tanggal, sapaan, jadwal, jam masuk &
+        pulang, lalu tombol aksinya.
+
+        Kartu sapaan terpisah sengaja DIHAPUS, bukan dipindah ke topbar. Topbar sudah memuat
+        nama karyawan (lihat employee/layouts/app.blade.php), cuma disembunyikan di HP; kalau
+        nama dipaksa masuk ke situ sementara "Halo, ..." tetap ada, namanya tampil di dua
+        tempat pada satu layar. Melebur ke kartu ini juga menghemat satu kartu penuh di HP.
+
+        Ukuran font dan padding punya dua tingkat (mobile lalu sm:) karena kartu ini kini
+        memuat empat blok — memakai ukuran lama membuatnya jauh melebihi satu layar HP.
+    --}}
+    <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden stat-border-blue">
+        <div class="p-4 sm:p-5">
+            <div class="text-[11px] font-bold text-gray-400 uppercase tracking-wide">{{ $today->locale('id')->translatedFormat('l, d F Y') }}</div>
+            {{-- `break-words` bukan `truncate`: nama di basis data panjang-panjang dan huruf besar semua, lebih baik turun baris daripada terpotong. --}}
+            <h1 class="mt-1 text-[18px] sm:text-[22px] font-black text-gray-900 tracking-tight leading-tight break-words">Halo, {{ $employee->full_name }}</h1>
+            <p class="text-[12px] text-gray-500 mt-0.5">{{ $employee->position ?? 'Karyawan' }}</p>
+        </div>
+
+        <div class="px-4 sm:px-5 py-3.5 border-t border-gray-100 bg-gray-50/60">
+            <div class="flex items-center gap-2 text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+                <span class="material-symbols-outlined text-[16px] text-blue-500">calendar_month</span>
+                Jadwal Hari Ini
             </div>
+            <div class="mt-1.5 text-[13px] sm:text-[16px] font-bold text-gray-800 leading-snug">{{ $schedule['name'] }}</div>
+            <div class="text-[12px] text-gray-500 mt-0.5">{{ $schedule['time'] }}</div>
+
+            {{--
+                Jam masuk & pulang jadi satu baris ringkas di bawah jam kerja, bukan dua
+                sub-kartu tersendiri. Angka besar 18-28px dulu memakan tinggi setara satu
+                kartu untuk memuat dua bilangan lima karakter; label + jam sebaris membaca
+                sama cepat dengan sepersepuluh ruang.
+
+                Label + jam DIBUNGKUS jadi satu chip berwarna, bukan teks lepas. Warna chip
+                yang mengabarkan status, jadi badge "Tercatat" tidak perlu lagi — dia cuma
+                mengulang apa yang sudah dikatakan hijaunya. Titik kecil di kiri chip
+                menegaskan status untuk yang sukar membedakan hijau dari kuning.
+
+                Badge yang TIDAK boleh ikut dihapus: Terlambat, Izin Terlambat, Izin Pulang
+                Cepat. Ketiganya membawa keterangan yang tak bisa disampaikan warna — kuning
+                cuma bilang "ada yang beda", bukan "kamu telat" atau "telatmu diizinkan".
+
+                `flex-wrap` supaya di HP sempit chip-nya turun baris, bukan terpotong.
+                `tabular-nums` menjaga jamnya sejajar antar baris.
+            --}}
+            @php
+                // Satu palet chip per status. Izin terlambat tetap HIJAU: telatnya sudah
+                // disahkan, jadi tidak pantas ditandai kuning seperti pelanggaran.
+                $clockInExcused = $todayAttendance?->status === \App\Support\AttendanceLateExcuse::LATE_EXCUSE_STATUS || $todayLateExcuse;
+
+                $chipHijau = 'bg-emerald-50 border-emerald-200 text-emerald-700';
+                $chipKuning = 'bg-amber-50 border-amber-200 text-amber-700';
+                $chipAbu = 'bg-gray-100 border-gray-200 text-gray-400';
+
+                $clockInChip = match (true) {
+                    ! $todayAttendance?->clock_in => $chipAbu,
+                    (bool) $clockInExcused => $chipHijau,
+                    (bool) $todayAttendance?->is_late => $chipKuning,
+                    default => $chipHijau,
+                };
+                $clockInDot = match (true) {
+                    ! $todayAttendance?->clock_in => 'bg-gray-300',
+                    ! $clockInExcused && $todayAttendance?->is_late => 'bg-amber-500',
+                    default => 'bg-emerald-500',
+                };
+
+                $clockOutExcused = ($todayAttendance?->status === \App\Support\AttendanceLateExcuse::EARLY_DEPARTURE_STATUS || $todayEarlyDeparture) && $todayAttendance?->clock_out;
+                $clockOutChip = $todayAttendance?->clock_out ? $chipHijau : $chipAbu;
+                $clockOutDot = $todayAttendance?->clock_out ? 'bg-emerald-500' : 'bg-gray-300';
+            @endphp
+            <div class="mt-2.5 flex flex-wrap items-center gap-2 border-t border-gray-200/70 pt-2.5">
+                <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 {{ $clockInChip }}">
+                    <span class="w-1.5 h-1.5 rounded-full shrink-0 {{ $clockInDot }}"></span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide">Clock In</span>
+                    <span class="text-[12px] font-black tabular-nums">{{ $todayAttendance?->clock_in ? substr($todayAttendance->clock_in, 0, 5) : '-' }}</span>
+                </span>
+
+                @if($clockInExcused)
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
+                @elseif($todayAttendance?->is_late)
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Terlambat</span>
+                @endif
+
+                <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 {{ $clockOutChip }}">
+                    <span class="w-1.5 h-1.5 rounded-full shrink-0 {{ $clockOutDot }}"></span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide">Clock Out</span>
+                    <span class="text-[12px] font-black tabular-nums">{{ $todayAttendance?->clock_out ? substr($todayAttendance->clock_out, 0, 5) : '-' }}</span>
+                </span>
+
+                @if($clockOutExcused)
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
+                @elseif(! $todayAttendance?->clock_in)
+                    {{-- Chip abu saja tidak menjelaskan KENAPA kosong; ini yang membedakan "belum pulang" dari "belum masuk". --}}
+                    <span class="text-[11px] text-gray-400">Menunggu clock in</span>
+                @endif
+            </div>
+        </div>
+
+        {{--
+            Tombol selebar kartu, BUKAN dua tombol sejajar kolom di atasnya. Pada satu saat
+            hanya satu aksi yang sah — sebelum clock in, clock out tidak boleh bisa ditekan.
+            Dua tombol berdampingan menyiratkan keduanya terbuka.
+        --}}
+        <div class="p-4 sm:p-5 border-t border-gray-100">
             @if($actionType)
                 <a href="{{ route('employee.attendance.show', $actionType) }}"
-                   class="inline-flex items-center justify-center gap-2 px-5 py-3 text-[13px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all">
-                    <span class="material-symbols-outlined text-[18px]">{{ $actionType === 'clock-in' ? 'login' : 'logout' }}</span>
+                   class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[14px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all">
+                    <span class="material-symbols-outlined text-[19px]">{{ $actionType === 'clock-in' ? 'login' : 'logout' }}</span>
                     {{ $actionLabel }}
                 </a>
             @else
-                <span class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <span class="material-symbols-outlined text-[18px]">check_circle</span>
+                <span class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[14px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <span class="material-symbols-outlined text-[19px]">check_circle</span>
                     {{ $actionLabel }}
                 </span>
             @endif
@@ -153,6 +252,13 @@
                 'color' => 'bg-amber-50 text-amber-600',
             ],
             [
+                'href' => route('employee.attendance.history'),
+                'icon' => 'history',
+                'title' => 'Riwayat Presensi',
+                'description' => 'Clock in/out per bulan',
+                'color' => 'bg-slate-100 text-slate-600',
+            ],
+            [
                 'href' => route('employee.company-info.index'),
                 'icon' => 'domain',
                 'title' => 'Info Perusahaan',
@@ -203,59 +309,6 @@
         @endforeach
     </section>
 
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 stat-border-blue">
-            <div class="flex items-center gap-2 text-[12px] font-bold text-gray-500 uppercase tracking-wide">
-                <span class="material-symbols-outlined text-[17px] text-blue-500">calendar_month</span>
-                Jadwal Hari Ini
-            </div>
-            <div class="mt-3 text-[17px] font-black text-gray-900">{{ $schedule['name'] }}</div>
-            <div class="text-[13px] text-gray-500 mt-1">{{ $schedule['time'] }}</div>
-        </div>
-
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 stat-border-green">
-            <div class="flex items-center gap-2 text-[12px] font-bold text-gray-500 uppercase tracking-wide">
-                <span class="material-symbols-outlined text-[17px] text-emerald-500">login</span>
-                Clock In
-            </div>
-            <div class="mt-3 text-[28px] font-black text-gray-900 leading-none">{{ $todayAttendance?->clock_in ? substr($todayAttendance->clock_in, 0, 5) : '-' }}</div>
-            <div class="mt-2">
-                @if($todayAttendance?->status === \App\Support\AttendanceLateExcuse::LATE_EXCUSE_STATUS)
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
-                @elseif($todayLateExcuse)
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
-                @elseif($todayAttendance?->is_late)
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Terlambat</span>
-                @elseif($todayAttendance?->clock_in)
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Tercatat</span>
-                @else
-                    <span class="text-[12px] text-gray-400">Belum clock in</span>
-                @endif
-            </div>
-        </div>
-
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 stat-border-purple">
-            <div class="flex items-center gap-2 text-[12px] font-bold text-gray-500 uppercase tracking-wide">
-                <span class="material-symbols-outlined text-[17px] text-indigo-500">logout</span>
-                Clock Out
-            </div>
-            <div class="mt-3 text-[28px] font-black text-gray-900 leading-none">{{ $todayAttendance?->clock_out ? substr($todayAttendance->clock_out, 0, 5) : '-' }}</div>
-            <div class="mt-2">
-                @if($todayAttendance?->status === \App\Support\AttendanceLateExcuse::EARLY_DEPARTURE_STATUS && $todayAttendance?->clock_out)
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
-                @elseif($todayEarlyDeparture && $todayAttendance?->clock_out)
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
-                @elseif($todayAttendance?->clock_out)
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">Tercatat</span>
-                @elseif($todayAttendance?->clock_in)
-                    <span class="text-[12px] text-gray-400">Belum clock out</span>
-                @else
-                    <span class="text-[12px] text-gray-400">Menunggu clock in</span>
-                @endif
-            </div>
-        </div>
-    </section>
-
     @if($todayAttendance?->is_remote || $todayAttendance?->review_status)
         <section class="rounded-xl border {{ $todayAttendance->review_status === 'rejected' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50' }} p-4">
             <div class="flex items-start gap-3">
@@ -270,71 +323,6 @@
         </section>
     @endif
 
-    <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 class="text-[15px] font-bold text-gray-900 flex items-center gap-2">
-                <span class="material-symbols-outlined text-[18px]">history</span>
-                Riwayat Presensi
-            </h2>
-            <form method="GET" action="{{ route('employee.dashboard') }}" class="flex items-center gap-2">
-                <label class="text-[12px] font-semibold text-gray-500">Bulan</label>
-                <input type="month" name="history_period"
-                       value="{{ $historyPeriod->format('Y-m') }}"
-                       max="{{ now()->format('Y-m') }}"
-                       onchange="this.form.submit()"
-                       class="rounded-lg border border-gray-200 px-3 py-1.5 text-[13px] font-semibold text-gray-800 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 [color-scheme:light]">
-            </form>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead>
-                    <tr>
-                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Tanggal</th>
-                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Masuk</th>
-                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Pulang</th>
-                        <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200 bg-gray-50 whitespace-nowrap">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($recentAttendances as $attendance)
-                        @php
-                            $attendanceDateKey = $attendance->date?->format('Y-m-d');
-                            $manualPermissionLabel = \App\Support\AttendanceLateExcuse::manualPermissionStatusLabel($attendance->status);
-                            $hasLateExcuse = $manualPermissionLabel === null && $attendance->is_late && $attendanceDateKey && $historyLateExcuseDates->has($attendanceDateKey);
-                            $hasEarlyDeparture = $manualPermissionLabel === null && $attendanceDateKey && $historyEarlyDepartureDates->has($attendanceDateKey);
-                        @endphp
-                        <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-4 py-3.5 text-[13px] text-gray-700 border-b border-gray-100">{{ $attendance->date?->format('d/m/Y') }}</td>
-                            <td class="px-4 py-3.5 text-[13px] font-semibold text-emerald-600 border-b border-gray-100">{{ $attendance->clock_in ? substr($attendance->clock_in, 0, 5) : '-' }}</td>
-                            <td class="px-4 py-3.5 text-[13px] font-semibold text-blue-600 border-b border-gray-100">{{ $attendance->clock_out ? substr($attendance->clock_out, 0, 5) : '-' }}</td>
-                            <td class="px-4 py-3.5 border-b border-gray-100">
-                                @if($attendance->review_status === 'pending')
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Review</span>
-                                @elseif($attendance->review_status === 'rejected')
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-800">Ditolak</span>
-                                @elseif($attendance->status === \App\Support\AttendanceLateExcuse::LATE_EXCUSE_STATUS)
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
-                                @elseif($attendance->status === \App\Support\AttendanceLateExcuse::EARLY_DEPARTURE_STATUS)
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
-                                @elseif($hasLateExcuse)
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Izin Terlambat</span>
-                                @elseif($attendance->is_late)
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Terlambat</span>
-                                @elseif($hasEarlyDeparture)
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">Izin Pulang Cepat</span>
-                                @else
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Hadir</span>
-                                @endif
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="4" class="text-center py-10 text-[13px] text-gray-400">Belum ada riwayat presensi pada {{ $historyPeriod->translatedFormat('F Y') }}.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-    </section>
+    @include('employee.partials.timeline')
 </div>
 @endsection

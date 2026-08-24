@@ -12,6 +12,7 @@ use App\Models\ScheduleAssignment;
 use App\Models\Setting;
 use App\Support\AttendanceOpenShift;
 use App\Support\AttendanceLateExcuse;
+use App\Support\DashboardTimeline;
 use App\Support\PendingApprovalCounter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -42,38 +43,10 @@ class DashboardController extends Controller
             }
         }
 
-        // Riwayat presensi dengan filter bulan (default bulan ini). Format query: Y-m.
-        try {
-            $historyPeriod = $request->filled('history_period')
-                ? Carbon::createFromFormat('Y-m', (string) $request->query('history_period'))->startOfMonth()
-                : $today->copy()->startOfMonth();
-        } catch (\Throwable $e) {
-            $historyPeriod = $today->copy()->startOfMonth();
-        }
-        // Tidak boleh memilih bulan di masa depan.
-        if ($historyPeriod->greaterThan($today->copy()->startOfMonth())) {
-            $historyPeriod = $today->copy()->startOfMonth();
-        }
-
-        $recentAttendances = Attendance::where('employee_id', $employee->id)
-            ->whereYear('date', $historyPeriod->year)
-            ->whereMonth('date', $historyPeriod->month)
-            ->orderBy('date', 'desc')
-            ->get();
-
-        // Tanggal izin (datang telat/pulang cepat) untuk bulan riwayat yang dipilih,
-        // agar badge status di widget riwayat tetap akurat lintas bulan.
-        $historyMonthStart = $historyPeriod->copy()->startOfMonth();
-        $historyMonthEnd = $historyPeriod->copy()->endOfMonth();
-        $historyLeaves = LeaveRequest::with('leaveType')
-            ->where('employee_id', $employee->id)
-            ->where('status', 'approved')
-            ->where('start_date', '<=', $historyMonthEnd->toDateString())
-            ->where('end_date', '>=', $historyMonthStart->toDateString())
-            ->get();
-        $historyLateExcuseDates = AttendanceLateExcuse::lateExcuseDates($historyLeaves, $historyMonthStart, $historyMonthEnd);
-        $historyEarlyDepartureDates = AttendanceLateExcuse::earlyDepartureDates($historyLeaves, $historyMonthStart, $historyMonthEnd);
-
+        // Rentang bulan ini dipakai badge "Izin Terlambat"/"Izin Pulang Cepat" di kartu
+        // Clock In/Clock Out. Tabel riwayat per bulan sudah pindah ke
+        // AttendanceController::history(), jadi dashboard tidak lagi menarik satu bulan
+        // penuh baris presensi.
         $monthStart = $today->copy()->startOfMonth();
         $monthEnd = $today->copy()->endOfMonth();
         $approvedLeaves = LeaveRequest::with('leaveType')
@@ -102,16 +75,13 @@ class DashboardController extends Controller
 
         return view('employee.dashboard', [
             'pendingLhp' => $pendingLhp,
-            'historyPeriod' => $historyPeriod,
-            'historyLateExcuseDates' => $historyLateExcuseDates,
-            'historyEarlyDepartureDates' => $historyEarlyDepartureDates,
             'employee' => $employee,
             'today' => $today,
             'todayAttendance' => $todayAttendance,
-            'recentAttendances' => $recentAttendances,
             'lateExcuseDates' => $lateExcuseDates,
             'earlyDepartureDates' => $earlyDepartureDates,
             'schedule' => $this->todaySchedule($employee, $today),
+            'timeline' => DashboardTimeline::for($employee, $today),
             'pendingApprovalCount' => app(PendingApprovalCounter::class)->countForApprover($employee),
             'settings' => [
                 'office_latitude' => (float) Setting::getValue('office_latitude', '0'),

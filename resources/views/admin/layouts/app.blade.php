@@ -127,7 +127,11 @@
                         ['route' => 'admin.reports.overtime', 'icon' => 'more_time', 'label' => 'Rekap Lembur', 'match' => 'admin.reports.overtime*'],
                     ]],
                     ['label' => 'Pengaturan', 'icon' => 'settings', 'key' => 'settings', 'items' => [
-                        ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.*'],
+                        // 'match' dipersempit ke admin.company.index. Pola 'admin.company.*' yang lama
+                        // juga cocok dengan admin.company.announcements.*, sehingga dua menu menyala
+                        // bersamaan saat halaman Pengumuman dibuka.
+                        ['route' => 'admin.company.index', 'icon' => 'domain', 'label' => 'Info Perusahaan', 'match' => 'admin.company.index'],
+                        ['route' => 'admin.company.announcements.index', 'icon' => 'campaign', 'label' => 'Pengumuman', 'match' => 'admin.company.announcements.*'],
                         ['route' => 'admin.attendance-settings.index', 'icon' => 'tune', 'label' => 'Pengaturan Presensi', 'match' => 'admin.attendance-settings.*'],
                         ['route' => 'admin.roles.index', 'icon' => 'badge', 'label' => 'Role', 'match' => 'admin.roles.*'],
                         ['route' => 'admin.role-permissions.index', 'icon' => 'admin_panel_settings', 'label' => 'Role Permission', 'match' => 'admin.role-permissions.*'],

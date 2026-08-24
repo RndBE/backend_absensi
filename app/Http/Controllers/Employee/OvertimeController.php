@@ -9,6 +9,7 @@ use App\Models\OvertimeRequest;
 use App\Support\ScheduledWorkingDays;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class OvertimeController extends Controller
 {
@@ -116,10 +117,28 @@ class OvertimeController extends Controller
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
-        OvertimeRequest::create(array_merge(
-            ['employee_id' => $employee->id, 'status' => 'pending', 'current_step' => 1],
-            $this->overtimeAttributes($validated)
-        ));
+
+        // Satu hari satu pengajuan. Seluruh pemeriksaan sampai penyimpanan dibungkus
+        // transaksi supaya dua kiriman yang datang pada detik yang sama tidak sama-sama
+        // lolos pemeriksaan sebelum salah satunya sempat menyimpan.
+        $ditolak = DB::transaction(function () use ($employee, $validated) {
+            $kembar = $this->cariPengajuanBentrok($employee, $validated['date'], null, true);
+
+            if ($kembar) {
+                return $kembar;
+            }
+
+            OvertimeRequest::create(array_merge(
+                ['employee_id' => $employee->id, 'status' => 'pending', 'current_step' => 1],
+                $this->overtimeAttributes($validated)
+            ));
+
+            return null;
+        });
+
+        if ($ditolak) {
+            return back()->withInput()->with('error', $this->pesanBentrok($ditolak));
+        }
 
         return redirect()
             ->route('employee.overtimes.index')
@@ -138,7 +157,17 @@ class OvertimeController extends Controller
                 ->with('error', 'Pengajuan lembur yang sudah diproses tidak dapat diedit.');
         }
 
-        $overtime->update($this->overtimeAttributes($this->validatedOvertime($request)));
+        $validated = $this->validatedOvertime($request);
+
+        // Tanggal boleh diubah saat mengedit, jadi pemeriksaan bentrok berlaku juga di sini
+        // -- dirinya sendiri dikecualikan.
+        $kembar = $this->cariPengajuanBentrok($employee, $validated['date'], $overtime->id);
+
+        if ($kembar) {
+            return back()->withInput()->with('error', $this->pesanBentrok($kembar));
+        }
+
+        $overtime->update($this->overtimeAttributes($validated));
 
         return redirect()
             ->route('employee.overtimes.show', $overtime->id)
@@ -148,6 +177,61 @@ class OvertimeController extends Controller
     private function findOwnedOvertime(Employee $employee, int $id): OvertimeRequest
     {
         return OvertimeRequest::where('employee_id', $employee->id)->findOrFail($id);
+    }
+
+    /**
+     * Cari pengajuan lembur milik karyawan ini yang bentrok pada tanggal yang sama.
+     *
+     * Kuncinya TANGGAL, bukan jam. Alasannya bukan penyederhanaan: `planned_start` hanya
+     * terisi di sebagian kecil baris (mayoritas lembur hari kerja tidak memakainya sama
+     * sekali), jadi kunci berbasis jam akan meloloskan justru sebagian besar duplikat.
+     * Lembur dua sesi dalam sehari pun tidak butuh dua baris -- `pre_shift_duration` dan
+     * `post_shift_duration` sudah menampung keduanya sekaligus.
+     *
+     * Yang TIDAK dihitung bentrok:
+     * - Status `rejected`. Ditolak lalu diperbaiki dan diajukan ulang adalah alur yang sah
+     *   dan justru yang paling sering dipakai; memblokirnya akan mematikan satu-satunya
+     *   jalan karyawan membetulkan pengajuannya.
+     * - Lembur otomatis (`current_step` = 0, dibuat AutoOvertimeService). Baris itu catatan
+     *   sistem atas shift panjang dan menit dibayarnya nol; ia tidak boleh menghalangi
+     *   karyawan mengajukan lembur nyatanya di hari yang sama.
+     *
+     * @param  bool  $kunci  Kunci baris terpilih sampai transaksi selesai, dipakai saat
+     *                       menyimpan supaya dua kiriman serentak tidak sama-sama lolos.
+     */
+    private function cariPengajuanBentrok(Employee $employee, string $date, ?int $kecuali = null, bool $kunci = false): ?OvertimeRequest
+    {
+        $query = OvertimeRequest::where('employee_id', $employee->id)
+            ->whereDate('date', $date)
+            ->where('status', '!=', 'rejected')
+            ->where('current_step', '!=', 0)
+            ->when($kecuali, fn ($q) => $q->where('id', '!=', $kecuali));
+
+        if ($kunci) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    /**
+     * Pesan penolakan menyebut STATUS pengajuan yang sudah ada, bukan sekadar "sudah ada".
+     * Tindakan karyawan berbeda-beda menurut status itu: yang masih menunggu tinggal
+     * diedit, yang sudah disetujui berarti tidak perlu apa-apa lagi.
+     */
+    private function pesanBentrok(OvertimeRequest $kembar): string
+    {
+        $tanggal = Carbon::parse($kembar->date)->locale('id')->translatedFormat('j F Y');
+
+        $keterangan = match ($kembar->status) {
+            'approved' => 'sudah disetujui',
+            'in_review' => 'sedang ditinjau',
+            default => 'masih menunggu persetujuan',
+        };
+
+        return "Anda sudah punya pengajuan lembur untuk {$tanggal} yang {$keterangan}. "
+            .'Satu hari hanya boleh satu pengajuan — ubah pengajuan yang sudah ada bila perlu, '
+            .'termasuk bila lemburnya lebih dari satu sesi.';
     }
 
     private function validatedOvertime(Request $request): array

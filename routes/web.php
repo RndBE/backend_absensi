@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BudgetPaymentController;
 use App\Http\Controllers\Admin\BudgetRequestController;
 use App\Http\Controllers\Admin\CompanyController;
+use App\Http\Controllers\Admin\AnnouncementController;
 use App\Http\Controllers\Admin\CompanyRegulationController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DepartmentController;
@@ -53,6 +54,7 @@ use App\Http\Controllers\Admin\TaxController;
 use App\Http\Controllers\Admin\TravelReportController;
 use App\Http\Controllers\Admin\TravelZoneController;
 use App\Http\Controllers\Api\TravelZoneController as ApiTravelZoneController;
+use App\Http\Controllers\Employee\AnnouncementFileController as EmployeeAnnouncementFileController;
 use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceController;
 use App\Http\Controllers\Employee\AttendanceRequestController as EmployeeAttendanceRequestController;
 use App\Http\Controllers\Employee\ApprovalController as EmployeeApprovalController;
@@ -184,6 +186,11 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/face-photo', [EmployeeFacePhotoController::class, 'show'])->name('face-photo.show');
     Route::post('/face-photo', [EmployeeFacePhotoController::class, 'store'])->name('face-photo.store');
     Route::delete('/face-photo', [EmployeeFacePhotoController::class, 'destroy'])->name('face-photo.destroy');
+    // Lampiran pengumuman. Berkasnya di disk privat, jadi harus lewat rute berizin --
+    // controller memeriksa perusahaan pembaca dan memastikan pengumumannya masih tayang.
+    Route::get('/announcements/{id}/image', [EmployeeAnnouncementFileController::class, 'image'])->name('announcements.image');
+    Route::get('/announcements/{id}/file', [EmployeeAnnouncementFileController::class, 'file'])->name('announcements.file');
+    Route::get('/attendance/history', [EmployeeAttendanceController::class, 'history'])->name('attendance.history');
     Route::get('/attendance/{type}', [EmployeeAttendanceController::class, 'show'])
         ->whereIn('type', ['clock-in', 'clock-out'])
         ->name('attendance.show');
@@ -367,6 +374,13 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Company Settings
     Route::get('/company', [CompanyController::class, 'index'])->name('company.index');
     Route::put('/company', [CompanyController::class, 'update'])->name('company.update');
+    // Pengumuman HR -> Timeline dashboard karyawan. Dinamai admin.company.* supaya izin
+    // `company.manage` yang sudah ada langsung berlaku tanpa menambah permission baru.
+    Route::get('/company/announcements', [AnnouncementController::class, 'index'])->name('company.announcements.index');
+    Route::post('/company/announcements', [AnnouncementController::class, 'store'])->name('company.announcements.store');
+    Route::put('/company/announcements/{announcement}', [AnnouncementController::class, 'update'])->name('company.announcements.update');
+    Route::delete('/company/announcements/{announcement}', [AnnouncementController::class, 'destroy'])->name('company.announcements.destroy');
+    Route::get('/company/announcements/{announcement}/image', [AnnouncementController::class, 'image'])->name('company.announcements.image');
     Route::post('/company/regulations', [CompanyRegulationController::class, 'store'])->name('company.regulations.store');
     Route::post('/company/regulations/import', [CompanyRegulationController::class, 'import'])->name('company.regulations.import');
     Route::put('/company/regulations/{regulation}', [CompanyRegulationController::class, 'update'])->name('company.regulations.update');

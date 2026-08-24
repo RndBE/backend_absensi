@@ -312,7 +312,9 @@
             <textarea name="reason" rows="4" required class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-300 rounded-lg outline-none focus:border-indigo-500 [color-scheme:light] resize-none" placeholder="Tuliskan alasan lembur">{{ old('reason') }}</textarea>
         </div>
 
-        <button type="submit" class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[13px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm">
+        {{-- data-submit-once: lihat skrip di bawah. Klik kedua pada tombol ini pernah membuat
+             tiga baris pengajuan terkirim dalam 3 detik. --}}
+        <button type="submit" data-submit-once class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[13px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
             <span class="material-symbols-outlined text-[18px]">send</span>
             Kirim Pengajuan
         </button>
@@ -422,5 +424,22 @@ dateInput?.addEventListener('change', async () => {
 });
 if (dateInput?.value) autoDetectType();      // deteksi juga saat halaman dimuat
 toggleOvertimeType();
+</script>
+@endpush
+
+@push('scripts')
+<script>
+    (function () {
+        // Kunci tombol kirim setelah klik pertama. Ini penjaga lapis pertama; guard di
+        // OvertimeController tetap yang menentukan, karena kunci di browser bisa dilewati.
+        document.querySelectorAll('form').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                form.querySelectorAll('[data-submit-once]').forEach(function (tombol) {
+                    // Ditunda satu putaran agar nilai tombol tetap ikut terkirim.
+                    setTimeout(function () { tombol.disabled = true; }, 0);
+                });
+            });
+        });
+    })();
 </script>
 @endpush

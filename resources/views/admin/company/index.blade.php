@@ -249,9 +249,40 @@
                         </div>
                     </div>
 
-                    <form id="regulationEdit{{ $regulation->id }}" action="{{ route('admin.company.regulations.update', $regulation) }}" method="POST" enctype="multipart/form-data" class="hidden mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
-                        @csrf
-                        @method('PUT')
+                    {{--
+                        Modal per-baris. Form ini dirender server lengkap dengan daftar lampiran
+                        lamanya, jadi isinya tidak dipindah ke JS — sama seperti modal ubah di
+                        halaman Pengumuman.
+
+                        `fixed` aman meski kartu induknya `overflow-hidden`: yang memotong elemen
+                        `fixed` hanyalah leluhur ber-`transform`, dan di sini tidak ada.
+                    --}}
+                    <div id="regulationEdit{{ $regulation->id }}" data-regulation-modal
+                         class="hidden fixed inset-0 z-[90] items-center justify-center p-4"
+                         role="dialog" aria-modal="true" aria-labelledby="regulationEditTitle{{ $regulation->id }}">
+                        <div class="absolute inset-0 bg-slate-900/50" data-regulation-modal-close></div>
+
+                        <div class="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
+                            <div class="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3 shrink-0">
+                                <div class="min-w-0">
+                                    <h3 id="regulationEditTitle{{ $regulation->id }}" class="text-[14px] font-black text-gray-900 flex items-center gap-2">
+                                        <span class="material-symbols-outlined text-[18px] text-indigo-500">edit</span>
+                                        Ubah Peraturan
+                                    </h3>
+                                    <p class="mt-0.5 text-[11px] text-gray-400 truncate">{{ $regulation->title }}</p>
+                                </div>
+                                <button type="button" data-regulation-modal-close
+                                        class="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition cursor-pointer" title="Tutup">
+                                    <span class="material-symbols-outlined text-[18px]">close</span>
+                                </button>
+                            </div>
+
+                            {{-- Isian menggulir sendiri; tombol Perbarui menempel di bawah supaya
+                                 tidak pernah jatuh di luar layar seperti pada versi inline. --}}
+                            <form action="{{ route('admin.company.regulations.update', $regulation) }}" method="POST" enctype="multipart/form-data" class="flex flex-col min-h-0 flex-1">
+                                @csrf
+                                @method('PUT')
+                                <div class="min-h-0 flex-1 overflow-y-auto p-5 space-y-3">
                         <div>
                             <label class="block text-[11px] font-bold text-gray-500 uppercase mb-1">Judul</label>
                             <input type="text" name="title" value="{{ $regulation->title }}" required class="w-full px-3 py-2 rounded-lg border border-gray-300 text-[13px] outline-none focus:border-indigo-500 bg-white">
@@ -307,20 +338,21 @@
                             <div id="regulationEditFiles{{ $regulation->id }}" class="hidden mt-2 space-y-2"></div>
                             <p class="text-[11px] text-gray-400 mt-1">Pilih satu atau beberapa PDF/DOC/DOCX untuk ditambahkan.</p>
                         </div>
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                            <div></div>
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
-                                <button type="button" onclick="toggleRegulationEdit('regulationEdit{{ $regulation->id }}')" class="inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition cursor-pointer">
-                                    <span class="material-symbols-outlined text-[16px]">close</span>
-                                    Tutup
-                                </button>
-                                <button type="submit" class="inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition cursor-pointer">
-                                    <span class="material-symbols-outlined text-[16px]">save</span>
-                                    Perbarui
-                                </button>
-                            </div>
+                                </div>
+
+                                <div class="shrink-0 px-5 py-3.5 border-t border-gray-100 bg-gray-50 flex flex-wrap items-center justify-end gap-2">
+                                    <button type="button" data-regulation-modal-close class="inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 transition cursor-pointer">
+                                        <span class="material-symbols-outlined text-[16px]">close</span>
+                                        Batal
+                                    </button>
+                                    <button type="submit" class="inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition cursor-pointer">
+                                        <span class="material-symbols-outlined text-[16px]">save</span>
+                                        Perbarui
+                                    </button>
+                                </div>
+                            </form>
                         </div>
-                    </form>
+                    </div>
                 </article>
             @empty
                 <div class="p-10 text-center">
@@ -488,9 +520,41 @@ function switchRegulationTab(tab) {
     importTab?.classList.toggle('is-active', showImport);
 }
 
+/**
+ * Buka modal ubah peraturan.
+ *
+ * `hidden` dilepas DAN `flex` dipasang karena wadahnya memusatkan panel dengan flexbox;
+ * kalau cuma `hidden` yang dilepas, panelnya menempel di pojok kiri atas.
+ */
 function toggleRegulationEdit(targetId) {
-    document.getElementById(targetId)?.classList.toggle('hidden');
+    const target = document.getElementById(targetId);
+    if (!target) return;
+
+    closeRegulationModals();
+    target.classList.remove('hidden');
+    target.classList.add('flex');
+    // Kunci gulir halaman di belakang, kalau tidak latar ikut bergeser saat isi modal
+    // digulir sampai mentok.
+    document.body.classList.add('overflow-hidden');
 }
+
+function closeRegulationModals() {
+    document.querySelectorAll('[data-regulation-modal]').forEach(function (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    });
+    document.body.classList.remove('overflow-hidden');
+}
+
+document.addEventListener('click', function (event) {
+    if (event.target.closest('[data-regulation-modal-close]')) {
+        closeRegulationModals();
+    }
+});
+
+document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeRegulationModals();
+});
 
 function initRegulationFileInputs() {
     document.querySelectorAll('[data-regulation-file-input]').forEach((input) => {

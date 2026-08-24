@@ -6,7 +6,9 @@ use App\Http\Controllers\Api\AttendanceController as ApiAttendanceController;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\LeaveRequest;
 use App\Models\Setting;
+use App\Support\AttendanceLateExcuse;
 use App\Support\AttendanceOpenShift;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -57,6 +59,57 @@ class AttendanceController extends Controller
                 'allow_remote_clockin' => Setting::getValue('allow_remote_clockin', '0') === '1',
                 'remote_requires_notes' => Setting::getValue('remote_requires_notes', '1') === '1',
             ],
+        ]);
+    }
+
+    /**
+     * Riwayat presensi per bulan. Dulu menempel di dashboard; dipindah ke halaman sendiri
+     * supaya dashboard tidak menanggung query satu bulan penuh untuk tabel yang jarang
+     * dibaca, dan supaya pemilihan bulan tidak lagi memuat ulang seluruh dashboard.
+     */
+    public function history(Request $request)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $today = Carbon::today();
+
+        // Format query: Y-m. Masukan yang tidak bisa dibaca jatuh ke bulan ini, bukan 500.
+        try {
+            $period = $request->filled('history_period')
+                ? Carbon::createFromFormat('Y-m', (string) $request->query('history_period'))->startOfMonth()
+                : $today->copy()->startOfMonth();
+        } catch (\Throwable $e) {
+            $period = $today->copy()->startOfMonth();
+        }
+
+        // Bulan di masa depan tidak boleh dipilih — belum ada presensinya.
+        if ($period->greaterThan($today->copy()->startOfMonth())) {
+            $period = $today->copy()->startOfMonth();
+        }
+
+        $attendances = Attendance::where('employee_id', $employee->id)
+            ->whereYear('date', $period->year)
+            ->whereMonth('date', $period->month)
+            ->orderBy('date', 'desc')
+            ->get();
+
+        // Tanggal izin datang telat / pulang cepat pada bulan yang dilihat, supaya badge
+        // status tetap akurat saat pengguna membuka bulan-bulan sebelumnya.
+        $monthStart = $period->copy()->startOfMonth();
+        $monthEnd = $period->copy()->endOfMonth();
+        $leaves = LeaveRequest::with('leaveType')
+            ->where('employee_id', $employee->id)
+            ->where('status', 'approved')
+            ->where('start_date', '<=', $monthEnd->toDateString())
+            ->where('end_date', '>=', $monthStart->toDateString())
+            ->get();
+
+        return view('employee.attendance.history', [
+            'employee' => $employee,
+            'period' => $period,
+            'attendances' => $attendances,
+            'lateExcuseDates' => AttendanceLateExcuse::lateExcuseDates($leaves, $monthStart, $monthEnd),
+            'earlyDepartureDates' => AttendanceLateExcuse::earlyDepartureDates($leaves, $monthStart, $monthEnd),
         ]);
     }
 

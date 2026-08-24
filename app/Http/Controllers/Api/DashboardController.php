@@ -9,6 +9,7 @@ use App\Models\Employee;
 use App\Models\ScheduleAssignment;
 use App\Models\Setting;
 use App\Support\AttendanceOpenShift;
+use App\Support\DashboardTimeline;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -151,6 +152,7 @@ class DashboardController extends Controller
                 ],
                 'team_members' => $teamMembers,
                 'absent_today' => $absentToday,
+                'timeline' => DashboardTimeline::for($employee, $today),
             ],
         ]);
     }
