@@ -33,8 +33,7 @@
             <span class="material-symbols-outlined text-[32px] text-gray-300">event_busy</span>
             <p class="mt-2 text-[13px] font-semibold text-gray-500">Belum ada kabar untuk ditampilkan</p>
             <p class="mt-1 text-[12px] text-gray-400">
-                Belum ada riwayat izin/cuti/sakit, dan tidak ada yang berulang tahun
-                sampai {{ \App\Support\DashboardTimeline::BIRTHDAY_LOOKAHEAD_DAYS }} hari ke depan.
+                Belum ada riwayat izin/cuti/sakit, pengumuman, maupun ulang tahun yang tercatat.
             </p>
         </div>
     @endif

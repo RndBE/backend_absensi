@@ -37,12 +37,6 @@ use Illuminate\Support\Facades\Schema;
 class DashboardTimeline
 {
     /**
-     * Seberapa jauh ke depan ulang tahun diintip. Tidak ada batas ke belakang untuk izin:
-     * seluruh riwayat ikut, dan yang membatasi tampilan adalah paginasi di kartunya.
-     */
-    public const BIRTHDAY_LOOKAHEAD_DAYS = 7;
-
-    /**
      * @return array{company: array{name: string, logo: ?string}, entries: array<int, array<string, mixed>>}
      */
     public static function for(Employee $employee, ?Carbon $today = null): array
@@ -55,8 +49,9 @@ class DashboardTimeline
             self::announcementEntries($employee, $today),
         );
 
-        // Terbaru di atas. Ulang tahun yang akan datang otomatis naik ke puncak — itu
-        // memang yang paling berguna, ucapan baru ada gunanya sebelum harinya lewat.
+        // Terbaru di atas. Tidak ada kabar bertanggal masa depan — baik izin maupun ulang
+        // tahun hanya muncul setelah harinya tiba — jadi puncak daftar selalu berisi yang
+        // paling baru terjadi, bukan yang akan terjadi.
         // Pada tanggal yang sama ulang tahun didahulukan: yang perlu ditindaklanjuti hari
         // itu adalah mengucapkan, bukan membaca daftar izin.
         // Pengumuman yang dipaku selalu di puncak, apa pun tanggalnya — kalau tidak, kabar
@@ -141,21 +136,21 @@ class DashboardTimeline
 
     /**
      * Setiap karyawan yang punya `birth_date` muncul TEPAT SATU KALI: perayaan terakhirnya
-     * yang tidak melewati batas intip ke depan.
+     * yang sudah tiba.
      *
      * Cara ini dipilih daripada "semua perayaan sepanjang riwayat" karena ulang tahun
-     * berulang tiap tahun — tanpa batas, satu orang akan muncul sebanyak umurnya. Dan
-     * dipilih daripada "hanya sepekan ke depan" karena kartunya kini berpaginasi, jadi
-     * perayaan yang sudah lewat tidak lagi menghabiskan ruang di halaman pertama.
+     * berulang tiap tahun — tanpa batas, satu orang akan muncul sebanyak umurnya.
+     *
+     * TIDAK ADA intip ke depan. Perlakuannya sama seperti izin: kabar baru muncul setelah
+     * harinya tiba, tidak pernah sebagai hitung mundur "6 hari lagi". Panel ini memberi
+     * tahu apa yang sedang atau baru terjadi, bukan mengingatkan agenda — mencampur
+     * keduanya membuat pembaca harus memeriksa dulu tanggal tiap kartu untuk tahu mana
+     * yang sudah kejadian.
      *
      * @return array<int, array<string, mixed>>
      */
     private static function birthdayEntries(Employee $employee, Carbon $today): array
     {
-        // Batas atas, bukan titik potong: perayaan sesudah tanggal ini dianggap belum
-        // relevan, jadi yang dipakai adalah perayaan tahun sebelumnya.
-        $horizon = $today->copy()->addDays(self::BIRTHDAY_LOOKAHEAD_DAYS);
-
         $employees = Employee::query()
             ->select('id', 'full_name', 'department_id', 'birth_date')
             ->where('company_id', $employee->company_id)
@@ -176,7 +171,7 @@ class DashboardTimeline
                 continue;
             }
 
-            $occurrence = self::latestBirthdayOccurrence($birth, $horizon);
+            $occurrence = self::latestBirthdayOccurrence($birth, $today);
 
             $perDate[$occurrence->toDateString()][] = [
                 'name' => (string) $person->full_name,
@@ -253,13 +248,14 @@ class DashboardTimeline
     }
 
     /**
-     * Perayaan terakhir dari sebuah tanggal lahir yang tidak melewati `$horizon`.
+     * Perayaan terakhir dari sebuah tanggal lahir yang tidak melewati `$notAfter`
+     * (dipanggil dengan hari ini, sehingga perayaan yang belum tiba tidak pernah terpakai).
      *
      * 29 Februari ditangani khusus: memasang tahun non-kabisat pada tanggal itu membuat
      * Carbon melimpah ke 1 Maret, sehingga orang yang lahir 29 Februari akan diucapkan
      * pada tanggal yang salah tiga dari empat tahun.
      */
-    private static function latestBirthdayOccurrence(Carbon $birth, Carbon $horizon): Carbon
+    private static function latestBirthdayOccurrence(Carbon $birth, Carbon $notAfter): Carbon
     {
         $build = function (int $year) use ($birth): Carbon {
             $month = (int) $birth->month;
@@ -272,10 +268,10 @@ class DashboardTimeline
             return Carbon::create($year, $month, $day)->startOfDay();
         };
 
-        $occurrence = $build((int) $horizon->year);
+        $occurrence = $build((int) $notAfter->year);
 
-        return $occurrence->greaterThan($horizon)
-            ? $build((int) $horizon->year - 1)
+        return $occurrence->greaterThan($notAfter)
+            ? $build((int) $notAfter->year - 1)
             : $occurrence;
     }
 

@@ -59,3 +59,19 @@ Schedule::command('daily:sync-leaves')->dailyAt('01:00')
 Schedule::command('clockin:remind')->everyMinute()
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/clockin-reminder.log'));
+
+// Apresiasi hari jadi kerja — email + in-app + FCM untuk karyawan yang masa kerjanya
+// genap sesuai kelipatan tahun. Toggle & daftar kelipatan dicek di dalam
+// WorkAnniversaryService (dedup per tahun mencegah pengiriman ganda).
+$anniversaryTime = '08:00';
+try {
+    if (Schema::hasTable('settings')) {
+        $anniversaryTime = Setting::getValue('anniversary_greeting_time', '08:00') ?: '08:00';
+    }
+} catch (\Throwable $e) {
+    // Abaikan saat tabel belum siap (mis. fresh migrate).
+}
+
+Schedule::command('anniversary:greet')->dailyAt($anniversaryTime)
+    ->withoutOverlapping()
+    ->appendOutputTo(storage_path('logs/work-anniversary.log'));

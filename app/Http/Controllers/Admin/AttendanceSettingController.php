@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Services\WorkAnniversaryService;
 use Illuminate\Http\Request;
 
 class AttendanceSettingController extends Controller
@@ -30,6 +31,9 @@ class AttendanceSettingController extends Controller
         'lhp_reminder_after_days' => '1',
         'lhp_reminder_before_days' => '2',
         'lhp_reminder_time' => '08:00',
+        'anniversary_greeting_enabled' => '1',
+        'anniversary_milestones' => WorkAnniversaryService::DEFAULT_MILESTONES,
+        'anniversary_greeting_time' => '08:00',
     ];
 
     public function index()
@@ -56,6 +60,11 @@ class AttendanceSettingController extends Controller
             'lhp_reminder_after_days' => 'nullable|integer|min:1|max:30',
             'lhp_reminder_before_days' => 'nullable|integer|min:1|max:30',
             'lhp_reminder_time' => 'nullable|date_format:H:i',
+            // Daftar kelipatan tahun: angka dipisah koma, atau "*" untuk setiap tahun.
+            'anniversary_milestones' => ['nullable', 'string', 'max:100', 'regex:/^(\*|\d{1,2}(\s*,\s*\d{1,2})*)$/'],
+            'anniversary_greeting_time' => 'nullable|date_format:H:i',
+        ], [
+            'anniversary_milestones.regex' => 'Kelipatan tahun harus berupa angka dipisah koma (contoh: 1,3,5,10) atau * untuk setiap tahun.',
         ]);
 
         $booleanKeys = [
@@ -63,7 +72,7 @@ class AttendanceSettingController extends Controller
             'remote_requires_approval', 'remote_requires_notes',
             'clockin_reminder_enabled', 'auto_clockout_enabled',
             'face_verification_enabled', 'lpj_reminder_enabled',
-            'lhp_reminder_enabled',
+            'lhp_reminder_enabled', 'anniversary_greeting_enabled',
         ];
 
         $textKeys = [
@@ -71,6 +80,7 @@ class AttendanceSettingController extends Controller
             'office_address', 'clockin_reminder_before', 'auto_clockout_time',
             'lpj_reminder_days', 'lpj_reminder_time',
             'lhp_reminder_after_days', 'lhp_reminder_before_days', 'lhp_reminder_time',
+            'anniversary_milestones', 'anniversary_greeting_time',
         ];
 
         foreach ($booleanKeys as $key) {

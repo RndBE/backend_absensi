@@ -248,6 +248,32 @@
                             </div>
                         </div>
                     </div>
+
+                    {{-- Apresiasi Hari Jadi Kerja --}}
+                    <div class="p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition-all">
+                        <label class="flex items-center justify-between cursor-pointer mb-3">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-[20px] text-gray-400">celebration</span>
+                                <div>
+                                    <div class="text-[13px] font-semibold text-gray-800">Apresiasi Hari Jadi Kerja</div>
+                                    <div class="text-[11px] text-gray-400">Kirim ucapan terima kasih via email saat masa kerja karyawan genap sekian tahun</div>
+                                </div>
+                            </div>
+                            <input type="checkbox" name="anniversary_greeting_enabled" value="1" {{ $settings['anniversary_greeting_enabled'] == '1' ? 'checked' : '' }}
+                                class="w-5 h-5 accent-indigo-500 rounded cursor-pointer" id="anniversaryCheck" onchange="toggleAnniversary()">
+                        </label>
+                        <div id="anniversaryWrap" class="grid grid-cols-1 sm:grid-cols-2 gap-3 {{ $settings['anniversary_greeting_enabled'] == '1' ? '' : 'opacity-40 pointer-events-none' }}">
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Kelipatan Tahun</label>
+                                <input type="text" name="anniversary_milestones" value="{{ $settings['anniversary_milestones'] }}" placeholder="1,3,5,10,15,20,25" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                                <div class="text-[10px] text-gray-400 mt-1">Angka dipisah koma. Isi <b>*</b> untuk merayakan setiap tahun.</div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Jam Kirim</label>
+                                <input type="time" name="anniversary_greeting_time" value="{{ $settings['anniversary_greeting_time'] }}" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -282,6 +308,13 @@ function toggleLpjReminder() {
 function toggleLhpReminder() {
     const w = document.getElementById('lhpReminderWrap');
     const c = document.getElementById('lhpReminderCheck').checked;
+    w.classList.toggle('opacity-40', !c);
+    w.classList.toggle('pointer-events-none', !c);
+}
+
+function toggleAnniversary() {
+    const w = document.getElementById('anniversaryWrap');
+    const c = document.getElementById('anniversaryCheck').checked;
     w.classList.toggle('opacity-40', !c);
     w.classList.toggle('pointer-events-none', !c);
 }
