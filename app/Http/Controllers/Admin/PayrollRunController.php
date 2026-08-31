@@ -10,6 +10,7 @@ use App\Models\EmployeePayroll;
 use App\Models\EmployeePayrollComponent;
 use App\Models\Holiday;
 use App\Models\LeaveRequest;
+use App\Models\LoanRepayment;
 use App\Models\LoanRequest;
 use App\Models\OvertimeRequest;
 use App\Models\PayrollAdjustment;
@@ -287,6 +288,9 @@ class PayrollRunController extends Controller
         }
 
         $run->update(['status' => 'draft', 'finalized_at' => null]);
+        // Potongan cicilan dibatalkan saat mundur ke draft. Tanpa ini, finalize
+        // berikutnya (apalagi setelah regenerate) memotong saldo pinjaman lagi.
+        $this->revertLoanDeductions($run);
         $this->logAction($run, 'reopened', $admin->id);
 
         return back()->with('success', 'Payroll di-reopen ke draft.');
@@ -482,6 +486,10 @@ class PayrollRunController extends Controller
         if (in_array($run->status, ['published', 'locked'])) {
             return back()->with('error', 'Tidak bisa hapus payroll yang sudah published/locked.');
         }
+
+        // Saldo pinjaman dikembalikan dulu selagi detail masih ada, supaya cicilan
+        // yang sudah terpotong tidak hilang bersama payroll run yang dihapus.
+        $this->revertLoanDeductions($run);
 
         $run->details()->delete();
         $run->logs()->delete();
@@ -872,7 +880,7 @@ class PayrollRunController extends Controller
             }
 
             // 5. Auto-calculate: Pinjaman karyawan
-            foreach ($this->loanDeductionComponents($empId, $run->period) as $loanComponent) {
+            foreach ($this->loanDeductionComponents($empId, $run->period, $run->id) as $loanComponent) {
                 $components[] = $loanComponent;
                 $totalDeduction += (float) $loanComponent['amount'];
             }
@@ -1538,7 +1546,7 @@ class PayrollRunController extends Controller
         return \App\Support\PayrollBpjs::applyEligibility($bpjs, $payroll, $periodStart);
     }
 
-    private function loanDeductionComponents(int $employeeId, string $period): array
+    private function loanDeductionComponents(int $employeeId, string $period, ?int $runId = null): array
     {
         $loans = LoanRequest::where('employee_id', $employeeId)
             ->where('status', 'active')
@@ -1584,7 +1592,7 @@ class PayrollRunController extends Controller
                     'interest_amount' => (float) ($loan->interest_amount ?? 0),
                     'total_repayable' => $totalRepayable,
                     'installment_amount' => $baseInstallment,
-                    'installment_number' => $this->loanInstallmentNumber($loan, $remainingAfter),
+                    'installment_number' => $this->loanInstallmentNumber($loan, $runId),
                     'installment_count' => (int) $loan->installment_count,
                     'paid_amount' => $paidAfter,
                     'remaining_amount' => $remainingAfter,
@@ -1612,16 +1620,40 @@ class PayrollRunController extends Controller
         return (float) $loan->monthly_installment;
     }
 
-    private function loanInstallmentNumber(LoanRequest $loan, float $remainingAfter): int
+    /**
+     * Cicilan ke berapa yang dicetak di slip.
+     *
+     * Dihitung dari jumlah baris loan_repayments (satu baris = satu periode yang
+     * benar-benar memotong), bukan dari paid_amount dibagi monthly_installment.
+     * Pembagian itu meleset begitu nominal cicilan pernah diubah atau ada override
+     * per bulan: satu potongan besar bisa terbaca sebagai beberapa cicilan sekaligus.
+     * $excludeRunId dipakai supaya run yang sedang dihitung tidak menghitung dirinya
+     * sendiri, sehingga angkanya sama baik sebelum maupun sesudah ledger ditulis.
+     */
+    private function loanInstallmentNumber(LoanRequest $loan, ?int $excludeRunId = null): int
     {
+        $ledger = LoanRepayment::where('loan_request_id', $loan->id);
+
+        $paidByPayroll = (float) (clone $ledger)->sum('amount');
+        $periodsByPayroll = (clone $ledger)
+            ->when($excludeRunId, fn ($query) => $query->where('payroll_run_id', '!=', $excludeRunId))
+            ->count();
+
+        // Pinjaman lama biasanya diinput dengan sisa yang sudah berjalan, cicilan
+        // sebelumnya tidak pernah lewat payroll. Bagiannya masih ditaksir dari selisih
+        // saldo; sisanya dihitung per baris ledger supaya tidak ikut meleset.
         $installment = (float) $loan->monthly_installment;
-        if ($installment <= 0) {
-            return 1;
-        }
+        $paidOutsidePayroll = max(
+            $this->loanTotalRepayable($loan) - (float) $loan->remaining_amount - $paidByPayroll,
+            0
+        );
+        $periodsOutsidePayroll = $installment > 0 ? (int) floor($paidOutsidePayroll / $installment) : 0;
 
-        $paidAfter = max($this->loanTotalRepayable($loan) - $remainingAfter, 0);
+        $number = $periodsOutsidePayroll + $periodsByPayroll + 1;
 
-        return min((int) $loan->installment_count, max(1, (int) ceil($paidAfter / $installment)));
+        $installmentCount = (int) $loan->installment_count;
+
+        return $installmentCount > 0 ? min($installmentCount, $number) : $number;
     }
 
     private function loanTotalRepayable(LoanRequest $loan): float
@@ -1631,6 +1663,15 @@ class PayrollRunController extends Controller
         return $totalRepayable > 0 ? $totalRepayable : (float) $loan->amount;
     }
 
+    /**
+     * Catat cicilan pinjaman untuk payroll run ini lalu potong saldo pinjaman.
+     *
+     * Sumber kebenaran "sudah dipotong atau belum" adalah tabel loan_repayments,
+     * satu baris per (pinjaman, payroll run). Flag balance_applied di dalam JSON
+     * komponen tetap ditulis untuk tampilan slip, tapi TIDAK boleh dipakai sebagai
+     * pengaman: baris payroll_run_details dihapus tiap regenerate, jadi flagnya ikut
+     * hilang dan finalize berikutnya akan memotong saldo untuk kedua kalinya.
+     */
     private function applyLoanDeductions(PayrollRun $run): void
     {
         $run->loadMissing('details');
@@ -1644,7 +1685,7 @@ class PayrollRunController extends Controller
 
             foreach ($components as &$component) {
                 $loanData = $component['loan'] ?? null;
-                if (! is_array($loanData) || ! empty($loanData['balance_applied'])) {
+                if (! is_array($loanData)) {
                     continue;
                 }
 
@@ -1654,7 +1695,23 @@ class PayrollRunController extends Controller
                 }
 
                 $loan = LoanRequest::find($loanId);
-                if (! $loan || $loan->status !== 'active') {
+                if (! $loan) {
+                    continue;
+                }
+
+                $alreadyDeducted = LoanRepayment::where('loan_request_id', $loan->id)
+                    ->where('payroll_run_id', $run->id)
+                    ->exists();
+
+                // Run ini sudah pernah memotong pinjaman tersebut. Jangan potong lagi,
+                // cukup samakan angka di komponen dengan saldo pinjaman terkini.
+                if ($alreadyDeducted) {
+                    $this->stampLoanComponent($component, $loan, $run->id);
+                    $changed = true;
+                    continue;
+                }
+
+                if ($loan->status !== 'active') {
                     continue;
                 }
 
@@ -1664,18 +1721,21 @@ class PayrollRunController extends Controller
                 }
 
                 $remainingAfter = max((float) $loan->remaining_amount - $deductionAmount, 0);
-                $totalRepayable = $this->loanTotalRepayable($loan);
                 $loan->update([
                     'remaining_amount' => $remainingAfter,
                     'status' => $remainingAfter <= 0 ? 'paid' : 'active',
                     'paid_at' => $remainingAfter <= 0 ? now() : null,
                 ]);
 
-                $component['loan']['remaining_amount'] = $remainingAfter;
-                $component['loan']['paid_amount'] = max($totalRepayable - $remainingAfter, 0);
-                $component['loan']['total_repayable'] = $totalRepayable;
-                $component['loan']['status'] = $remainingAfter <= 0 ? 'lunas' : 'berjalan';
-                $component['loan']['balance_applied'] = true;
+                LoanRepayment::create([
+                    'loan_request_id' => $loan->id,
+                    'payroll_run_id' => $run->id,
+                    'employee_id' => $detail->employee_id,
+                    'period' => $run->period,
+                    'amount' => $deductionAmount,
+                ]);
+
+                $this->stampLoanComponent($component, $loan, $run->id);
                 $changed = true;
             }
 
@@ -1685,6 +1745,101 @@ class PayrollRunController extends Controller
                 $detail->update(['components' => $components]);
             }
         }
+    }
+
+    /**
+     * Kembalikan saldo pinjaman yang sudah dipotong payroll run ini.
+     *
+     * Dipanggil saat run mundur dari finalized ke draft (reopen) atau dihapus,
+     * supaya finalize berikutnya memotong sekali lagi dari saldo yang benar —
+     * bukan menumpuk di atas potongan lama.
+     */
+    private function revertLoanDeductions(PayrollRun $run): void
+    {
+        $run->loadMissing('details');
+
+        $revertedLoanIds = [];
+
+        foreach (LoanRepayment::where('payroll_run_id', $run->id)->get() as $repayment) {
+            $this->restoreLoanBalance((int) $repayment->loan_request_id, (float) $repayment->amount);
+            $revertedLoanIds[] = (int) $repayment->loan_request_id;
+            $repayment->delete();
+        }
+
+        foreach ($run->details as $detail) {
+            $components = is_array($detail->components)
+                ? $detail->components
+                : (json_decode((string) $detail->components, true) ?: []);
+
+            $changed = false;
+
+            foreach ($components as &$component) {
+                $loanData = $component['loan'] ?? null;
+                if (! is_array($loanData)) {
+                    continue;
+                }
+
+                $loanId = (int) ($loanData['id'] ?? 0);
+                if (! $loanId) {
+                    continue;
+                }
+
+                // Run lama (dibuat sebelum tabel loan_repayments ada) tidak punya baris
+                // ledger. Nominal potongannya cuma tercatat di komponen ber-flag
+                // balance_applied, jadi pemulihannya dibaca dari sana.
+                if (! empty($loanData['balance_applied']) && ! in_array($loanId, $revertedLoanIds, true)) {
+                    $this->restoreLoanBalance($loanId, (float) ($component['amount'] ?? 0));
+                    $revertedLoanIds[] = $loanId;
+                }
+
+                if (array_key_exists('balance_applied', $component['loan'])) {
+                    unset($component['loan']['balance_applied']);
+                    $changed = true;
+                }
+            }
+
+            unset($component);
+
+            if ($changed) {
+                $detail->update(['components' => $components]);
+            }
+        }
+    }
+
+    private function restoreLoanBalance(int $loanId, float $amount): void
+    {
+        if ($amount <= 0) {
+            return;
+        }
+
+        $loan = LoanRequest::find($loanId);
+        if (! $loan) {
+            return;
+        }
+
+        // Dibatasi total tagihan supaya koreksi manual pada nominal pinjaman tidak
+        // membuat saldo balik lebih besar dari utang yang sebenarnya.
+        $restored = min((float) $loan->remaining_amount + $amount, $this->loanTotalRepayable($loan));
+
+        $loan->update([
+            'remaining_amount' => $restored,
+            'status' => $restored > 0 ? 'active' : $loan->status,
+            'paid_at' => $restored > 0 ? null : $loan->paid_at,
+        ]);
+    }
+
+    /** Samakan angka pinjaman di komponen slip dengan saldo pinjaman terkini. */
+    private function stampLoanComponent(array &$component, LoanRequest $loan, int $runId): void
+    {
+        $remaining = (float) $loan->remaining_amount;
+        $totalRepayable = $this->loanTotalRepayable($loan);
+
+        $component['loan']['remaining_amount'] = $remaining;
+        $component['loan']['paid_amount'] = max($totalRepayable - $remaining, 0);
+        $component['loan']['total_repayable'] = $totalRepayable;
+        $component['loan']['installment_number'] = $this->loanInstallmentNumber($loan, $runId);
+        $component['loan']['status'] = $remaining <= 0 ? 'lunas' : 'berjalan';
+        $component['loan']['balance_applied'] = true;
     }
 
     /**

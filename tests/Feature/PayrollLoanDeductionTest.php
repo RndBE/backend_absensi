@@ -15,6 +15,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use ReflectionClass;
 use Tests\TestCase;
@@ -1360,6 +1361,158 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertNotNull($loan->paid_at);
     }
 
+    public function test_reopen_regenerate_finalize_cycle_only_deducts_loan_once(): void
+    {
+        Queue::fake();
+
+        $company = Company::create(['name' => 'PT Payroll Loan Cycle']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-006',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll Cycle',
+            'email' => 'admin6@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-006',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Loan Cycle',
+            'email' => 'employee6@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 20000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        $loan = LoanRequest::create([
+            'employee_id' => $employee->id,
+            'amount' => 10000000,
+            'total_repayable' => 10000000,
+            'installment_count' => 10,
+            'monthly_installment' => 1000000,
+            'remaining_amount' => 10000000,
+            'start_period' => '2026-06',
+            'status' => 'active',
+        ]);
+
+        $run = PayrollRun::create([
+            'period' => '2026-06',
+            'created_by' => $admin->id,
+        ]);
+
+        $controller = new PayrollRunController;
+        $this->invokePrivate($controller, 'generateDetails', [$run, [$employee->id]]);
+
+        // Tiga putaran publish/unpublish/reopen/regenerate: saldo pinjaman tetap
+        // berkurang satu cicilan saja karena periodenya juga cuma satu.
+        for ($cycle = 0; $cycle < 3; $cycle++) {
+            $controller->finalize($run->id);
+            $this->assertSame(9000000.0, (float) $loan->fresh()->remaining_amount);
+
+            $controller->publish($run->id);
+            $controller->unpublish($run->id);
+            $controller->reopen($run->id);
+
+            $this->assertSame(10000000.0, (float) $loan->fresh()->remaining_amount);
+
+            $controller->regenerate($run->id);
+        }
+
+        $controller->finalize($run->id);
+
+        $loan->refresh();
+        $this->assertSame(9000000.0, (float) $loan->remaining_amount);
+        $this->assertSame('active', $loan->status);
+        $this->assertSame(1, DB::table('loan_repayments')->where('loan_request_id', $loan->id)->count());
+
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+        $loanComponent = collect($detail->components)->firstWhere('name', 'Potongan Pinjaman');
+
+        $this->assertSame(1, (int) $loanComponent['loan']['installment_number']);
+        $this->assertSame(1000000.0, (float) $loanComponent['loan']['paid_amount']);
+    }
+
+    public function test_deleting_a_finalized_run_restores_loan_balance(): void
+    {
+        $company = Company::create(['name' => 'PT Payroll Loan Delete']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-007',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll Delete',
+            'email' => 'admin7@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-007',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Loan Delete',
+            'email' => 'employee7@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 20000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        $loan = LoanRequest::create([
+            'employee_id' => $employee->id,
+            'amount' => 4000000,
+            'total_repayable' => 4000000,
+            'installment_count' => 4,
+            'monthly_installment' => 1000000,
+            'remaining_amount' => 4000000,
+            'start_period' => '2026-06',
+            'status' => 'active',
+        ]);
+
+        $run = PayrollRun::create([
+            'period' => '2026-06',
+            'created_by' => $admin->id,
+        ]);
+
+        $controller = new PayrollRunController;
+        $this->invokePrivate($controller, 'generateDetails', [$run, [$employee->id]]);
+        $controller->finalize($run->id);
+
+        $this->assertSame(3000000.0, (float) $loan->fresh()->remaining_amount);
+
+        $controller->destroy($run->id);
+
+        $this->assertSame(4000000.0, (float) $loan->fresh()->remaining_amount);
+        $this->assertSame(0, DB::table('loan_repayments')->where('loan_request_id', $loan->id)->count());
+    }
+
     public function test_synced_pinjaman_assignment_is_not_counted_twice_in_payroll(): void
     {
         $company = Company::create(['name' => 'PT Payroll Loan Sync']);
@@ -1449,6 +1602,7 @@ class PayrollLoanDeductionTest extends TestCase
             'employee_payroll_components',
             'employee_payrolls',
             'payroll_components',
+            'loan_repayments',
             'loan_requests',
             'holidays',
             'leave_requests',
@@ -1583,6 +1737,18 @@ class PayrollLoanDeductionTest extends TestCase
             $table->timestamp('disbursed_at')->nullable();
             $table->timestamp('paid_at')->nullable();
             $table->timestamps();
+        });
+
+        Schema::create('loan_repayments', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('loan_request_id');
+            $table->unsignedBigInteger('payroll_run_id');
+            $table->unsignedBigInteger('employee_id')->nullable();
+            $table->string('period', 7)->nullable();
+            $table->decimal('amount', 15, 2);
+            $table->timestamps();
+
+            $table->unique(['loan_request_id', 'payroll_run_id'], 'loan_repayments_loan_run_unique');
         });
 
         Schema::create('holidays', function (Blueprint $table) {
