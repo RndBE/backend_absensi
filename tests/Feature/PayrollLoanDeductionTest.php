@@ -1592,6 +1592,114 @@ class PayrollLoanDeductionTest extends TestCase
         $this->assertSame(500000.0, (float) $components->firstWhere('name', 'Potongan Pinjaman')['amount']);
     }
 
+    public function test_installment_number_ignores_repayments_outside_the_loan_calendar(): void
+    {
+        $company = Company::create(['name' => 'PT Payroll Loan Nomor']);
+        $admin = Employee::create([
+            'employee_code' => 'ADM-020',
+            'company_id' => $company->id,
+            'full_name' => 'Admin Payroll Nomor',
+            'email' => 'admin20@example.test',
+            'password' => 'secret',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        session(['admin_id' => $admin->id]);
+
+        $employee = Employee::create([
+            'employee_code' => 'EMP-020',
+            'company_id' => $company->id,
+            'full_name' => 'Employee Loan Nomor',
+            'email' => 'employee20@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => true,
+            'ptkp' => 'TK/0',
+        ]);
+
+        EmployeePayroll::create([
+            'employee_id' => $employee->id,
+            'basic_salary' => 20000000,
+            'effective_date' => '2026-01-01',
+            'is_active' => true,
+            'is_exempt_penalty' => true,
+            'late_penalty_per_day' => 0,
+            'overtime_multiplier' => 0,
+            'tax_method' => 'nett',
+        ]);
+
+        $loan = LoanRequest::create([
+            'employee_id' => $employee->id,
+            'amount' => 10000000,
+            'total_repayable' => 10000000,
+            'installment_count' => 10,
+            'monthly_installment' => 1000000,
+            'remaining_amount' => 10000000,
+            'start_period' => '2026-07',
+            'status' => 'active',
+        ]);
+
+        // Potongan Juni: periodenya lebih awal dari start_period pinjaman. Baris seperti
+        // ini muncul ketika start_period digeser setelah beberapa run sudah jalan, dan
+        // tidak boleh menggeser nomor cicilan.
+        $staleRun = PayrollRun::create(['period' => '2026-06', 'created_by' => $admin->id]);
+        DB::table('loan_repayments')->insert([
+            'loan_request_id' => $loan->id,
+            'payroll_run_id' => $staleRun->id,
+            'employee_id' => $employee->id,
+            'period' => '2026-06',
+            'amount' => 1000000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $controller = new PayrollRunController;
+
+        $julyRun = PayrollRun::create(['period' => '2026-07', 'created_by' => $admin->id]);
+        $this->invokePrivate($controller, 'generateDetails', [$julyRun, [$employee->id]]);
+        $this->assertSame(1, $this->loanInstallmentNumberOf($julyRun, $employee));
+
+        // Nomornya harus sama sebelum dan sesudah baris ledger run ini ditulis.
+        $controller->finalize($julyRun->id);
+        $this->assertSame(1, $this->loanInstallmentNumberOf($julyRun, $employee));
+
+        $augustRun = PayrollRun::create(['period' => '2026-08', 'created_by' => $admin->id]);
+        $this->invokePrivate($controller, 'generateDetails', [$augustRun, [$employee->id]]);
+        $this->assertSame(2, $this->loanInstallmentNumberOf($augustRun, $employee));
+
+        $controller->finalize($augustRun->id);
+        $this->assertSame(2, $this->loanInstallmentNumberOf($augustRun, $employee));
+
+        // Regenerate run Juli setelah Agustus dipotong: potongan bulan yang lebih baru
+        // tidak boleh ikut dihitung, jadi nomornya tetap 1.
+        $controller->reopen($julyRun->id);
+        $controller->regenerate($julyRun->id);
+        $this->assertSame(1, $this->loanInstallmentNumberOf($julyRun, $employee));
+
+        $controller->finalize($julyRun->id);
+
+        $septemberRun = PayrollRun::create(['period' => '2026-09', 'created_by' => $admin->id]);
+        $this->invokePrivate($controller, 'generateDetails', [$septemberRun, [$employee->id]]);
+        $this->assertSame(3, $this->loanInstallmentNumberOf($septemberRun, $employee));
+
+        // Tiga baris ledger: Juni (di luar kalender pinjaman), Juli, Agustus. Run
+        // September baru digenerate, belum finalize, jadi belum punya baris. Baris Juni
+        // tetap disimpan sebagai jejak audit, cuma tidak dihitung sebagai cicilan.
+        $this->assertSame(3, DB::table('loan_repayments')->where('loan_request_id', $loan->id)->count());
+    }
+
+    private function loanInstallmentNumberOf(PayrollRun $run, Employee $employee): int
+    {
+        $detail = PayrollRunDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)
+            ->firstOrFail();
+
+        $component = collect($detail->components)->firstWhere('name', 'Potongan Pinjaman');
+        $this->assertNotNull($component, 'Komponen Potongan Pinjaman tidak ada di run '.$run->period);
+
+        return (int) $component['loan']['installment_number'];
+    }
+
     private function createPayrollLoanSchema(): void
     {
         foreach ([

@@ -1592,7 +1592,7 @@ class PayrollRunController extends Controller
                     'interest_amount' => (float) ($loan->interest_amount ?? 0),
                     'total_repayable' => $totalRepayable,
                     'installment_amount' => $baseInstallment,
-                    'installment_number' => $this->loanInstallmentNumber($loan, $runId),
+                    'installment_number' => $this->loanInstallmentNumber($loan, $runId, $period),
                     'installment_count' => (int) $loan->installment_count,
                     'paid_amount' => $paidAfter,
                     'remaining_amount' => $remainingAfter,
@@ -1629,14 +1629,35 @@ class PayrollRunController extends Controller
      * per bulan: satu potongan besar bisa terbaca sebagai beberapa cicilan sekaligus.
      * $excludeRunId dipakai supaya run yang sedang dihitung tidak menghitung dirinya
      * sendiri, sehingga angkanya sama baik sebelum maupun sesudah ledger ditulis.
+     *
+     * Baris ledger dibatasi dua sisi supaya nomornya mengikuti kalender pinjaman:
+     *
+     * - Periode lebih awal dari start_period tidak dihitung. Potongan yang terjadi
+     *   sebelum pinjaman resmi mulai berjalan (misalnya start_period diubah setelah
+     *   beberapa run jalan) bukan cicilan, jadi tidak boleh menggeser nomor.
+     * - Periode yang sama atau lebih baru dari $period tidak dihitung. Tanpa batas
+     *   ini, regenerate run lama ikut menghitung potongan bulan-bulan sesudahnya dan
+     *   nomornya melonjak.
+     *
+     * Baris tanpa period (kolomnya nullable) tetap dihitung: posisinya tidak bisa
+     * ditentukan, tapi baris itu mewakili potongan yang benar-benar terjadi.
      */
-    private function loanInstallmentNumber(LoanRequest $loan, ?int $excludeRunId = null): int
+    private function loanInstallmentNumber(LoanRequest $loan, ?int $excludeRunId = null, ?string $period = null): int
     {
         $ledger = LoanRepayment::where('loan_request_id', $loan->id);
 
+        // Sengaja menjumlah SELURUH baris tanpa batas periode: angka ini hanya dipakai
+        // untuk menaksir cicilan yang dibayar di luar payroll, dan potongan yang sudah
+        // punya baris ledger tidak boleh ikut tertaksir sebagai pembayaran manual.
         $paidByPayroll = (float) (clone $ledger)->sum('amount');
         $periodsByPayroll = (clone $ledger)
             ->when($excludeRunId, fn ($query) => $query->where('payroll_run_id', '!=', $excludeRunId))
+            ->when($loan->start_period, fn ($query, $startPeriod) => $query->where(
+                fn ($inner) => $inner->whereNull('period')->orWhere('period', '>=', $startPeriod)
+            ))
+            ->when($period, fn ($query, $currentPeriod) => $query->where(
+                fn ($inner) => $inner->whereNull('period')->orWhere('period', '<', $currentPeriod)
+            ))
             ->count();
 
         // Pinjaman lama biasanya diinput dengan sisa yang sudah berjalan, cicilan
@@ -1706,7 +1727,7 @@ class PayrollRunController extends Controller
                 // Run ini sudah pernah memotong pinjaman tersebut. Jangan potong lagi,
                 // cukup samakan angka di komponen dengan saldo pinjaman terkini.
                 if ($alreadyDeducted) {
-                    $this->stampLoanComponent($component, $loan, $run->id);
+                    $this->stampLoanComponent($component, $loan, $run);
                     $changed = true;
                     continue;
                 }
@@ -1735,7 +1756,7 @@ class PayrollRunController extends Controller
                     'amount' => $deductionAmount,
                 ]);
 
-                $this->stampLoanComponent($component, $loan, $run->id);
+                $this->stampLoanComponent($component, $loan, $run);
                 $changed = true;
             }
 
@@ -1829,7 +1850,7 @@ class PayrollRunController extends Controller
     }
 
     /** Samakan angka pinjaman di komponen slip dengan saldo pinjaman terkini. */
-    private function stampLoanComponent(array &$component, LoanRequest $loan, int $runId): void
+    private function stampLoanComponent(array &$component, LoanRequest $loan, PayrollRun $run): void
     {
         $remaining = (float) $loan->remaining_amount;
         $totalRepayable = $this->loanTotalRepayable($loan);
@@ -1837,7 +1858,7 @@ class PayrollRunController extends Controller
         $component['loan']['remaining_amount'] = $remaining;
         $component['loan']['paid_amount'] = max($totalRepayable - $remaining, 0);
         $component['loan']['total_repayable'] = $totalRepayable;
-        $component['loan']['installment_number'] = $this->loanInstallmentNumber($loan, $runId);
+        $component['loan']['installment_number'] = $this->loanInstallmentNumber($loan, $run->id, $run->period);
         $component['loan']['status'] = $remaining <= 0 ? 'lunas' : 'berjalan';
         $component['loan']['balance_applied'] = true;
     }
