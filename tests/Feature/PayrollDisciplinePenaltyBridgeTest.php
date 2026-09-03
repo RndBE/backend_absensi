@@ -67,6 +67,92 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
             && $request->header('X-Internal-Secret')[0] === 'bridge-secret');
     }
 
+    /**
+     * Sejak 3 Sep 2026 DailyCloseApp memasukkan hari bolong ke `late_dates` dan
+     * merincinya di `missing_dates`. Rinciannya harus ikut terbaca, tapi tidak
+     * boleh menambah jumlah hari — kalau dijumlahkan, hari bolong dihitung dua kali.
+     */
+    public function test_payroll_reads_missing_report_dates_without_double_counting(): void
+    {
+        config([
+            'services.daily.url' => 'http://daily.test',
+            'services.daily.internal_secret' => 'bridge-secret',
+        ]);
+
+        Http::fake([
+            'http://daily.test/api/internal/payroll/daily-report-late*' => Http::response([
+                'success' => true,
+                'data' => [
+                    [
+                        'email' => 'staff@example.test',
+                        'late_days' => 3,
+                        'late_dates' => ['2026-06-04', '2026-06-05', '2026-06-08'],
+                        'missing_days' => 2,
+                        'missing_dates' => ['2026-06-05', '2026-06-08'],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $counts = $this->invokePrivate(
+            new PayrollRunController,
+            'fetchDailyReportLateCounts',
+            [
+                collect(['staff@example.test']),
+                Carbon::parse('2026-06-01'),
+                Carbon::parse('2026-06-30'),
+            ]
+        );
+
+        $this->assertSame(3, $counts['staff@example.test']['days']);
+        $this->assertSame(
+            ['2026-06-04', '2026-06-05', '2026-06-08'],
+            $counts['staff@example.test']['dates']
+        );
+        $this->assertSame(
+            ['2026-06-05', '2026-06-08'],
+            $counts['staff@example.test']['missing_dates']
+        );
+    }
+
+    /**
+     * `missing_dates` selalu himpunan bagian dari `late_dates`. Tanggal yang tidak ada di
+     * `late_dates` diabaikan supaya rincian tidak memunculkan hari yang tidak ditagih.
+     */
+    public function test_missing_dates_outside_late_dates_are_ignored(): void
+    {
+        config([
+            'services.daily.url' => 'http://daily.test',
+            'services.daily.internal_secret' => 'bridge-secret',
+        ]);
+
+        Http::fake([
+            'http://daily.test/api/internal/payroll/daily-report-late*' => Http::response([
+                'success' => true,
+                'data' => [
+                    [
+                        'email' => 'staff@example.test',
+                        'late_days' => 1,
+                        'late_dates' => ['2026-06-04'],
+                        'missing_dates' => ['2026-06-04', '2026-06-09'],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $counts = $this->invokePrivate(
+            new PayrollRunController,
+            'fetchDailyReportLateCounts',
+            [
+                collect(['staff@example.test']),
+                Carbon::parse('2026-06-01'),
+                Carbon::parse('2026-06-30'),
+            ]
+        );
+
+        $this->assertSame(['2026-06-04'], $counts['staff@example.test']['missing_dates']);
+    }
+
     public function test_payroll_builds_potongan_kedisiplinan_component(): void
     {
         $component = $this->invokePrivate(
@@ -79,12 +165,72 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         $this->assertSame('deduction', $component['type']);
         $this->assertSame(150000.0, $component['amount']);
         $this->assertSame('3 hari × Rp 50.000', $component['detail']);
-        $this->assertSame('Data keterlambatan laporan harian', $component['penalty']['source']);
+        $this->assertSame('Data sanksi laporan harian (telat & tidak diisi)', $component['penalty']['source']);
         $this->assertSame(3, $component['penalty']['count']);
         $this->assertSame(50000.0, $component['penalty']['unit_amount']);
         $this->assertCount(3, $component['lines']);
         $this->assertSame('2026-06-05', $component['lines'][0]['date']);
         $this->assertSame('Laporan harian terlambat', $component['lines'][0]['description']);
+    }
+
+    /**
+     * Hari bolong dan hari telat sama-sama kena potongan, tapi rinciannya harus jujur
+     * menyebut yang mana — kalau semua ditulis "terlambat", karyawan yang tidak mengisi
+     * laporan sama sekali akan protes ke rincian yang salah.
+     */
+    public function test_missing_report_days_are_labelled_apart_from_late_days(): void
+    {
+        $component = $this->invokePrivate(
+            new PayrollRunController,
+            'buildDisciplinePenaltyComponent',
+            [2, 50000, ['2026-06-05', '2026-06-06'], ['2026-06-06']]
+        );
+
+        $this->assertSame(100000.0, $component['amount']);
+        $this->assertSame('hari kena sanksi laporan', $component['penalty']['unit_label']);
+        $this->assertSame('Laporan harian terlambat', $component['lines'][0]['description']);
+        $this->assertSame('Ditandai terlambat oleh DailyCloseApp', $component['lines'][0]['evidence']);
+        $this->assertSame('Laporan harian tidak diisi', $component['lines'][1]['description']);
+        $this->assertSame('Tidak ada laporan di DailyCloseApp', $component['lines'][1]['evidence']);
+    }
+
+    /**
+     * DailyCloseApp tidak menyimpan tanggal keluar, jadi hari kerja setelah karyawan
+     * resign ikut terhitung bolong di sana. Tanpa penyaringan ini, orang yang sudah
+     * keluar tanggal 10 kena potongan sampai akhir bulan.
+     */
+    public function test_report_late_excludes_dates_after_last_working_date(): void
+    {
+        $employee = Employee::create([
+            'employee_code' => 'EMP-RESIGN-'.uniqid(),
+            'company_id' => 1,
+            'full_name' => 'Resign Tester',
+            'email' => uniqid('resign.').'@example.test',
+            'password' => 'secret',
+            'role' => 'employee',
+            'is_active' => false,
+            'join_date' => '2026-06-03',
+            'last_working_date' => '2026-06-10',
+        ]);
+
+        $filtered = $this->invokePrivate(
+            new PayrollRunController,
+            'excludeFullDayLeaveFromReportLate',
+            [
+                [
+                    'days' => 4,
+                    'dates' => ['2026-06-02', '2026-06-09', '2026-06-10', '2026-06-11'],
+                    'missing_dates' => ['2026-06-10', '2026-06-11'],
+                ],
+                $employee,
+                Carbon::parse('2026-06-01'),
+                Carbon::parse('2026-06-30'),
+            ]
+        );
+
+        $this->assertSame(2, $filtered['days']);
+        $this->assertSame(['2026-06-09', '2026-06-10'], $filtered['dates']);
+        $this->assertSame(['2026-06-10'], $filtered['missing_dates']);
     }
 
     public function test_existing_payroll_can_attach_daily_report_dates_without_regenerate(): void
@@ -110,7 +256,7 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         $this->assertCount(2, $component['lines']);
         $this->assertSame('2026-06-04', $component['lines'][0]['date']);
         $this->assertSame('2026-06-05', $component['lines'][1]['date']);
-        $this->assertSame('Data keterlambatan laporan harian', $component['penalty']['source']);
+        $this->assertSame('Data sanksi laporan harian (telat & tidak diisi)', $component['penalty']['source']);
     }
 
     public function test_existing_lhp_alias_can_attach_daily_report_dates_without_regenerate(): void
@@ -135,7 +281,7 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         $component = $detail->components[0];
         $this->assertCount(1, $component['lines']);
         $this->assertSame('2026-06-04', $component['lines'][0]['date']);
-        $this->assertSame('Data keterlambatan laporan harian', $component['penalty']['source']);
+        $this->assertSame('Data sanksi laporan harian (telat & tidak diisi)', $component['penalty']['source']);
     }
 
     public function test_late_penalty_includes_daily_detail_lines(): void
@@ -516,6 +662,9 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
             $table->string('password');
             $table->boolean('is_active')->default(true);
             $table->string('role')->default('employee');
+            $table->date('join_date')->nullable();
+            $table->date('resign_date')->nullable();
+            $table->date('last_working_date')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });

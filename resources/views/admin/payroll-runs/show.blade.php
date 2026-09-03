@@ -396,7 +396,7 @@
             'count' => (int) $matches[1],
             'unit_label' => \Illuminate\Support\Str::contains($penaltyName, 'alpha')
                 ? 'hari alpha'
-                : ($isReportPenalty ? 'hari terlambat laporan' : 'hari terlambat'),
+                : ($isReportPenalty ? 'hari kena sanksi laporan' : 'hari terlambat'),
             'unit_amount' => (float) str_replace('.', '', $matches[2]),
         ];
     }

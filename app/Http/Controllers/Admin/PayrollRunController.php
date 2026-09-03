@@ -104,7 +104,7 @@ class PayrollRunController extends Controller
         $run = PayrollRun::with(['creator:id,full_name', 'logs.performer:id,full_name'])->findOrFail($id);
 
         $details = PayrollRunDetail::where('payroll_run_id', $id)
-            ->with(['employee:id,company_id,full_name,email,employee_code,department_id,position', 'employee.department:id,name'])
+            ->with(['employee:id,company_id,full_name,email,employee_code,department_id,position,join_date,resign_date,last_working_date', 'employee.department:id,name'])
             ->orderBy('net_salary', 'desc')
             ->get();
 
@@ -793,7 +793,7 @@ class PayrollRunController extends Controller
 
                 $employeeDailyReportLate = $this->excludeFullDayLeaveFromReportLate(
                     $dailyReportLateData[strtolower((string) $employee->email)] ?? ['days' => 0, 'dates' => []],
-                    $empId,
+                    $employee ?: $empId,
                     $periodStart,
                     $periodEnd
                 );
@@ -802,7 +802,8 @@ class PayrollRunController extends Controller
                     $disciplineComponent = $this->buildDisciplinePenaltyComponent(
                         $disciplineLateDays,
                         $latePenalty,
-                        $employeeDailyReportLate['dates'] ?? []
+                        $employeeDailyReportLate['dates'] ?? [],
+                        $employeeDailyReportLate['missing_dates'] ?? []
                     );
                     $components[] = $disciplineComponent;
                     $totalDeduction += $disciplineComponent['amount'];
@@ -1432,6 +1433,17 @@ class PayrollRunController extends Controller
     private function attachDailyReportPenaltyLinesForDetail(PayrollRunDetail $detail, array $lateData): void
     {
         $dates = $lateData['dates'] ?? [];
+
+        // Rincian tampilan saja — nominal tersimpan tidak disentuh. Hari setelah karyawan
+        // keluar tetap dibuang supaya popup tidak memajang tanggal saat orangnya sudah
+        // tidak bekerja; DailyCloseApp tidak tahu tanggal keluar dan menghitungnya bolong.
+        if ($detail->employee) {
+            $dates = array_values(array_filter(
+                (array) $dates,
+                fn ($date) => $detail->employee->isEmployedOn($date)
+            ));
+        }
+
         if (empty($dates)) {
             return;
         }
@@ -1452,7 +1464,8 @@ class PayrollRunController extends Controller
             $generated = $this->buildDisciplinePenaltyComponent(
                 (int) ($lateData['days'] ?? count($dates)),
                 $rate,
-                $dates
+                $dates,
+                $lateData['missing_dates'] ?? []
             );
             $component['lines'] = $generated['lines'];
             $component['penalty'] ??= $generated['penalty'];
@@ -1949,24 +1962,21 @@ class PayrollRunController extends Controller
 
             return collect($response->json('data') ?? [])
                 ->mapWithKeys(function ($row) {
-                    $dates = collect($row['late_dates'] ?? [])
-                        ->map(function ($date) {
-                            try {
-                                return Carbon::parse($date)->toDateString();
-                            } catch (\Throwable) {
-                                return null;
-                            }
-                        })
-                        ->filter()
-                        ->unique()
-                        ->sort()
-                        ->values()
-                        ->all();
+                    $dates = $this->normalizeReportDates($row['late_dates'] ?? []);
+
+                    // Sejak 3 Sep 2026 `late_dates` menggabungkan hari telat DAN hari
+                    // laporannya bolong. `missing_dates` cuma rincian dari bagian bolong —
+                    // selalu himpunan bagian, jadi tidak boleh ditambahkan ke jumlah hari.
+                    $missingDates = array_values(array_intersect(
+                        $this->normalizeReportDates($row['missing_dates'] ?? []),
+                        $dates
+                    ));
 
                     return [
                         strtolower((string) ($row['email'] ?? '')) => [
                             'days' => (int) ($row['late_days'] ?? count($dates)),
                             'dates' => $dates,
+                            'missing_dates' => $missingDates,
                         ],
                     ];
                 })
@@ -1981,6 +1991,24 @@ class PayrollRunController extends Controller
         }
     }
 
+    /** @param  mixed  $dates */
+    private function normalizeReportDates($dates): array
+    {
+        return collect(is_array($dates) ? $dates : [])
+            ->map(function ($date) {
+                try {
+                    return Carbon::parse($date)->toDateString();
+                } catch (\Throwable) {
+                    return null;
+                }
+            })
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
     /**
      * Buang tanggal cuti/sakit penuh dari data telat laporan harian milik DailyCloseApp.
      *
@@ -1988,13 +2016,22 @@ class PayrollRunController extends Controller
      * jadi penyaringannya dikerjakan di sisi ini. Hanya cuti/sakit sehari penuh yang
      * dibuang: WFH dan izin parsial tetap dihitung karena orangnya tetap bekerja hari
      * itu, jadi laporan hariannya memang tetap wajib.
+     *
+     * Sejak 3 Sep 2026 angka dari DailyCloseApp juga memuat hari yang laporannya bolong.
+     * DailyCloseApp tidak menyimpan tanggal keluar, jadi hari kerja setelah karyawan
+     * resign ikut terhitung bolong di sana — penyaringan masa kerja wajib dikerjakan di
+     * sisi ini, kalau tidak orang yang sudah keluar kena potongan sampai akhir bulan.
+     *
+     * @param  int|Employee  $employee
      */
-    private function excludeFullDayLeaveFromReportLate(array $lateData, int $empId, $periodStart, $periodEnd): array
+    private function excludeFullDayLeaveFromReportLate(array $lateData, $employee, $periodStart, $periodEnd): array
     {
+        $empId = $employee instanceof Employee ? (int) $employee->id : (int) $employee;
         $days = (int) ($lateData['days'] ?? 0);
+        $missing = array_values(array_filter((array) ($lateData['missing_dates'] ?? [])));
 
         if ($days <= 0) {
-            return ['days' => 0, 'dates' => []];
+            return ['days' => 0, 'dates' => [], 'missing_dates' => []];
         }
 
         $dates = array_values(array_filter((array) ($lateData['dates'] ?? [])));
@@ -2008,32 +2045,55 @@ class PayrollRunController extends Controller
                 'days' => $days,
             ]);
 
-            return ['days' => $days, 'dates' => []];
+            return ['days' => $days, 'dates' => [], 'missing_dates' => []];
         }
 
-        $leaveDates = array_flip(LeaveDayCategory::fullDayAwayDates($empId, $periodStart, $periodEnd));
-        $kept = array_values(array_filter($dates, fn ($date) => ! isset($leaveDates[$date])));
+        $record = $employee instanceof Employee
+            ? $employee
+            : Employee::find($empId);
 
-        return ['days' => count($kept), 'dates' => $kept];
+        $leaveDates = array_flip(LeaveDayCategory::fullDayAwayDates($empId, $periodStart, $periodEnd));
+        $kept = array_values(array_filter($dates, function ($date) use ($leaveDates, $record) {
+            if (isset($leaveDates[$date])) {
+                return false;
+            }
+
+            return $record === null || $record->isEmployedOn($date);
+        }));
+
+        return [
+            'days' => count($kept),
+            'dates' => $kept,
+            'missing_dates' => array_values(array_intersect($missing, $kept)),
+        ];
     }
 
-    private function buildDisciplinePenaltyComponent(int $lateDays, float $penaltyPerDay, array $lateDates = []): array
+    /**
+     * @param  array  $missingDates  Bagian dari $lateDates yang laporannya bolong, bukan telat.
+     *                               Rincian saja — jumlah harinya sudah termasuk di $lateDays.
+     */
+    private function buildDisciplinePenaltyComponent(int $lateDays, float $penaltyPerDay, array $lateDates = [], array $missingDates = []): array
     {
         $amount = $lateDays * $penaltyPerDay;
+        $missing = array_flip($this->normalizeReportDates($missingDates));
         $lines = collect($lateDates)
-            ->map(function ($date) use ($penaltyPerDay) {
+            ->map(function ($date) use ($penaltyPerDay, $missing) {
                 try {
                     $date = Carbon::parse($date);
                 } catch (\Throwable) {
                     return null;
                 }
 
+                $isMissing = isset($missing[$date->toDateString()]);
+
                 return [
                     'date' => $date->toDateString(),
                     'date_label' => $date->translatedFormat('d M Y'),
                     'day_label' => $date->translatedFormat('l'),
-                    'description' => 'Laporan harian terlambat',
-                    'evidence' => 'Ditandai terlambat oleh DailyCloseApp',
+                    'description' => $isMissing ? 'Laporan harian tidak diisi' : 'Laporan harian terlambat',
+                    'evidence' => $isMissing
+                        ? 'Tidak ada laporan di DailyCloseApp'
+                        : 'Ditandai terlambat oleh DailyCloseApp',
                     'amount' => $penaltyPerDay,
                 ];
             })
@@ -2053,9 +2113,9 @@ class PayrollRunController extends Controller
             'is_auto' => true,
             'detail' => $lateDays.' hari × Rp '.number_format($penaltyPerDay, 0, ',', '.'),
             'penalty' => [
-                'source' => 'Data keterlambatan laporan harian',
+                'source' => 'Data sanksi laporan harian (telat & tidak diisi)',
                 'count' => $lateDays,
-                'unit_label' => 'hari terlambat laporan',
+                'unit_label' => 'hari kena sanksi laporan',
                 'unit_amount' => $penaltyPerDay,
             ],
             'lines' => $lines,
