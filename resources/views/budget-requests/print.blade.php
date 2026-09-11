@@ -35,7 +35,11 @@
         .signature-table td { height: 78px; padding: 0 16px; text-align: center; vertical-align: bottom; }
         .signature-role { height: 20px; padding-top: 8px; font-weight: 800; text-align: center; vertical-align: top !important; }
         .signature-date { margin-bottom: 22px; font-size: 11px; }
-        .signature-img { display: block; max-height: 34px; max-width: 150px; margin: 0 auto 2px; }
+        /* Kotak berukuran tetap: gambar tanda tangan apa pun dimensinya diskalakan
+           agar muat (object-fit: contain), jadi tinggi baris tidak ikut berubah-ubah. */
+        .signature-img-box { height: 52px; margin-bottom: 3px; text-align: center; font-size: 0; }
+        .signature-img-box::before { content: ''; display: inline-block; height: 100%; vertical-align: bottom; }
+        .signature-img-box img { max-height: 100%; max-width: 82%; width: auto; height: auto; object-fit: contain; vertical-align: bottom; }
         .has-sign .signature-date { margin-bottom: 10px; }
         .signature-line { border-bottom: 1px solid #000; height: 15px; margin: 0 auto 3px; max-width: 170px; }
         .signature-name { min-height: 13px; font-weight: 700; }
@@ -142,7 +146,9 @@
             <tr>
                 <td class="{{ $pengajuSignature ? 'has-sign' : '' }}">
                     @if($pengajuSignature)
-                        <img class="signature-img" src="{{ asset('storage/' . $pengajuSignature) }}" alt="Tanda tangan pengaju">
+                        <div class="signature-img-box">
+                            <img src="{{ asset('storage/' . $pengajuSignature) }}" alt="Tanda tangan pengaju">
+                        </div>
                     @endif
                     <div class="signature-date">({{ $pengajuDate ?? '__________/__________/__________' }})</div>
                     <div class="signature-line"></div>
