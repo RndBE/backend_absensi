@@ -37,10 +37,10 @@
         .signature-date { margin-bottom: 22px; font-size: 11px; }
         /* Kotak berukuran tetap: gambar tanda tangan apa pun dimensinya diskalakan
            agar muat (object-fit: contain), jadi tinggi baris tidak ikut berubah-ubah. */
-        .signature-img-box { height: 52px; margin-bottom: 3px; text-align: center; font-size: 0; }
+        .signature-img-box { height: 74px; margin-bottom: 2px; text-align: center; font-size: 0; }
         .signature-img-box::before { content: ''; display: inline-block; height: 100%; vertical-align: bottom; }
-        .signature-img-box img { max-height: 100%; max-width: 82%; width: auto; height: auto; object-fit: contain; vertical-align: bottom; }
-        .has-sign .signature-date { margin-bottom: 10px; }
+        .signature-img-box img { max-height: 100%; max-width: 96%; width: auto; height: auto; object-fit: contain; vertical-align: bottom; }
+        .has-sign .signature-date { margin-bottom: 8px; font-size: 13px; font-weight: 700; }
         .signature-line { border-bottom: 1px solid #000; height: 15px; margin: 0 auto 3px; max-width: 170px; }
         .signature-name { min-height: 13px; font-weight: 700; }
         .approval-heading { height: 20px !important; padding: 2px 0 0 !important; font-weight: 800; text-align: center; vertical-align: middle !important; }
