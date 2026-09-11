@@ -35,6 +35,8 @@
         .signature-table td { height: 78px; padding: 0 16px; text-align: center; vertical-align: bottom; }
         .signature-role { height: 20px; padding-top: 8px; font-weight: 800; text-align: center; vertical-align: top !important; }
         .signature-date { margin-bottom: 22px; font-size: 11px; }
+        .signature-img { display: block; max-height: 34px; max-width: 150px; margin: 0 auto 2px; }
+        .has-sign .signature-date { margin-bottom: 10px; }
         .signature-line { border-bottom: 1px solid #000; height: 15px; margin: 0 auto 3px; max-width: 170px; }
         .signature-name { min-height: 13px; font-weight: 700; }
         .approval-heading { height: 20px !important; padding: 2px 0 0 !important; font-weight: 800; text-align: center; vertical-align: middle !important; }
@@ -61,6 +63,11 @@
             $approvalChain ?? collect()
         );
         $rows = max(10, $budgetRequest->items->count());
+
+        // Kotak Pengaju terisi otomatis: gambar tanda tangan dari profil pegawai
+        // dan tanggal pengajuan. Kotak lain tetap manual.
+        $pengajuSignature = $budgetRequest->employee?->signature;
+        $pengajuDate = $budgetRequest->created_at?->timezone(config('app.timezone'))->format('d / m / Y');
     @endphp
 
     <main class="sheet">
@@ -133,8 +140,11 @@
                 <td class="signature-role">Manager</td>
             </tr>
             <tr>
-                <td>
-                    <div class="signature-date">(__________/__________/__________)</div>
+                <td class="{{ $pengajuSignature ? 'has-sign' : '' }}">
+                    @if($pengajuSignature)
+                        <img class="signature-img" src="{{ asset('storage/' . $pengajuSignature) }}" alt="Tanda tangan pengaju">
+                    @endif
+                    <div class="signature-date">({{ $pengajuDate ?? '__________/__________/__________' }})</div>
                     <div class="signature-line"></div>
                     <div class="signature-name">{{ $signatureNames['pengaju'] }}</div>
                 </td>
