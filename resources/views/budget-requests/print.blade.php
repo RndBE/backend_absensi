@@ -69,7 +69,9 @@
 
         // Kotak Pengaju terisi otomatis: gambar tanda tangan dari profil pegawai
         // dan tanggal pengajuan. Kotak lain tetap manual.
-        $pengajuSignature = $budgetRequest->employee?->signature;
+        // Dipangkas dulu: file unggahan biasanya punya ruang kosong di sekeliling
+        // tinta, dan ruang itu ikut membesar saat diskalakan CSS.
+        $pengajuSignature = \App\Support\SignatureImage::url($budgetRequest->employee?->signature);
         $pengajuDate = $budgetRequest->created_at?->timezone(config('app.timezone'))->format('d / m / Y');
     @endphp
 
@@ -146,7 +148,7 @@
                 <td class="{{ $pengajuSignature ? 'has-sign' : '' }}">
                     @if($pengajuSignature)
                         <div class="signature-img-box">
-                            <img src="{{ asset('storage/' . $pengajuSignature) }}" alt="Tanda tangan pengaju">
+                            <img src="{{ $pengajuSignature }}" alt="Tanda tangan pengaju">
                         </div>
                     @endif
                     <div class="signature-date">({{ $pengajuDate ?? '__________/__________/__________' }})</div>
