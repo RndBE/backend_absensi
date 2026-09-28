@@ -42,6 +42,11 @@
                             <td class="px-4 py-3.5 text-[13px] border-b border-gray-100 whitespace-nowrap">{{ $report->budgetRequest?->title ?? '-' }}</td>
                             <td class="px-4 py-3.5 border-b border-gray-100 whitespace-nowrap">
                                 @include('employee.partials.status-badge', ['status' => $report->status])
+                                @if($report->resubmission_of_id)
+                                    <span class="ml-1 inline-flex items-center gap-0.5 rounded-full bg-indigo-50 px-2 py-0.5 text-[10.5px] font-bold text-indigo-700" title="Pengganti LHP yang ditolak">
+                                        <span class="material-symbols-outlined text-[12px]">history</span> Pengajuan ulang
+                                    </span>
+                                @endif
                                 @if($report->is_late)
                                     <span class="ml-1 inline-flex items-center gap-0.5 rounded-full bg-red-50 px-2 py-0.5 text-[10.5px] font-bold text-red-600" title="Dikumpulkan melewati batas">
                                         <span class="material-symbols-outlined text-[12px]">schedule</span> Terlambat
@@ -49,6 +54,12 @@
                                 @endif
                             </td>
                             <td class="px-4 py-3.5 text-right border-b border-gray-100 whitespace-nowrap">
+                                @if($report->canBeResubmitted())
+                                    <a href="{{ route('employee.travel-reports.resubmit', $report->id) }}" class="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-[11px] font-bold text-red-700 hover:bg-red-100">
+                                        <span class="material-symbols-outlined text-[15px]">refresh</span>
+                                        Ajukan ulang
+                                    </a>
+                                @endif
                                 <a href="{{ route('employee.travel-reports.show', $report->id) }}" class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">
                                     <span class="material-symbols-outlined text-[15px]">visibility</span>
                                     Detail

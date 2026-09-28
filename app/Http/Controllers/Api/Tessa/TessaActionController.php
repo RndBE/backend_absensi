@@ -84,6 +84,11 @@ class TessaActionController extends Controller
             return $this->fail('Perubahan data karyawan harus disetujui superadmin lewat website, bukan via Tessa.', 422);
         }
 
+        // Cek di sini, sebelum catatan diberi akhiran "(via Tessa AI)" yang membuatnya tak pernah kosong.
+        if ($action === 'reject' && $type === 'travel_report' && blank($request->input('notes'))) {
+            return $this->fail('Alasan penolakan LHP wajib diisi. Tanyakan ke approver apa yang perlu diperbaiki karyawan.', 422);
+        }
+
         $modelClass = $this->approvalModel($type);
         if (! $modelClass) {
             return $this->fail("Tipe '{$type}' tidak valid. Pilih: ".implode(', ', self::APPROVAL_TYPES), 404);

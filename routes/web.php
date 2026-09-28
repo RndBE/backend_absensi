@@ -156,6 +156,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::post('/travel-reports', [EmployeeTravelReportController::class, 'store'])->name('travel-reports.store');
     Route::get('/travel-reports/{id}', [EmployeeTravelReportController::class, 'show'])->name('travel-reports.show');
     Route::get('/travel-reports/{id}/edit', [EmployeeTravelReportController::class, 'edit'])->name('travel-reports.edit');
+    Route::get('/travel-reports/{id}/resubmit', [EmployeeTravelReportController::class, 'resubmit'])->name('travel-reports.resubmit');
     Route::put('/travel-reports/{id}', [EmployeeTravelReportController::class, 'update'])->name('travel-reports.update');
     // LPJ
     Route::get('/lpj', [EmployeeLpjController::class, 'index'])->name('lpj.index');

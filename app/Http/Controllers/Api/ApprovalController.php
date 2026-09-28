@@ -352,7 +352,11 @@ class ApprovalController extends Controller
 
     public function reject(Request $request, $type, $id)
     {
-        $request->validate(['notes' => 'nullable|string']);
+        // LHP yang ditolak diajukan ulang oleh karyawan, jadi alasannya wajib.
+        $request->validate(
+            ['notes' => [$type === 'travel_report' ? 'required' : 'nullable', 'string']],
+            ['notes.required' => 'Alasan penolakan LHP wajib diisi supaya karyawan tahu apa yang harus diperbaiki.'],
+        );
 
         $modelClass = $this->typeMap[$type] ?? null;
         $typeLabel = $this->typeLabels[$type] ?? 'Pengajuan';

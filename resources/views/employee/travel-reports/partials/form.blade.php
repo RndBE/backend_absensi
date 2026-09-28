@@ -1,5 +1,7 @@
 @php
     $selectedBudgetId = old('budget_request_id', $report?->budget_request_id ?? request('budget_request_id'));
+    // Dokumen lama per aktivitas; baris aktivitas merujuknya lewat existing_documents.
+    $existingDocuments = $report ? $report->activities->flatMap->documents->keyBy('id') : collect();
     $activities = old('activities');
     if (! is_array($activities)) {
         $activities = $report
@@ -9,6 +11,7 @@
                 'results' => $activity->results ?: [''],
                 'issues' => $activity->issues,
                 'conclusion' => $activity->conclusion,
+                'existing_documents' => $activity->documents->pluck('id')->all(),
             ])->values()->all()
             : [[
                 'date' => '',
@@ -36,6 +39,35 @@
         @if($method !== 'POST')
             @method($method)
         @endif
+
+        @isset($resubmissionOf)
+            @php $rejection = $resubmissionOf->latestRejection; @endphp
+            <input type="hidden" name="resubmission_of_id" value="{{ $resubmissionOf->id }}">
+            @isset($existingDocuments)
+                {{-- Baris aktivitas menampilkan foto lama beserta centang Hapus ($existingDocuments),
+                     jadi server hanya menyalin foto yang tidak dicentang. --}}
+                <input type="hidden" name="document_selection" value="1">
+            @endisset
+            <section class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-1">
+                <div class="flex items-center gap-1.5 text-[13px] font-bold text-amber-800">
+                    <span class="material-symbols-outlined text-[18px]">report</span>
+                    Yang perlu diperbaiki
+                </div>
+                <div class="text-[13px] text-amber-800">{{ $rejection?->notes ?: 'Approver tidak menuliskan alasan penolakan.' }}</div>
+                @if($rejection)
+                    <div class="text-[12px] text-amber-700">Ditolak oleh {{ $rejection->approver?->full_name ?? 'approver' }} · step {{ $rejection->step_order }} · {{ $rejection->created_at?->format('d/m/Y') }}</div>
+                @endif
+                @if($resubmissionOf->documents->isNotEmpty())
+                    <div class="text-[12px] text-amber-700">
+                        @isset($existingDocuments)
+                            Foto dokumentasi dari LHP yang ditolak ikut disalin, kecuali yang dicentang Hapus. Tambahkan foto baru bila perlu.
+                        @else
+                            {{ $resubmissionOf->documents->count() }} foto dokumentasi dari LHP yang ditolak ikut disalin otomatis. Tambahkan foto baru bila perlu.
+                        @endisset
+                    </div>
+                @endif
+            </section>
+        @endisset
 
         <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
             <label class="block">
@@ -114,7 +146,7 @@
             </div>
             <div class="space-y-3" id="travelActivities">
                 @foreach($activities as $index => $activity)
-                    @include('employee.travel-reports.partials.activity-row', ['index' => $index, 'activity' => $activity])
+                    @include('employee.travel-reports.partials.activity-row', ['index' => $index, 'activity' => $activity, 'existingDocuments' => $existingDocuments])
                 @endforeach
             </div>
         </section>
@@ -131,7 +163,13 @@
                 </div>
                 <div class="space-y-2" id="recommendations">
                     @foreach($recommendations as $recommendation)
-                        <input name="recommendations[]" value="{{ $recommendation }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Rekomendasi tindak lanjut">
+                        <div class="flex items-center gap-2" data-recommendation-row>
+                            <input name="recommendations[]" value="{{ $recommendation }}" class="employee-native-field min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Rekomendasi tindak lanjut">
+                            <button type="button" data-remove-recommendation aria-label="Hapus rekomendasi" title="Hapus rekomendasi"
+                                class="{{ count($recommendations) > 1 ? '' : 'hidden' }} inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-white text-red-600 hover:bg-red-50">
+                                <span class="material-symbols-outlined text-[18px]">close</span>
+                            </button>
+                        </div>
                     @endforeach
                 </div>
             </div>
@@ -139,7 +177,7 @@
 
         <div class="flex justify-end gap-2">
             <a href="{{ route('employee.travel-reports.index') }}" class="rounded-lg bg-gray-100 px-4 py-2.5 text-[12px] font-bold text-gray-700">Batal</a>
-            <button class="rounded-lg bg-indigo-600 px-4 py-2.5 text-[12px] font-bold text-white">{{ $method === 'POST' ? 'Kirim LHP' : 'Simpan Perubahan' }}</button>
+            <button class="rounded-lg bg-indigo-600 px-4 py-2.5 text-[12px] font-bold text-white">{{ isset($resubmissionOf) ? 'Ajukan Ulang LHP' : ($method === 'POST' ? 'Kirim LHP' : 'Simpan Perubahan') }}</button>
         </div>
     </form>
 </div>
@@ -150,10 +188,27 @@
 
 @push('scripts')
 <script>
+    // Tombol hapus baris hanya tampil bila baris lebih dari satu; baris terakhir cukup dikosongkan.
+    function syncRemoveButtons(list, selector) {
+        const buttons = list.querySelectorAll(selector);
+        buttons.forEach((button) => button.classList.toggle('hidden', buttons.length <= 1));
+    }
+
+    // Baris baru disalin dari baris pertama lalu dikosongkan; nama isian memakai [] jadi tak perlu diganti.
+    function appendEmptyRow(list, rowSelector) {
+        const row = list.querySelector(rowSelector).cloneNode(true);
+        row.querySelectorAll('input').forEach((input) => { input.value = ''; });
+        list.append(row);
+        return row;
+    }
+
     document.querySelector('[data-add-activity]')?.addEventListener('click', function () {
         const list = document.getElementById('travelActivities');
         const template = document.getElementById('activityTemplate');
-        const index = list.querySelectorAll('[data-travel-activity]').length;
+        // Pakai index terbesar + 1, bukan jumlah baris: setelah baris tengah dihapus, jumlah baris
+        // bisa sama dengan index yang masih dipakai sehingga dua baris (dan dokumennya) tergabung.
+        const indexes = Array.from(list.querySelectorAll('[data-travel-activity]'), (row) => Number(row.dataset.index));
+        const index = Math.max(-1, ...indexes) + 1;
         const wrapper = document.createElement('div');
         wrapper.innerHTML = template.innerHTML.replaceAll('__INDEX__', index);
         list.append(...wrapper.children);
@@ -167,18 +222,29 @@
             return;
         }
 
+        const removeResult = event.target.closest('[data-remove-result]');
+        if (removeResult) {
+            const list = removeResult.closest('[data-results]');
+            removeResult.closest('[data-result-row]').remove();
+            syncRemoveButtons(list, '[data-remove-result]');
+            return;
+        }
+
         const addResult = event.target.closest('[data-add-result]');
         if (addResult) {
-            const activity = addResult.closest('[data-travel-activity]');
-            const list = activity.querySelector('[data-results]');
-            const activityIndex = activity.dataset.index;
-            const resultIndex = list.querySelectorAll('input').length;
-            const input = document.createElement('input');
-            input.name = `activities[${activityIndex}][results][${resultIndex}]`;
-            input.className = 'employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
-            input.placeholder = 'Hasil kegiatan';
-            list.append(input);
+            const list = addResult.closest('[data-travel-activity]').querySelector('[data-results]');
+            appendEmptyRow(list, '[data-result-row]').querySelector('input').focus();
+            syncRemoveButtons(list, '[data-remove-result]');
         }
+    });
+
+    // Redupkan pratinjau dokumen lama yang dicentang Hapus.
+    document.getElementById('travelActivities')?.addEventListener('change', function (event) {
+        const removeDocument = event.target.closest('[data-remove-document]');
+        if (!removeDocument) return;
+        removeDocument.closest('[data-existing-document]')
+            ?.querySelector('[data-document-preview]')
+            ?.classList.toggle('opacity-40', removeDocument.checked);
     });
 
     // Auto-isi data dari Budget Request yang dipilih.
@@ -225,13 +291,18 @@
     // Tampilkan hint untuk pilihan awal (mis. saat edit / old input).
     if (budgetSelect?.value) renderDeadlineHint(budgetSelect.selectedOptions[0]);
 
+    const recommendationList = document.getElementById('recommendations');
+
     document.querySelector('[data-add-recommendation]')?.addEventListener('click', function () {
-        const list = document.getElementById('recommendations');
-        const input = document.createElement('input');
-        input.name = 'recommendations[]';
-        input.className = 'employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
-        input.placeholder = 'Rekomendasi tindak lanjut';
-        list.append(input);
+        appendEmptyRow(recommendationList, '[data-recommendation-row]').querySelector('input').focus();
+        syncRemoveButtons(recommendationList, '[data-remove-recommendation]');
+    });
+
+    recommendationList?.addEventListener('click', function (event) {
+        const removeRecommendation = event.target.closest('[data-remove-recommendation]');
+        if (!removeRecommendation) return;
+        removeRecommendation.closest('[data-recommendation-row]').remove();
+        syncRemoveButtons(recommendationList, '[data-remove-recommendation]');
     });
 </script>
 @endpush

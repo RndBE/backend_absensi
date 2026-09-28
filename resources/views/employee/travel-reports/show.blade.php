@@ -30,6 +30,48 @@
         </div>
     </div>
 
+    @if($report->status === 'rejected')
+        @php $rejection = $report->approvalLogs->where('action', 'rejected')->sortByDesc('id')->first(); @endphp
+        <section class="rounded-xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <span class="material-symbols-outlined text-[22px] text-red-600">report</span>
+            <div class="min-w-0 flex-1">
+                <div class="text-[13px] font-bold text-red-800">
+                    LHP ditolak
+                    @if($rejection)
+                        oleh {{ $rejection->approver?->full_name ?? 'approver' }} · step {{ $rejection->step_order }} · {{ $rejection->created_at?->format('d/m/Y') }}
+                    @endif
+                </div>
+                <div class="mt-0.5 text-[13px] text-red-700">{{ $rejection?->notes ?: 'Approver tidak menuliskan alasan penolakan.' }}</div>
+            </div>
+            @if($report->resubmission)
+                <a href="{{ route('employee.travel-reports.show', $report->resubmission->id) }}" class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-3 py-2 text-[12px] font-bold text-red-700 border border-red-200 hover:bg-red-100">
+                    <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                    Lihat LHP pengganti
+                </a>
+            @else
+                <a href="{{ route('employee.travel-reports.resubmit', $report->id) }}" class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-red-700">
+                    <span class="material-symbols-outlined text-[16px]">refresh</span>
+                    Ajukan ulang
+                </a>
+            @endif
+        </section>
+    @endif
+
+    @if($report->resubmissionOf)
+        @php $previousRejection = $report->resubmissionOf->latestRejection; @endphp
+        <section class="rounded-xl border border-indigo-200 bg-indigo-50 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <span class="material-symbols-outlined text-[22px] text-indigo-600">history</span>
+            <div class="min-w-0 flex-1">
+                <div class="text-[13px] font-bold text-indigo-800">Pengajuan ulang dari LHP yang ditolak</div>
+                <div class="mt-0.5 text-[13px] text-indigo-700">Alasan penolakan sebelumnya: {{ $previousRejection?->notes ?: '-' }}</div>
+            </div>
+            <a href="{{ route('employee.travel-reports.show', $report->resubmissionOf->id) }}" class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-3 py-2 text-[12px] font-bold text-indigo-700 border border-indigo-200 hover:bg-indigo-100">
+                <span class="material-symbols-outlined text-[16px]">visibility</span>
+                Lihat LHP yang ditolak
+            </a>
+        </section>
+    @endif
+
     <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
             <div class="text-[11px] font-bold uppercase text-gray-400">Budget Terkait</div>
@@ -118,7 +160,7 @@
             <div class="mt-3 space-y-2">
                 @foreach($report->approvalLogs as $log)
                     <div class="rounded-lg bg-gray-50 px-3 py-2 text-[13px] text-gray-700">
-                        <span class="font-bold">{{ $log->approver?->full_name ?? 'Approver' }}</span> {{ $log->action }} step {{ $log->step_order }}
+                        <span class="font-bold">{{ $log->approver?->full_name ?? 'Approver' }}</span> {{ ['approved' => 'menyetujui', 'rejected' => 'menolak'][$log->action] ?? $log->action }} step {{ $log->step_order }}
                         @if($log->via_label)<span class="text-gray-500"> (via {{ $log->via_label }})</span>@endif
                         @if($log->notes)<span class="text-gray-500"> · {{ $log->notes }}</span>@endif
                     </div>

@@ -66,7 +66,8 @@ class BudgetRequest extends Model
 
     public function travelReport()
     {
-        return $this->hasOne(TravelReport::class);
+        // LHP yang ditolak tidak dihitung, supaya anggarannya bisa dipakai lagi untuk pengajuan ulang.
+        return $this->hasOne(TravelReport::class)->where('status', '!=', 'rejected');
     }
 
     public function lpj()

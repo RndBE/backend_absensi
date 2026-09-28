@@ -83,7 +83,7 @@ Tiap aksi dicek terhadap **permission role HRIS** aktor (resolver yang sama deng
 | POST | `/schedules` | `schedule.manage` | `assignments`* (array, maks 500 baris). Mengisi jadwal shift per tanggal. Mendukung `dry_run`. |
 | POST | `/schedules/import` | `schedule.manage` | Upload file jadwal Excel/CSV multipart field `file`. Mendukung `dry_run`. PDF ditolak dengan pesan jelas sampai parser PDF/OCR tersedia. |
 | POST | `/approvals/{type}/{id}/approve` | approver step (chain) | Setujui pengajuan. `type`: leave/overtime/attendance/budget/travel_report. Opsional `notes`, `dry_run`. Otorisasi = approver step aktif / superadmin (via Api\ApprovalController), sama seperti mobile — approver ber-role employee pun bisa. |
-| POST | `/approvals/{type}/{id}/reject` | approver step (chain) | Tolak pengajuan (param sama). |
+| POST | `/approvals/{type}/{id}/reject` | approver step (chain) | Tolak pengajuan (param sama). Untuk `travel_report`, `notes` **wajib** (alasan penolakan, dipakai karyawan saat mengajukan ulang LHP); tanpa `notes` dibalas `422`. |
 | PUT | `/requests/{type}/{id}` | self / create-perm | Edit pengajuan yang masih `pending`. `type`: leave/overtime/attendance. Employee hanya miliknya sendiri; edit punya orang lain butuh permission jenis terkait. |
 | POST | `/data-change-requests` | `employees.update` | Usulkan ubah data karyawan: `employee\|employee_code\|employee_id` + `changes{field:value}`. Jadi pengajuan yang disetujui superadmin di website. |
 | POST | `/shifts` | `schedule.master.manage` | Buat master shift: `name`*, `start_time`, `end_time`, `is_off`, `is_overnight`, `work_hours`, `auto_overtime`. |
@@ -108,7 +108,9 @@ Tanpa ref karyawan = untuk diri sendiri. Field per jenis:
 | `overtime` | `date`, `reason` | `overtime_type` (`workday`\|`holiday`), `duration` (menit) **atau** `pre_shift_duration`/`post_shift_duration` (menit) + `planned_start`/`planned_end` (`HH:mm`), `break_duration` (menit) |
 | `attendance` | `date`, `reason` | `clock_in`/`clock_out` (`HH:mm`) |
 | `budget` | `type` (`budget`\|`reimbursement`), `title`, `items[]` ({`type`,`amount`}) | `description`, `surat_tugas_no`, `surat_tugas_date`, `distance_km`, `participants[]` |
-| `travel-report` | `destination_city`, `departure_date`, `return_date`, `purpose`, `conclusion`, `activities` | `budget_request_id`, `surat_tugas_no`, `surat_tugas_date`, `distance_km` |
+| `travel-report` | `destination_city`, `departure_date`, `return_date`, `purpose`, `conclusion`, `activities` | `budget_request_id`, `surat_tugas_no`, `surat_tugas_date`, `distance_km`, `resubmission_of_id` (id LHP yang ditolak) |
+
+Pengajuan ulang LHP: LHP baru untuk `budget_request_id` yang LHP-nya ditolak otomatis dicatat sebagai pengajuan ulang (merujuk LHP yang ditolak, approval mulai dari step 1). `resubmission_of_id` hanya perlu untuk LHP tanpa anggaran; nilainya harus LHP milik karyawan itu yang berstatus `rejected` dan belum pernah diajukan ulang, selain itu `422`.
 
 Contoh lembur (untuk diri sendiri, 2 jam pada 10 Juli):
 ```bash

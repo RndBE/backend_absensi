@@ -95,8 +95,11 @@ class LpjController extends Controller
         try {
             $lpj = Lpj::create([
                 'budget_request_id' => $budgetRequest->id,
+                // LHP yang berlaku, bukan versi yang ditolak lalu diajukan ulang.
                 'travel_report_id'  => TravelReport::where('budget_request_id', $budgetRequest->id)
                     ->where('employee_id', $employee->id)
+                    ->where('status', '!=', 'rejected')
+                    ->latest('id')
                     ->value('id'),
                 'employee_id'       => $employee->id,
                 'nomor_lpj'         => $request->nomor_lpj,

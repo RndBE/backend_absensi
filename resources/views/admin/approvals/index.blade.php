@@ -420,7 +420,15 @@
                                 </div>
                             </div>
                         </td>
-                        <td class="px-4 py-3 text-[13px] text-gray-700 font-medium">{{ $tr->destination_city }}</td>
+                        <td class="px-4 py-3 text-[13px] text-gray-700 font-medium">
+                            {{ $tr->destination_city }}
+                            @if($tr->resubmissionOf)
+                                <div class="mt-1"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700">PENGAJUAN ULANG</span></div>
+                                <div class="mt-0.5 max-w-[260px] text-[11px] font-normal text-gray-500" title="{{ $tr->resubmissionOf->latestRejection?->notes }}">
+                                    Ditolak sebelumnya: {{ \Illuminate\Support\Str::limit($tr->resubmissionOf->latestRejection?->notes ?: '-', 80) }}
+                                </div>
+                            @endif
+                        </td>
                         <td class="px-4 py-3 text-[12px] text-gray-500 whitespace-nowrap">{{ $tr->departure_date->format('d M') }} — {{ $tr->return_date->format('d M Y') }}</td>
                         <td class="px-4 py-3">
                             @php
@@ -440,10 +448,10 @@
                                     @csrf
                                     <button type="submit" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-all cursor-pointer">✓ Setujui</button>
                                 </form>
-                                <form method="POST" action="{{ route('admin.approvals.reject', ['type' => 'travel_report', 'id' => $tr->id]) }}" class="inline">
-                                    @csrf
-                                    <button type="submit" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all cursor-pointer">✗ Tolak</button>
-                                </form>
+                                <button type="button"
+                                    data-lhp-reject="{{ route('admin.approvals.reject', ['type' => 'travel_report', 'id' => $tr->id]) }}"
+                                    data-lhp-name="{{ $tr->employee->full_name ?? '-' }} · {{ $tr->destination_city }}"
+                                    class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all cursor-pointer">✗ Tolak</button>
                             </div>
                         </td>
                     </tr>
@@ -453,6 +461,47 @@
                 </tbody>
             </table>
         </div>
+
+        {{-- Tolak LHP: alasan wajib, karena karyawan mengajukan ulang berdasarkan alasan ini. --}}
+        <div id="lhpRejectModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                <h3 class="text-[16px] font-bold text-gray-900">Tolak LHP</h3>
+                <p class="text-[12px] text-gray-500 mt-1 mb-4" data-lhp-reject-name></p>
+                <form method="POST" data-lhp-reject-form>
+                    @csrf
+                    <label class="block text-[12px] font-semibold text-gray-600 mb-1">Alasan Penolakan</label>
+                    <textarea name="notes" rows="3" required maxlength="1000"
+                        class="w-full px-3 py-2 text-[13px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-300 outline-none"
+                        placeholder="Apa yang perlu diperbaiki karyawan?"></textarea>
+                    <div class="flex gap-2 justify-end mt-4">
+                        <button type="button" data-lhp-reject-cancel class="px-4 py-2 text-[12px] font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Batal</button>
+                        <button type="submit" class="px-4 py-2 text-[12px] font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700">Tolak LHP</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script>
+            (function () {
+                const modal = document.getElementById('lhpRejectModal');
+                const form = modal.querySelector('[data-lhp-reject-form]');
+                const notes = form.querySelector('textarea[name="notes"]');
+
+                document.querySelectorAll('[data-lhp-reject]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        form.action = button.dataset.lhpReject;
+                        modal.querySelector('[data-lhp-reject-name]').textContent = button.dataset.lhpName || '';
+                        notes.value = '';
+                        modal.classList.remove('hidden');
+                        notes.focus();
+                    });
+                });
+
+                modal.querySelector('[data-lhp-reject-cancel]').addEventListener('click', () => modal.classList.add('hidden'));
+                modal.addEventListener('click', function (event) {
+                    if (event.target === modal) modal.classList.add('hidden');
+                });
+            })();
+        </script>
         @endif
 
         {{-- LPJ Tab --}}

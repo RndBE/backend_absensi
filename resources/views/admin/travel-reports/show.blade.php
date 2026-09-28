@@ -82,6 +82,31 @@
     </div>
 </div>
 
+{{-- Pengajuan ulang: tautan antara LHP yang ditolak dan penggantinya --}}
+@if($report->resubmissionOf)
+    @php $previousRejection = $report->resubmissionOf->latestRejection; @endphp
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 mb-5">
+        <span class="material-symbols-outlined text-[20px] text-indigo-600">history</span>
+        <div class="min-w-0 flex-1">
+            <div class="text-[13px] font-bold text-indigo-800">Pengajuan ulang dari LHP yang ditolak</div>
+            <div class="text-[12.5px] text-indigo-700 mt-0.5">
+                Alasan penolakan sebelumnya: {{ $previousRejection?->notes ?: '-' }}
+                @if($previousRejection)
+                    <span class="text-indigo-500">· oleh {{ $previousRejection->approver?->full_name ?? 'approver' }}, step {{ $previousRejection->step_order }}, {{ $previousRejection->created_at?->format('d M Y') }}</span>
+                @endif
+            </div>
+        </div>
+        <a href="{{ route('admin.travel-reports.show', $report->resubmissionOf->id) }}" class="inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Lihat LHP yang ditolak</a>
+    </div>
+@endif
+@if($report->resubmission)
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 mb-5">
+        <span class="material-symbols-outlined text-[20px] text-gray-500">redo</span>
+        <div class="min-w-0 flex-1 text-[13px] font-semibold text-gray-700">LHP ini sudah diajukan ulang oleh karyawan.</div>
+        <a href="{{ route('admin.travel-reports.show', $report->resubmission->id) }}" class="inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Lihat LHP pengganti</a>
+    </div>
+@endif
+
 {{-- Maksud & Tujuan --}}
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
     <h3 class="text-[14px] font-bold text-gray-800 flex items-center gap-1.5 mb-3"><span class="material-symbols-outlined text-[16px] text-indigo-500">flag</span> Maksud dan Tujuan</h3>

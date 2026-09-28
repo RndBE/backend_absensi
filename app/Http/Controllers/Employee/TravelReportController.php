@@ -8,8 +8,10 @@ use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\Notification;
 use App\Models\TravelReport;
+use App\Models\TravelReportDocument;
 use App\Models\TravelZone;
 use App\Services\FcmService;
+use App\Support\TravelReportResubmission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -25,6 +27,7 @@ class TravelReportController extends Controller
         return view('employee.travel-reports.index', [
             'employee' => $employee,
             'reports' => TravelReport::with(['budgetRequest:id,title,total_amount', 'activities'])
+                ->withExists('resubmission')
                 ->where('employee_id', $employee->id)
                 ->latest()
                 ->paginate(15),
@@ -54,9 +57,38 @@ class TravelReportController extends Controller
 
         $this->assertBudgetAccessible($employee, $validated['budget_request_id'] ?? null);
 
+        $explicitResubmission = ! empty($validated['resubmission_of_id']);
+
+        try {
+            $resubmissionOf = TravelReportResubmission::resolveOriginal(
+                $employee->id,
+                $validated['budget_request_id'] ?? null,
+                $validated['resubmission_of_id'] ?? null,
+            );
+        } catch (ValidationException $e) {
+            // Portal karyawan hanya menampilkan flash message, bukan error bag.
+            return back()->withInput()->with('error', collect($e->errors())->flatten()->first());
+        }
+
         DB::beginTransaction();
         try {
-            $report = $this->persistReport($request, $employee, $validated);
+            $report = $this->persistReport($request, $employee, $validated, null, $resubmissionOf);
+
+            if ($resubmissionOf) {
+                // Foto hanya disalin bila form diisi dari LHP lama lewat tombol "Ajukan ulang".
+                // Form yang menampilkan foto lama per aktivitas mengirim document_selection,
+                // dan hanya foto yang tidak dicentang Hapus yang ikut disalin.
+                if ($explicitResubmission) {
+                    TravelReportResubmission::copyDocuments(
+                        $resubmissionOf,
+                        $report,
+                        $request->boolean('document_selection')
+                            ? TravelReportResubmission::keptDocumentsByRow((array) $request->input('activities', []))
+                            : null,
+                    );
+                }
+                TravelReportResubmission::relinkLpj($resubmissionOf, $report);
+            }
 
             DB::commit();
 
@@ -64,7 +96,7 @@ class TravelReportController extends Controller
 
             return redirect()
                 ->route('employee.travel-reports.index')
-                ->with('success', 'LHP berhasil dikirim.');
+                ->with('success', $resubmissionOf ? 'LHP berhasil diajukan ulang.' : 'LHP berhasil dikirim.');
         } catch (\Throwable $e) {
             DB::rollBack();
 
@@ -80,7 +112,36 @@ class TravelReportController extends Controller
         $employee = $request->attributes->get('employee');
 
         return view('employee.travel-reports.show', [
-            'report' => $this->ownedReport($employee, $id),
+            'report' => $this->ownedReport($employee, $id)->load([
+                'resubmission:id,resubmission_of_id',
+                'resubmissionOf:id',
+                'resubmissionOf.latestRejection.approver:id,full_name',
+            ]),
+        ]);
+    }
+
+    /** Form ajukan ulang: LHP baru yang terisi dari LHP yang ditolak. */
+    public function resubmit(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $report = $this->ownedReport($employee, $id)->load('latestRejection.approver:id,full_name');
+
+        if (! $report->canBeResubmitted()) {
+            return redirect()
+                ->route('employee.travel-reports.show', $report->id)
+                ->with('error', 'Hanya LHP yang ditolak dan belum pernah diajukan ulang yang bisa diajukan ulang.');
+        }
+
+        $availableRequests = $this->availableBudgetRequests($employee, $report);
+
+        return view('employee.travel-reports.resubmit', [
+            'employee' => $employee,
+            'report' => $report,
+            'availableRequests' => $availableRequests,
+            // Batas & status telat diwarisi dari LHP yang ditolak, jadi hint batas hanya
+            // relevan bila LHP lama belum punya batas.
+            'lhpDeadlines' => $report->submission_deadline ? [] : $this->buildDeadlineHints($availableRequests, $employee),
         ]);
     }
 
@@ -146,6 +207,7 @@ class TravelReportController extends Controller
     {
         return $request->validate([
             'budget_request_id' => 'nullable|exists:budget_requests,id',
+            'resubmission_of_id' => 'nullable|integer',
             'destination_city' => 'required|string|max:255',
             'departure_date' => 'required|date',
             'return_date' => 'required|date|after_or_equal:departure_date',
@@ -163,6 +225,10 @@ class TravelReportController extends Controller
             'activities.*.results.*' => 'nullable|string',
             'activities.*.issues' => 'nullable|string',
             'activities.*.conclusion' => 'nullable|string',
+            'activities.*.existing_documents' => 'nullable|array',
+            'activities.*.existing_documents.*' => 'integer',
+            'activities.*.remove_documents' => 'nullable|array',
+            'activities.*.remove_documents.*' => 'integer',
             'activity_documents_*' => 'nullable|array',
             'activity_documents_*.*' => 'file|max:5120',
             'activity_captions_*' => 'nullable|array',
@@ -170,7 +236,7 @@ class TravelReportController extends Controller
         ]);
     }
 
-    private function persistReport(Request $request, Employee $employee, array $validated, ?TravelReport $report = null): TravelReport
+    private function persistReport(Request $request, Employee $employee, array $validated, ?TravelReport $report = null, ?TravelReport $resubmissionOf = null): TravelReport
     {
         $distanceKm = $request->filled('distance_km') ? (int) $validated['distance_km'] : null;
         $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
@@ -191,18 +257,19 @@ class TravelReportController extends Controller
             'recommendations' => count($recommendations) ? $recommendations : null,
         ];
 
+        $keptDocuments = [];
+
         if ($report) {
-            foreach ($report->documents as $document) {
-                Storage::disk('public')->delete($document->file_path);
-            }
-            $report->documents()->delete();
+            $keptDocuments = $this->syncExistingDocuments($report, $validated['activities']);
             $report->activities()->delete();
             // Batas & status telat di-snapshot saat submit pertama; tidak diubah saat edit.
             $report->update($payload);
         } else {
             [$deadline, $isLate] = $this->resolveSubmissionDeadline($validated['budget_request_id'] ?? null);
 
-            $report = TravelReport::create($payload + [
+            // Atribut pengajuan ulang ditaruh lebih dulu: batas & status telat warisan
+            // LHP yang ditolak menang atas hasil hitung baru.
+            $report = TravelReport::create($payload + TravelReportResubmission::attributes($resubmissionOf) + [
                 'status' => 'pending',
                 'current_step' => 1,
                 'submission_deadline' => $deadline,
@@ -221,6 +288,16 @@ class TravelReportController extends Controller
                 'sort_order' => $index,
             ]);
 
+            // Aktivitas dibuat ulang, jadi dokumen lama yang dipertahankan dipindah ke baris barunya.
+            $kept = $keptDocuments[$index] ?? [];
+            foreach ($kept as $position => $document) {
+                $document->update([
+                    'travel_report_activity_id' => $activity->id,
+                    'activity_date' => $activityData['date'],
+                    'sort_order' => $position,
+                ]);
+            }
+
             foreach ($request->file("activity_documents_{$index}", []) as $docIndex => $file) {
                 $path = $file->store('travel-report-docs', 'public');
                 $report->documents()->create([
@@ -228,12 +305,48 @@ class TravelReportController extends Controller
                     'file_path' => $path,
                     'caption' => $request->input("activity_captions_{$index}.{$docIndex}"),
                     'activity_date' => $activityData['date'],
-                    'sort_order' => $docIndex,
+                    'sort_order' => count($kept) + $docIndex,
                 ]);
             }
         }
 
         return $report->load(['activities.documents', 'documents']);
+    }
+
+    /**
+     * Dokumen lama dipertahankan selama masih tercantum di baris aktivitasnya
+     * (existing_documents) dan tidak dicentang Hapus (remove_documents). Sisanya —
+     * yang dicentang Hapus atau ikut terbuang bersama barisnya — dihapus beserta filenya.
+     * Mengembalikan dokumen yang dipertahankan, dikelompokkan per index aktivitas.
+     */
+    private function syncExistingDocuments(TravelReport $report, array $activities): array
+    {
+        // Hanya dokumen yang tampil di form (milik aktivitas LHP ini) yang dikelola di sini;
+        // ID lain dari request diabaikan.
+        $documents = $report->activities->flatMap->documents->keyBy('id');
+        $kept = [];
+
+        foreach ($activities as $index => $activityData) {
+            $removedIds = array_map('intval', $activityData['remove_documents'] ?? []);
+
+            foreach ($activityData['existing_documents'] ?? [] as $documentId) {
+                $documentId = (int) $documentId;
+
+                if ($documents->has($documentId) && ! in_array($documentId, $removedIds, true)) {
+                    $kept[$index][] = $documents->pull($documentId);
+                }
+            }
+        }
+
+        if ($documents->isNotEmpty()) {
+            TravelReportDocument::whereKey($documents->keys())->delete();
+
+            // File baru dihapus setelah commit agar rollback tidak menyisakan baris tanpa file.
+            $paths = $documents->pluck('file_path')->all();
+            DB::afterCommit(fn () => Storage::disk('public')->delete($paths));
+        }
+
+        return $kept;
     }
 
     /**
@@ -365,10 +478,12 @@ class TravelReportController extends Controller
             return;
         }
 
+        [$title, $message] = TravelReportResubmission::approverNotification($report, $employee->full_name);
+
         $notification = Notification::create([
             'employee_id' => $firstApprover->id,
-            'title' => 'Pengajuan LHP Baru',
-            'message' => "{$employee->full_name} mengajukan LHP ke {$report->destination_city}",
+            'title' => $title,
+            'message' => $message,
             'type' => 'approval',
             'reference_type' => TravelReport::class,
             'reference_id' => $report->id,

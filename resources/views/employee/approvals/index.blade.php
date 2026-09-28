@@ -180,6 +180,12 @@
                                 Step {{ $step }}@if($totalSteps > 1) dari {{ $totalSteps }}@endif
                             </span>
                             @include('employee.partials.status-badge', ['status' => $request->status])
+                            @if($type === 'travel_report' && $request->resubmission_of_id)
+                                <span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700" title="Pengganti LHP yang ditolak">
+                                    <span class="material-symbols-outlined text-[14px]">history</span>
+                                    Pengajuan ulang
+                                </span>
+                            @endif
 
                             {{-- Umur pengajuan --}}
                             <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold {{ $umurWarna }}">
@@ -333,6 +339,18 @@
                     </div>
                     @endif
 
+                    {{-- Pengajuan ulang LHP: approver perlu tahu apa yang dulu ditolak untuk menilai perbaikannya. --}}
+                    @if($type === 'travel_report' && $request->resubmissionOf)
+                        @php $previousRejection = $request->resubmissionOf->latestRejection; @endphp
+                        <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
+                            <div class="text-[11px] font-bold uppercase text-indigo-500">Ditolak sebelumnya</div>
+                            <div class="text-[13px] text-indigo-800 mt-1">{{ $previousRejection?->notes ?: '-' }}</div>
+                            @if($previousRejection)
+                                <div class="text-[11.5px] text-indigo-600 mt-0.5">oleh {{ $previousRejection->approver?->full_name ?? 'approver' }} · step {{ $previousRejection->step_order }} · {{ $previousRejection->created_at?->format('d/m/Y') }}</div>
+                            @endif
+                        </div>
+                    @endif
+
                     <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
                         <div class="text-[11px] font-bold uppercase text-gray-400">
                             {{ in_array($type, ['budget', 'travel_report', 'lpj'], true) ? 'Keterangan' : 'Alasan' }}
@@ -370,11 +388,12 @@
                     <form method="POST" action="{{ route('employee.approvals.approve', [$type, $request->id]) }}" class="space-y-3">
                         @csrf
 
-                        <details class="group rounded-lg border border-gray-200 bg-white px-3 py-2">
+                        <details class="group rounded-lg border border-gray-200 bg-white px-3 py-2" @if($type === 'travel_report') open @endif>
                             <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-[12px] font-bold text-gray-600">
                                 <span class="inline-flex items-center gap-1.5">
                                     <span class="material-symbols-outlined text-[16px] text-indigo-600">edit_note</span>
-                                    Tambah catatan <span class="font-normal text-gray-400">(opsional)</span>
+                                    Tambah catatan
+                                    <span class="font-normal text-gray-400">{{ $type === 'travel_report' ? '(wajib diisi bila menolak)' : '(opsional)' }}</span>
                                 </span>
                                 <span class="material-symbols-outlined text-[16px] text-gray-400 transition-transform group-open:rotate-180">expand_more</span>
                             </summary>

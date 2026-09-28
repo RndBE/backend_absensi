@@ -9,6 +9,7 @@ use App\Models\EmployeeApprover;
 use App\Models\Notification;
 use App\Models\TravelReport;
 use App\Services\FcmService;
+use App\Support\TravelReportResubmission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -21,6 +22,7 @@ class TravelReportController extends Controller
             'employee:id,full_name,photo,department_id,position',
             'employee.department:id,name',
             'budgetRequest:id,title',
+            'resubmission:id,resubmission_of_id,status',
         ]);
 
         // Manager: hanya melihat departemennya sendiri.
@@ -41,9 +43,33 @@ class TravelReportController extends Controller
             });
         }
 
+        if ($request->filled('employee_id')) {
+            $query->where('employee_id', $request->employee_id);
+        }
+
+        if ($request->filled('surat_tugas_no')) {
+            $suratTugasNo = $request->surat_tugas_no;
+            $query->where('surat_tugas_no', 'like', "%{$suratTugasNo}%");
+        }
+
+        // Rentang tanggal: LHP yang masa perjalanannya beririsan dengan rentang filter.
+        if ($request->filled('date_from')) {
+            $query->whereDate('return_date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('departure_date', '<=', $request->date_to);
+        }
+
         $reports = $query->orderBy('created_at', 'desc')->paginate(20);
 
-        return view('admin.travel-reports.index', compact('reports', 'status'));
+        // Pilihan dropdown: hanya karyawan yang punya LHP, ikut batas departemen manager.
+        $employees = Employee::whereIn('id', TravelReport::select('employee_id'))
+            ->when($dept, fn ($q) => $q->where('department_id', $dept))
+            ->orderBy('full_name')
+            ->get(['id', 'full_name']);
+
+        return view('admin.travel-reports.index', compact('reports', 'status', 'employees'));
     }
 
     public function create(Request $request)
@@ -89,6 +115,12 @@ class TravelReportController extends Controller
             'activities.*.conclusion' => 'nullable|string',
         ]);
 
+        // LHP untuk anggaran yang LHP-nya ditolak otomatis tercatat sebagai pengajuan ulang.
+        $resubmissionOf = TravelReportResubmission::resolveOriginal(
+            (int) $request->employee_id,
+            $request->budget_request_id ? (int) $request->budget_request_id : null,
+        );
+
         DB::beginTransaction();
         try {
             $report = TravelReport::create([
@@ -106,7 +138,7 @@ class TravelReportController extends Controller
                     : null,
                 'status' => 'pending',
                 'current_step' => 1,
-            ]);
+            ] + TravelReportResubmission::attributes($resubmissionOf));
 
             // Save grouped activities
             foreach ($request->activities as $i => $activityData) {
@@ -142,15 +174,21 @@ class TravelReportController extends Controller
                 }
             }
 
+            if ($resubmissionOf) {
+                TravelReportResubmission::relinkLpj($resubmissionOf, $report);
+            }
+
             DB::commit();
 
             $employee = Employee::find($request->employee_id);
             $firstApprover = EmployeeApprover::getApproverAt((int) $request->employee_id, 'travel_report', 1);
             if ($employee && $firstApprover) {
+                [$title, $message] = TravelReportResubmission::approverNotification($report, $employee->full_name);
+
                 $notification = Notification::create([
                     'employee_id' => $firstApprover->id,
-                    'title' => 'Pengajuan LHP Baru',
-                    'message' => "{$employee->full_name} mengajukan LHP ke {$report->destination_city}",
+                    'title' => $title,
+                    'message' => $message,
                     'type' => 'approval',
                     'reference_type' => TravelReport::class,
                     'reference_id' => $report->id,
@@ -316,6 +354,9 @@ class TravelReportController extends Controller
             'activities.documents',
             'documents',
             'approvalLogs.approver:id,full_name,photo',
+            'resubmission:id,resubmission_of_id,status',
+            'resubmissionOf:id,status',
+            'resubmissionOf.latestRejection.approver:id,full_name',
         ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
           ->findOrFail($id);
 

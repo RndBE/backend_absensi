@@ -187,8 +187,10 @@ class LhpReminderService
 
     private static function hasTravelReport(int $budgetId, int $employeeId): bool
     {
+        // LHP yang ditolak belum dianggap selesai: karyawan masih harus mengajukan ulang.
         return TravelReport::where('budget_request_id', $budgetId)
             ->where('employee_id', $employeeId)
+            ->where('status', '!=', 'rejected')
             ->exists();
     }
 

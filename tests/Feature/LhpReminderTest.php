@@ -69,6 +69,7 @@ class LhpReminderTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('budget_request_id');
             $table->unsignedBigInteger('employee_id');
+            $table->string('status')->default('pending');
             $table->timestamps();
         });
 
@@ -157,6 +158,20 @@ class LhpReminderTest extends TestCase
 
         $this->assertSame(0, $result['sent']);
         $this->assertSame(0, Notification::count());
+    }
+
+    public function test_rejected_lhp_does_not_count_as_created(): void
+    {
+        // LHP yang ditolak masih harus diajukan ulang, jadi pengingat tetap dikirim.
+        $emp = $this->seedEmployee();
+        $budget = $this->seedBudget($emp, '2026-06-22');
+        DB::table('travel_reports')->insert([
+            'budget_request_id' => $budget, 'employee_id' => $emp, 'status' => 'rejected', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $result = LhpReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(1, $result['sent']);
     }
 
     public function test_does_not_send_when_budget_not_approved(): void

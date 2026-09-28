@@ -9,6 +9,7 @@ use App\Models\Notification;
 use App\Models\TravelReport;
 use App\Models\TravelZone;
 use App\Services\FcmService;
+use App\Support\TravelReportResubmission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -43,6 +44,12 @@ class TravelReportController extends Controller
             'approvalLogs.approver:id,full_name,photo',
         ])->findOrFail($id);
         $report->setAttribute('can_edit', $this->canEditTravelReport($report));
+
+        if (Schema::hasColumn('travel_reports', 'resubmission_of_id')) {
+            // Untuk app: tombol "Ajukan ulang" dan tautan ke LHP lama/pengganti.
+            $report->load(['resubmissionOf:id,status', 'resubmission:id,resubmission_of_id,status']);
+            $report->setAttribute('can_resubmit', $report->canBeResubmitted());
+        }
 
         // Perbandingan uang makan budget vs realisasi
         $mealComparison = null;
@@ -81,9 +88,20 @@ class TravelReportController extends Controller
             'conclusion' => 'required|string',
             'recommendations' => 'nullable',
             'activities' => 'required',
+            'resubmission_of_id' => 'nullable|integer',
         ]);
 
         $employee = $request->user();
+
+        // Pengajuan ulang: rujukan eksplisit (resubmission_of_id) atau otomatis bila anggaran ini
+        // punya LHP yang ditolak, supaya app yang belum mengenal fitur ini tetap tercatat benar.
+        $resubmissionOf = Schema::hasColumn('travel_reports', 'resubmission_of_id')
+            ? TravelReportResubmission::resolveOriginal(
+                $employee->id,
+                $request->budget_request_id ? (int) $request->budget_request_id : null,
+                $request->resubmission_of_id ? (int) $request->resubmission_of_id : null,
+            )
+            : null;
 
         DB::beginTransaction();
         try {
@@ -127,7 +145,11 @@ class TravelReportController extends Controller
                 $payload['travel_zone_id'] = $travelZone?->id;
             }
 
-            $report = TravelReport::create($payload);
+            $report = TravelReport::create($payload + TravelReportResubmission::attributes($resubmissionOf));
+
+            if ($resubmissionOf) {
+                TravelReportResubmission::relinkLpj($resubmissionOf, $report);
+            }
 
             // Save activities
             if ($activitiesData && is_array($activitiesData)) {
@@ -169,10 +191,12 @@ class TravelReportController extends Controller
 
             $firstApprover = EmployeeApprover::getApproverAt($employee->id, 'travel_report', 1);
             if ($firstApprover) {
+                [$title, $message] = TravelReportResubmission::approverNotification($report, $employee->full_name);
+
                 $notification = Notification::create([
                     'employee_id' => $firstApprover->id,
-                    'title' => 'Pengajuan LHP Baru',
-                    'message' => "{$employee->full_name} mengajukan LHP ke {$report->destination_city}",
+                    'title' => $title,
+                    'message' => $message,
                     'type' => 'approval',
                     'reference_type' => TravelReport::class,
                     'reference_id' => $report->id,

@@ -11,8 +11,10 @@ use App\Models\EmployeeApprover;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\Lpj;
+use App\Models\Notification;
 use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
+use App\Services\FcmService;
 use App\Services\LpjExcelExporter;
 use App\Support\LeaveQuota;
 use Illuminate\Database\Eloquent\Model;
@@ -282,6 +284,14 @@ class ApprovalController extends Controller
                 ->with('error', 'Anda bukan approver untuk step ini.');
         }
 
+        $notes = $validated['notes'] ?? null;
+
+        // LHP yang ditolak diajukan ulang oleh karyawan, jadi alasannya harus jelas.
+        if ($type === 'travel_report' && blank($notes)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Alasan penolakan LHP wajib diisi supaya karyawan tahu apa yang harus diperbaiki.');
+        }
+
         $currentStep = (int) ($item->current_step ?? 1);
         $item->update(['status' => 'rejected']);
 
@@ -291,8 +301,22 @@ class ApprovalController extends Controller
             'approver_id' => $employee->id,
             'action' => 'rejected',
             'step_order' => $currentStep,
-            'notes' => $validated['notes'] ?? null,
+            'notes' => $notes,
         ]);
+
+        if ($item->employee) {
+            $typeLabel = $this->typeLabels[$type];
+            $notification = Notification::create([
+                'employee_id' => $item->employee_id,
+                'title' => "Pengajuan {$typeLabel} Ditolak",
+                'message' => "Pengajuan {$typeLabel} Anda ditolak oleh {$employee->full_name}".($notes ? ": {$notes}" : ''),
+                'type' => 'info',
+                'reference_type' => $modelClass,
+                'reference_id' => $item->id,
+            ]);
+
+            FcmService::sendToEmployee($item->employee, $notification->title, $notification->message);
+        }
 
         return redirect()->route('employee.approvals.index')
             ->with('success', 'Pengajuan berhasil ditolak.');
@@ -445,7 +469,13 @@ class ApprovalController extends Controller
             'leave' => ['employee:id,full_name,position,photo', 'leaveType', 'attachments'],
             'overtime' => ['employee:id,full_name,position,photo', 'attachments'],
             'budget' => ['employee:id,full_name,position,photo', 'items', 'attachments'],
-            'travel_report' => ['employee:id,full_name,position,photo', 'budgetRequest', 'attachments'],
+            'travel_report' => [
+                'employee:id,full_name,position,photo',
+                'budgetRequest',
+                'attachments',
+                'resubmissionOf:id',
+                'resubmissionOf.latestRejection.approver:id,full_name',
+            ],
             'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city'],
             default => ['employee:id,full_name,position,photo'],
         };

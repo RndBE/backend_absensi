@@ -2,17 +2,20 @@
     Cue "LHP belum dibuat" untuk pengaju.
     Tampil jika: anggaran sudah cair (approved/paid), punya tanggal pulang,
     dan employee ini belum membuat LHP-nya ($budgetRequest->has_lhp == false).
+    LHP yang ditolak tidak dihitung, jadi cue berubah jadi ajakan mengajukan ulang.
     Butuh: $budgetRequest dengan withExists('travelReport as has_lhp') + employee.company_id.
 --}}
 @if(in_array($budgetRequest->status, ['approved', 'paid']) && $budgetRequest->return_date && ! ($budgetRequest->has_lhp ?? false))
     @php
+        $viewer = request()->attributes->get('employee');
+        $rejectedLhp = $viewer ? \App\Models\TravelReport::rejectedAwaitingResubmission($viewer->id, $budgetRequest->id) : null;
         $deadline = $budgetRequest->lhpDeadlineDate();
         $today = \Illuminate\Support\Carbon::today();
         $isLate = $deadline && $today->gt($deadline);
         $daysLeft = $deadline ? $today->diffInDays($deadline, false) : null;
         $isNear = ! $isLate && $daysLeft !== null && $daysLeft <= 2;
 
-        if ($isLate) {
+        if ($rejectedLhp || $isLate) {
             $tone = ['bg' => 'bg-red-50', 'border' => 'border-red-200', 'text' => 'text-red-700', 'btn' => 'bg-red-600 hover:bg-red-700', 'icon' => 'error'];
         } elseif ($isNear) {
             $tone = ['bg' => 'bg-amber-50', 'border' => 'border-amber-200', 'text' => 'text-amber-700', 'btn' => 'bg-amber-500 hover:bg-amber-600', 'icon' => 'schedule'];
@@ -24,13 +27,19 @@
         <span class="material-symbols-outlined text-[18px] {{ $tone['text'] }}">{{ $tone['icon'] }}</span>
         <div class="min-w-0 flex-1">
             <div class="text-[12px] font-bold {{ $tone['text'] }}">
-                @if($isLate)
+                @if($rejectedLhp)
+                    LHP ditolak — perlu diajukan ulang
+                @elseif($isLate)
                     LHP belum dibuat — batas terlewat
                 @else
                     LHP belum dibuat
                 @endif
             </div>
-            @if($deadline)
+            @if($rejectedLhp)
+                <div class="text-[11px] {{ $tone['text'] }} opacity-80">
+                    {{ \Illuminate\Support\Str::limit($rejectedLhp->latestRejection?->notes ?: 'Buka LHP untuk melihat detail penolakan.', 90) }}
+                </div>
+            @elseif($deadline)
                 <div class="text-[11px] {{ $tone['text'] }} opacity-80">
                     Batas {{ $deadline->translatedFormat('d M Y') }}
                     @if($isLate)
@@ -43,9 +52,16 @@
                 </div>
             @endif
         </div>
-        <a href="{{ route('employee.travel-reports.create', ['budget_request_id' => $budgetRequest->id]) }}"
-           class="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-bold text-white {{ $tone['btn'] }} transition-colors">
-            <span class="material-symbols-outlined text-[14px]">add</span> Buat LHP
-        </a>
+        @if($rejectedLhp)
+            <a href="{{ route('employee.travel-reports.resubmit', $rejectedLhp->id) }}"
+               class="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-bold text-white {{ $tone['btn'] }} transition-colors">
+                <span class="material-symbols-outlined text-[14px]">refresh</span> Ajukan ulang
+            </a>
+        @else
+            <a href="{{ route('employee.travel-reports.create', ['budget_request_id' => $budgetRequest->id]) }}"
+               class="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-bold text-white {{ $tone['btn'] }} transition-colors">
+                <span class="material-symbols-outlined text-[14px]">add</span> Buat LHP
+            </a>
+        @endif
     </div>
 @endif

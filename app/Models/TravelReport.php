@@ -56,6 +56,57 @@ class TravelReport extends Model
         return $this->morphMany(ApprovalLog::class, 'approvable');
     }
 
+    /** Log penolakan terakhir — sumber alasan yang ditampilkan ke karyawan dan approver. */
+    public function latestRejection()
+    {
+        return $this->morphOne(ApprovalLog::class, 'approvable')
+            ->ofMany(['id' => 'max'], fn ($query) => $query->where('action', 'rejected'));
+    }
+
+    /** LHP ditolak yang digantikan oleh LHP ini (pengajuan ulang). */
+    public function resubmissionOf()
+    {
+        return $this->belongsTo(TravelReport::class, 'resubmission_of_id');
+    }
+
+    /** LHP pengganti, bila LHP ini ditolak lalu diajukan ulang. */
+    public function resubmission()
+    {
+        return $this->hasOne(TravelReport::class, 'resubmission_of_id');
+    }
+
+    /**
+     * LHP ditolak milik karyawan untuk anggaran ini yang belum diajukan ulang. LHP baru
+     * untuk anggaran yang sama otomatis merujuk ke sini, dari kanal mana pun dibuatnya.
+     */
+    public static function rejectedAwaitingResubmission(int $employeeId, ?int $budgetRequestId): ?self
+    {
+        if (! $budgetRequestId) {
+            return null;
+        }
+
+        return static::where('employee_id', $employeeId)
+            ->where('budget_request_id', $budgetRequestId)
+            ->where('status', 'rejected')
+            ->whereDoesntHave('resubmission')
+            ->latest('id')
+            ->first();
+    }
+
+    public function canBeResubmitted(): bool
+    {
+        if ($this->status !== 'rejected') {
+            return false;
+        }
+
+        // Pakai hasil withExists/eager load bila ada, supaya daftar tidak query per baris.
+        $hasResubmission = array_key_exists('resubmission_exists', $this->getAttributes())
+            ? (bool) $this->resubmission_exists
+            : ($this->relationLoaded('resubmission') ? $this->resubmission !== null : $this->resubmission()->exists());
+
+        return ! $hasResubmission;
+    }
+
     public function attachments()
     {
         return $this->morphMany(RequestAttachment::class, 'attachable');

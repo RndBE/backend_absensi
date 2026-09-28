@@ -10,6 +10,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ApiTravelReportApprovalTest extends TestCase
@@ -81,6 +82,7 @@ class ApiTravelReportApprovalTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('employee_id');
             $table->unsignedBigInteger('budget_request_id')->nullable();
+            $table->unsignedBigInteger('resubmission_of_id')->nullable();
             $table->string('surat_tugas_no')->nullable();
             $table->date('surat_tugas_date')->nullable();
             $table->string('destination_city');
@@ -132,6 +134,7 @@ class ApiTravelReportApprovalTest extends TestCase
             $table->string('approvable_type');
             $table->unsignedBigInteger('approvable_id');
             $table->unsignedBigInteger('approver_id');
+            $table->unsignedBigInteger('acted_by_id')->nullable();
             $table->string('action');
             $table->integer('step_order')->nullable();
             $table->text('notes')->nullable();
@@ -372,5 +375,130 @@ class ApiTravelReportApprovalTest extends TestCase
         $this->assertSame(403, $response->getStatusCode());
         $this->assertFalse($payload['success']);
         $this->assertSame('Surabaya', DB::table('travel_reports')->where('id', 12)->value('destination_city'));
+    }
+
+    public function test_store_for_budget_with_rejected_lhp_is_recorded_as_resubmission(): void
+    {
+        Schema::create('lpjs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('travel_report_id')->nullable();
+            $table->unsignedBigInteger('employee_id');
+            $table->timestamps();
+        });
+
+        DB::table('employee_approvers')->insert([
+            'employee_id' => 1,
+            'request_type' => 'travel_report',
+            'step_order' => 1,
+            'approver_id' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('budget_requests')->insert([
+            'id' => 9,
+            'employee_id' => 1,
+            'title' => 'Audit Surabaya',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('travel_reports')->insert([
+            'id' => 20,
+            'employee_id' => 1,
+            'budget_request_id' => 9,
+            'destination_city' => 'Surabaya',
+            'departure_date' => '2026-06-01',
+            'return_date' => '2026-06-01',
+            'purpose' => 'Audit HSE',
+            'conclusion' => 'Aman',
+            'status' => 'rejected',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('lpjs')->insert([
+            'budget_request_id' => 9,
+            'travel_report_id' => 20,
+            'employee_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // App mobile tidak mengirim resubmission_of_id; rujukan dibuat dari anggaran yang sama.
+        $requester = Employee::findOrFail(1);
+        $request = Request::create('/api/travel-reports', 'POST', [
+            'budget_request_id' => 9,
+            'destination_city' => 'Surabaya',
+            'departure_date' => '2026-06-01',
+            'return_date' => '2026-06-01',
+            'purpose' => 'Audit HSE',
+            'conclusion' => 'Aman, temuan sudah dilengkapi',
+            'activities' => json_encode([
+                ['date' => '2026-06-01', 'description' => 'Inspeksi area', 'results' => ['OK']],
+            ]),
+        ]);
+        $request->setUserResolver(fn () => $requester);
+
+        $payload = app(TravelReportController::class)->store($request)->getData(true);
+
+        $this->assertTrue($payload['success']);
+        $newId = $payload['data']['id'];
+        $this->assertSame(20, (int) DB::table('travel_reports')->where('id', $newId)->value('resubmission_of_id'));
+        $this->assertSame('rejected', DB::table('travel_reports')->where('id', 20)->value('status'));
+        // LPJ ikut pindah ke LHP pengganti.
+        $this->assertSame($newId, (int) DB::table('lpjs')->value('travel_report_id'));
+        $this->assertDatabaseHas('notifications', [
+            'employee_id' => 2,
+            'title' => 'Pengajuan Ulang LHP',
+            'reference_id' => $newId,
+        ]);
+    }
+
+    public function test_rejecting_travel_report_requires_reason(): void
+    {
+        DB::table('employee_approvers')->insert([
+            'employee_id' => 1,
+            'request_type' => 'travel_report',
+            'step_order' => 1,
+            'approver_id' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('travel_reports')->insert([
+            'id' => 30,
+            'employee_id' => 1,
+            'destination_city' => 'Surabaya',
+            'departure_date' => '2026-06-01',
+            'return_date' => '2026-06-01',
+            'purpose' => 'Audit HSE',
+            'conclusion' => 'Aman',
+            'status' => 'pending',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $approver = Employee::findOrFail(2);
+
+        $withoutNotes = Request::create('/api/approvals/travel_report/30/reject', 'POST');
+        $withoutNotes->setUserResolver(fn () => $approver);
+
+        try {
+            app(ApprovalController::class)->reject($withoutNotes, 'travel_report', 30);
+            $this->fail('Penolakan LHP tanpa alasan seharusnya gagal validasi.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('notes', $e->errors());
+        }
+        $this->assertSame('pending', DB::table('travel_reports')->where('id', 30)->value('status'));
+
+        $withNotes = Request::create('/api/approvals/travel_report/30/reject', 'POST', ['notes' => 'Foto kegiatan kurang']);
+        $withNotes->setUserResolver(fn () => $approver);
+        app(ApprovalController::class)->reject($withNotes, 'travel_report', 30);
+
+        $this->assertSame('rejected', DB::table('travel_reports')->where('id', 30)->value('status'));
+        $this->assertDatabaseHas('approval_logs', [
+            'approvable_id' => 30,
+            'action' => 'rejected',
+            'notes' => 'Foto kegiatan kurang',
+        ]);
     }
 }

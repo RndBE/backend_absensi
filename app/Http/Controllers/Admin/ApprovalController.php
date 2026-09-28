@@ -57,7 +57,7 @@ class ApprovalController extends Controller
 
         // Travel Reports (LHP)
         $travelReport = $byDepartment($this->getMyPendingRequests(TravelReport::class, $admin))
-            ->with($withEmployee)
+            ->with([...$withEmployee, 'resubmissionOf:id', 'resubmissionOf.latestRejection'])
             ->orderBy('created_at', 'desc')->get();
 
         // LPJ
@@ -280,6 +280,11 @@ class ApprovalController extends Controller
         $item = $modelClass::with('employee')
             ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
             ->findOrFail($id);
+
+        // LHP yang ditolak diajukan ulang oleh karyawan, jadi alasannya harus jelas.
+        if ($type === 'travel_report' && blank($request->notes)) {
+            return back()->with('error', 'Alasan penolakan LHP wajib diisi supaya karyawan tahu apa yang harus diperbaiki.');
+        }
 
         // Data change requests: only superadmin can reject
         if ($type === 'data-change') {

@@ -5,11 +5,13 @@ namespace Tests\Feature;
 use App\Models\BudgetRequest;
 use App\Models\TravelReport;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class EmployeeBudgetTravelPortalTest extends TestCase
@@ -256,6 +258,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('employee_id');
             $table->unsignedBigInteger('budget_request_id')->nullable();
+            $table->unsignedBigInteger('resubmission_of_id')->nullable();
             $table->string('surat_tugas_no')->nullable();
             $table->date('surat_tugas_date')->nullable();
             $table->string('destination_city');
@@ -747,6 +750,108 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         ]);
     }
 
+    public function test_employee_lhp_edit_keeps_existing_documents_unless_removed(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee();
+        $budgetId = $this->seedApprovedBudgetRequest();
+
+        $lhp = [
+            'budget_request_id' => $budgetId,
+            'destination_city' => 'Batam',
+            'departure_date' => '2026-06-20',
+            'return_date' => '2026-06-21',
+            'purpose' => 'Kunjungan klien',
+            'conclusion' => 'Kunjungan selesai',
+        ];
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/travel-reports', $lhp + [
+                'activities' => [
+                    ['date' => '2026-06-20', 'description' => 'Meeting awal'],
+                    ['date' => '2026-06-21', 'description' => 'Survei lokasi'],
+                ],
+                'activity_documents_0' => [
+                    UploadedFile::fake()->image('meeting-1.jpg'),
+                    UploadedFile::fake()->image('meeting-2.jpg'),
+                ],
+                'activity_documents_1' => [
+                    UploadedFile::fake()->image('survei-1.jpg'),
+                ],
+            ])
+            ->assertRedirect(route('employee.travel-reports.index'));
+
+        $reportId = DB::table('travel_reports')->value('id');
+        [$meetingPhoto1, $meetingPhoto2, $surveyPhoto] = DB::table('travel_report_documents')->orderBy('id')->get()->all();
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/travel-reports/{$reportId}/edit")
+            ->assertOk()
+            ->assertSee('storage/'.$meetingPhoto1->file_path, false)
+            ->assertSee('name="activities[0][existing_documents][]" value="'.$meetingPhoto1->id.'"', false)
+            ->assertSee('name="activities[0][existing_documents][]" value="'.$meetingPhoto2->id.'"', false)
+            ->assertSee('name="activities[0][remove_documents][]" value="'.$meetingPhoto1->id.'"', false)
+            ->assertSee('name="activities[1][existing_documents][]" value="'.$surveyPhoto->id.'"', false);
+
+        // Simpan tanpa upload baru: semua foto tetap ada dan menempel ke aktivitas hasil buat ulang.
+        $this->withSession(['employee_id' => 1])
+            ->put("/employee/travel-reports/{$reportId}", $lhp + [
+                'activities' => [
+                    [
+                        'date' => '2026-06-20',
+                        'description' => 'Meeting awal dengan klien',
+                        'existing_documents' => [$meetingPhoto1->id, $meetingPhoto2->id],
+                    ],
+                    [
+                        'date' => '2026-06-21',
+                        'description' => 'Survei lokasi',
+                        'existing_documents' => [$surveyPhoto->id],
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('employee.travel-reports.show', $reportId));
+
+        $activityIds = DB::table('travel_report_activities')->pluck('id', 'description');
+        $this->assertDatabaseCount('travel_report_documents', 3);
+        $this->assertDatabaseHas('travel_report_documents', ['id' => $meetingPhoto1->id, 'travel_report_activity_id' => $activityIds['Meeting awal dengan klien'], 'sort_order' => 0]);
+        $this->assertDatabaseHas('travel_report_documents', ['id' => $meetingPhoto2->id, 'travel_report_activity_id' => $activityIds['Meeting awal dengan klien'], 'sort_order' => 1]);
+        $this->assertDatabaseHas('travel_report_documents', ['id' => $surveyPhoto->id, 'travel_report_activity_id' => $activityIds['Survei lokasi'], 'sort_order' => 0]);
+        Storage::disk('public')->assertExists([$meetingPhoto1->file_path, $meetingPhoto2->file_path, $surveyPhoto->file_path]);
+
+        // Centang Hapus pada satu foto: hanya foto itu (baris + file) yang hilang;
+        // upload baru di aktivitas lain ditambahkan setelah foto lamanya.
+        $this->withSession(['employee_id' => 1])
+            ->put("/employee/travel-reports/{$reportId}", $lhp + [
+                'activities' => [
+                    [
+                        'date' => '2026-06-20',
+                        'description' => 'Meeting awal dengan klien',
+                        'existing_documents' => [$meetingPhoto1->id, $meetingPhoto2->id],
+                        'remove_documents' => [$meetingPhoto1->id],
+                    ],
+                    [
+                        'date' => '2026-06-21',
+                        'description' => 'Survei lokasi',
+                        'existing_documents' => [$surveyPhoto->id],
+                    ],
+                ],
+                'activity_documents_1' => [
+                    UploadedFile::fake()->image('survei-2.jpg'),
+                ],
+            ])
+            ->assertRedirect(route('employee.travel-reports.show', $reportId));
+
+        $activityIds = DB::table('travel_report_activities')->pluck('id', 'description');
+        $this->assertDatabaseCount('travel_report_documents', 3);
+        $this->assertDatabaseMissing('travel_report_documents', ['id' => $meetingPhoto1->id]);
+        $this->assertDatabaseHas('travel_report_documents', ['id' => $meetingPhoto2->id, 'travel_report_activity_id' => $activityIds['Meeting awal dengan klien'], 'sort_order' => 0]);
+        $this->assertDatabaseHas('travel_report_documents', ['id' => $surveyPhoto->id, 'travel_report_activity_id' => $activityIds['Survei lokasi'], 'sort_order' => 0]);
+        $newSurveyPhoto = DB::table('travel_report_documents')->orderByDesc('id')->first();
+        $this->assertDatabaseHas('travel_report_documents', ['id' => $newSurveyPhoto->id, 'travel_report_activity_id' => $activityIds['Survei lokasi'], 'sort_order' => 1]);
+        Storage::disk('public')->assertMissing($meetingPhoto1->file_path);
+        Storage::disk('public')->assertExists([$meetingPhoto2->file_path, $surveyPhoto->file_path, $newSurveyPhoto->file_path]);
+    }
+
     public function test_employee_lpj_form_separates_income_and_realization_expense(): void
     {
         $this->seedEmployee();
@@ -980,6 +1085,363 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         ]);
     }
 
+    public function test_lhp_rejection_requires_reason_and_notifies_employee(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'approver@example.test', 'full_name' => 'Approver One']);
+        $this->seedApprover(1, 'travel_report', 2);
+
+        $reportId = DB::table('travel_reports')->insertGetId([
+            'employee_id' => 1,
+            'destination_city' => 'Batam',
+            'departure_date' => '2026-06-10',
+            'return_date' => '2026-06-11',
+            'purpose' => 'Kunjungan klien',
+            'conclusion' => 'Selesai',
+            'status' => 'pending',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('(wajib diisi bila menolak)');
+
+        $this->withSession(['employee_id' => 2])
+            ->post("/employee/approvals/travel_report/{$reportId}/reject", ['notes' => ''])
+            ->assertRedirect(route('employee.approvals.index'))
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseHas('travel_reports', ['id' => $reportId, 'status' => 'pending']);
+
+        $this->withSession(['employee_id' => 2])
+            ->post("/employee/approvals/travel_report/{$reportId}/reject", ['notes' => 'Foto kegiatan kurang'])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertDatabaseHas('travel_reports', ['id' => $reportId, 'status' => 'rejected']);
+        $this->assertDatabaseHas('notifications', [
+            'employee_id' => 1,
+            'title' => 'Pengajuan LHP Ditolak',
+            'message' => 'Pengajuan LHP Anda ditolak oleh Approver One: Foto kegiatan kurang',
+            'reference_type' => TravelReport::class,
+            'reference_id' => $reportId,
+        ]);
+    }
+
+    public function test_employee_can_resubmit_rejected_lhp_as_new_report(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'lhp-approver@example.test', 'full_name' => 'LHP Approver']);
+        $this->seedApprover(1, 'travel_report', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        $rejectedId = $this->seedRejectedTravelReport($budgetId);
+
+        $activityId = DB::table('travel_report_activities')->insertGetId([
+            'travel_report_id' => $rejectedId,
+            'activity_date' => '2026-06-10',
+            'description' => 'Meeting awal',
+            'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        Storage::disk('public')->put('travel-report-docs/lama.jpg', 'foto');
+        DB::table('travel_report_documents')->insert([
+            'travel_report_id' => $rejectedId,
+            'travel_report_activity_id' => $activityId,
+            'file_path' => 'travel-report-docs/lama.jpg',
+            'caption' => 'Foto meeting',
+            'activity_date' => '2026-06-10',
+            'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/travel-reports/{$rejectedId}")
+            ->assertOk()
+            ->assertSee('LHP ditolak')
+            ->assertSee('Foto kegiatan hari kedua belum ada')
+            ->assertSee("/employee/travel-reports/{$rejectedId}/resubmit", false);
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/travel-reports/{$rejectedId}/resubmit")
+            ->assertOk()
+            ->assertSee('Ajukan Ulang LHP')
+            ->assertSee('Yang perlu diperbaiki')
+            ->assertSee('Foto kegiatan hari kedua belum ada')
+            ->assertSee('Meeting awal')
+            ->assertSee('name="resubmission_of_id" value="'.$rejectedId.'"', false);
+
+        $payload = [
+            'resubmission_of_id' => $rejectedId,
+            'budget_request_id' => $budgetId,
+            'destination_city' => 'Batam',
+            'departure_date' => '2026-06-10',
+            'return_date' => '2026-06-11',
+            'purpose' => 'Kunjungan klien',
+            'conclusion' => 'Selesai, foto hari kedua sudah dilengkapi',
+            'activities' => [
+                ['date' => '2026-06-10', 'description' => 'Meeting awal'],
+            ],
+        ];
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/travel-reports', $payload)
+            ->assertRedirect(route('employee.travel-reports.index'));
+
+        $replacement = TravelReport::where('resubmission_of_id', $rejectedId)->firstOrFail();
+        $this->assertSame('pending', $replacement->status);
+        $this->assertSame(1, (int) $replacement->current_step);
+        // Batas & status telat diwarisi dari LHP yang ditolak, bukan dihitung ulang.
+        $this->assertSame('2026-06-18', $replacement->submission_deadline?->toDateString());
+        $this->assertFalse($replacement->is_late);
+        $this->assertDatabaseHas('travel_reports', ['id' => $rejectedId, 'status' => 'rejected']);
+
+        // Foto disalin ke file baru dan dipasang di aktivitas pengganti.
+        $copied = $replacement->documents()->with('activity')->get();
+        $this->assertCount(1, $copied);
+        $this->assertNotSame('travel-report-docs/lama.jpg', $copied[0]->file_path);
+        Storage::disk('public')->assertExists($copied[0]->file_path);
+        $this->assertSame('Meeting awal', $copied[0]->activity?->description);
+
+        $this->assertDatabaseHas('notifications', [
+            'employee_id' => 2,
+            'title' => 'Pengajuan Ulang LHP',
+            'reference_id' => $replacement->id,
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('Pengajuan ulang')
+            ->assertSee('Ditolak sebelumnya')
+            ->assertSee('Foto kegiatan hari kedua belum ada');
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/travel-reports/{$replacement->id}")
+            ->assertOk()
+            ->assertSee('Pengajuan ulang dari LHP yang ditolak');
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/travel-reports/{$rejectedId}")
+            ->assertOk()
+            ->assertSee('Lihat LHP pengganti');
+
+        // LHP yang sudah diajukan ulang tidak bisa diajukan ulang lagi.
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/travel-reports', $payload)
+            ->assertSessionHas('error');
+
+        $this->assertSame(2, DB::table('travel_reports')->count());
+    }
+
+    public function test_resubmission_copies_only_photos_kept_in_form(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'lhp-approver@example.test', 'full_name' => 'LHP Approver']);
+        $this->seedApprover(1, 'travel_report', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        $rejectedId = $this->seedRejectedTravelReport($budgetId);
+
+        $activityId = DB::table('travel_report_activities')->insertGetId([
+            'travel_report_id' => $rejectedId,
+            'activity_date' => '2026-06-10',
+            'description' => 'Meeting awal',
+            'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $seedDocument = function (int $reportId, ?int $activityId, string $path, string $caption): int {
+            Storage::disk('public')->put($path, 'foto');
+
+            return DB::table('travel_report_documents')->insertGetId([
+                'travel_report_id' => $reportId,
+                'travel_report_activity_id' => $activityId,
+                'file_path' => $path,
+                'caption' => $caption,
+                'activity_date' => '2026-06-10',
+                'sort_order' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        };
+        $keptId = $seedDocument($rejectedId, $activityId, 'travel-report-docs/dipakai.jpg', 'Foto dipakai');
+        $removedId = $seedDocument($rejectedId, $activityId, 'travel-report-docs/dibuang.jpg', 'Foto dibuang');
+        $seedDocument($rejectedId, null, 'travel-report-docs/umum.jpg', 'Foto umum');
+
+        // Foto milik LHP lain tidak boleh ikut tersalin walau ID-nya diselipkan di request.
+        $otherReportId = DB::table('travel_reports')->insertGetId([
+            'employee_id' => 2,
+            'destination_city' => 'Medan',
+            'departure_date' => '2026-06-01',
+            'return_date' => '2026-06-02',
+            'purpose' => 'Lain',
+            'status' => 'approved',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $otherActivityId = DB::table('travel_report_activities')->insertGetId([
+            'travel_report_id' => $otherReportId,
+            'activity_date' => '2026-06-01',
+            'description' => 'Lain',
+            'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $foreignId = $seedDocument($otherReportId, $otherActivityId, 'travel-report-docs/orang-lain.jpg', 'Foto orang lain');
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/travel-reports', [
+                'resubmission_of_id' => $rejectedId,
+                'document_selection' => 1,
+                'budget_request_id' => $budgetId,
+                'destination_city' => 'Batam',
+                'departure_date' => '2026-06-10',
+                'return_date' => '2026-06-11',
+                'purpose' => 'Kunjungan klien',
+                'conclusion' => 'Selesai',
+                'activities' => [
+                    [
+                        'date' => '2026-06-10',
+                        'description' => 'Meeting awal',
+                        'existing_documents' => [$keptId, $removedId, $foreignId],
+                        'remove_documents' => [$removedId],
+                    ],
+                ],
+                'activity_documents_0' => [UploadedFile::fake()->create('baru.jpg', 10, 'image/jpeg')],
+            ])
+            ->assertRedirect(route('employee.travel-reports.index'));
+
+        $replacement = TravelReport::where('resubmission_of_id', $rejectedId)->firstOrFail();
+        $documents = $replacement->documents()->get();
+
+        // Foto aktivitas: yang dipertahankan lebih dulu, lalu unggahan baru.
+        $activityDocuments = $documents->whereNotNull('travel_report_activity_id')->sortBy('sort_order')->values();
+        $this->assertSame(['Foto dipakai', null], $activityDocuments->pluck('caption')->all());
+        $this->assertSame([0, 1], $activityDocuments->pluck('sort_order')->map(fn ($order) => (int) $order)->all());
+
+        // Dokumentasi umum tidak tampil di form, jadi tetap ikut tersalin.
+        $this->assertSame(['Foto umum'], $documents->whereNull('travel_report_activity_id')->pluck('caption')->values()->all());
+
+        $this->assertCount(3, $documents);
+        $this->assertFalse($documents->contains('caption', 'Foto dibuang'));
+        $this->assertFalse($documents->contains('caption', 'Foto orang lain'));
+    }
+
+    public function test_resubmit_form_lets_employee_drop_old_photos(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'lhp-approver@example.test', 'full_name' => 'LHP Approver']);
+        $this->seedApprover(1, 'travel_report', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        $rejectedId = $this->seedRejectedTravelReport($budgetId);
+        $activityId = DB::table('travel_report_activities')->insertGetId([
+            'travel_report_id' => $rejectedId,
+            'activity_date' => '2026-06-10',
+            'description' => 'Meeting awal',
+            'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        Storage::disk('public')->put('travel-report-docs/lama.jpg', 'foto');
+        $documentId = DB::table('travel_report_documents')->insertGetId([
+            'travel_report_id' => $rejectedId,
+            'travel_report_activity_id' => $activityId,
+            'file_path' => 'travel-report-docs/lama.jpg',
+            'caption' => 'Foto lama',
+            'activity_date' => '2026-06-10',
+            'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Form ajukan ulang menampilkan foto lama dengan centang Hapus.
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/travel-reports/{$rejectedId}/resubmit")
+            ->assertOk()
+            ->assertSee('name="document_selection" value="1"', false)
+            ->assertSee('name="activities[0][existing_documents][]" value="'.$documentId.'"', false)
+            ->assertSee('name="activities[0][remove_documents][]" value="'.$documentId.'"', false)
+            ->assertSee('kecuali yang dicentang Hapus');
+
+        // Kirim seperti browser: foto lama tercantum tapi dicentang Hapus.
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/travel-reports', [
+                'resubmission_of_id' => $rejectedId,
+                'document_selection' => 1,
+                'budget_request_id' => $budgetId,
+                'destination_city' => 'Batam',
+                'departure_date' => '2026-06-10',
+                'return_date' => '2026-06-11',
+                'purpose' => 'Kunjungan klien',
+                'conclusion' => 'Selesai',
+                'activities' => [
+                    [
+                        'date' => '2026-06-10',
+                        'description' => 'Meeting awal',
+                        'existing_documents' => [$documentId],
+                        'remove_documents' => [$documentId],
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('employee.travel-reports.index'));
+
+        $replacement = TravelReport::where('resubmission_of_id', $rejectedId)->firstOrFail();
+        $this->assertSame(0, $replacement->documents()->count());
+
+        // LHP yang ditolak tidak tersentuh: fotonya tetap ada.
+        $this->assertDatabaseHas('travel_report_documents', ['id' => $documentId, 'travel_report_id' => $rejectedId]);
+        Storage::disk('public')->assertExists('travel-report-docs/lama.jpg');
+    }
+
+    public function test_new_lhp_for_budget_with_rejected_lhp_is_recorded_as_resubmission(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'lhp-approver@example.test', 'full_name' => 'LHP Approver']);
+        $this->seedApprover(1, 'travel_report', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_requests')->where('id', $budgetId)->update(['return_date' => '2026-06-11']);
+        $rejectedId = $this->seedRejectedTravelReport($budgetId);
+
+        // LHP yang ditolak tidak lagi menyembunyikan anggarannya.
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/travel-reports/create')
+            ->assertOk()
+            ->assertSee('Perjalanan Batam');
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/budget-requests')
+            ->assertOk()
+            ->assertSee('LHP ditolak · ajukan ulang')
+            ->assertSee("/employee/travel-reports/{$rejectedId}/resubmit", false);
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/travel-reports', [
+                'budget_request_id' => $budgetId,
+                'destination_city' => 'Batam',
+                'departure_date' => '2026-06-10',
+                'return_date' => '2026-06-11',
+                'purpose' => 'Kunjungan klien',
+                'conclusion' => 'Selesai',
+                'activities' => [
+                    ['date' => '2026-06-10', 'description' => 'Meeting awal'],
+                ],
+            ])
+            ->assertRedirect(route('employee.travel-reports.index'));
+
+        $this->assertDatabaseHas('travel_reports', [
+            'resubmission_of_id' => $rejectedId,
+            'budget_request_id' => $budgetId,
+            'status' => 'pending',
+        ]);
+    }
+
     public function test_admin_can_open_print_page_from_budget_request_detail(): void
     {
         $this->seedEmployee(['department_id' => 1]);
@@ -1029,6 +1491,113 @@ class EmployeeBudgetTravelPortalTest extends TestCase
                 '<td class="col-keterangan">Taksi Bandara</td>',
             ], false)
             ->assertSee('Rp 225.000');
+    }
+
+    public function test_admin_lhp_index_filters_by_employee_date_and_letter_number(): void
+    {
+        $this->seedEmployee(['department_id' => 1, 'full_name' => 'Budi Santoso']);
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'ADM001',
+            'email' => 'admin@example.test',
+            'full_name' => 'Admin Finance',
+            'role' => 'superadmin',
+            'department_id' => 1,
+        ]);
+        $this->seedEmployee([
+            'id' => 3,
+            'employee_code' => 'EMP003',
+            'email' => 'citra@example.test',
+            'full_name' => 'Citra Lestari',
+            'department_id' => 1,
+        ]);
+
+        foreach ([
+            [1, 'Semarang', '036/ST-ATC/VI/2026', '2026-06-10', '2026-06-12'],
+            [1, 'Magelang', null, '2026-07-01', '2026-07-02'],
+            [3, 'Surabaya', '041/ST-ATC/VII/2026', '2026-07-05', '2026-07-08'],
+        ] as [$employeeId, $city, $suratTugasNo, $departure, $return]) {
+            DB::table('travel_reports')->insert([
+                'employee_id' => $employeeId,
+                'surat_tugas_no' => $suratTugasNo,
+                'destination_city' => $city,
+                'departure_date' => $departure,
+                'return_date' => $return,
+                'purpose' => 'Kunjungan klien',
+                'status' => 'pending',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $admin = $this->withSession(['admin_id' => 2]);
+
+        // Dropdown hanya berisi karyawan yang punya LHP.
+        $admin->get('/admin/travel-reports')
+            ->assertOk()
+            ->assertSee('036/ST-ATC/VI/2026')
+            ->assertSee('Belum diisi')
+            ->assertSee('>Budi Santoso</option>', false)
+            ->assertSee('>Citra Lestari</option>', false)
+            ->assertDontSee('>Admin Finance</option>', false);
+
+        $admin->get('/admin/travel-reports?employee_id=3')
+            ->assertOk()
+            ->assertSee('Surabaya')
+            ->assertDontSee('Semarang')
+            ->assertDontSee('Magelang')
+            ->assertSee('employee_id=3&amp;status=approved', false);
+
+        $admin->get('/admin/travel-reports?surat_tugas_no=036')
+            ->assertOk()
+            ->assertSee('Semarang')
+            ->assertDontSee('Magelang')
+            ->assertDontSee('Surabaya');
+
+        // Rentang 2-6 Juli beririsan dengan perjalanan 1-2 Juli dan 5-8 Juli, tidak dengan 10-12 Juni.
+        $admin->get('/admin/travel-reports?date_from=2026-07-02&date_to=2026-07-06')
+            ->assertOk()
+            ->assertSee('Magelang')
+            ->assertSee('Surabaya')
+            ->assertDontSee('Semarang');
+    }
+
+    public function test_admin_lhp_index_links_rejected_lhp_and_its_resubmission(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'ADM001',
+            'email' => 'admin@example.test',
+            'full_name' => 'Admin Finance',
+            'role' => 'superadmin',
+            'department_id' => 1,
+        ]);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        $rejectedId = $this->seedRejectedTravelReport($budgetId);
+        $replacementId = DB::table('travel_reports')->insertGetId([
+            'employee_id' => 1,
+            'budget_request_id' => $budgetId,
+            'resubmission_of_id' => $rejectedId,
+            'destination_city' => 'Batam',
+            'departure_date' => '2026-06-10',
+            'return_date' => '2026-06-11',
+            'purpose' => 'Kunjungan klien',
+            'status' => 'pending',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['admin_id' => 2])
+            ->get('/admin/travel-reports')
+            ->assertOk()
+            // LHP yang ditolak menautkan ke penggantinya, dan sebaliknya.
+            ->assertSee('DIAJUKAN ULANG')
+            ->assertSee('LHP pengganti berstatus Pending')
+            ->assertSee('href="'.route('admin.travel-reports.show', $replacementId).'" title="LHP pengganti', false)
+            ->assertSee('PENGAJUAN ULANG')
+            ->assertSee('href="'.route('admin.travel-reports.show', $rejectedId).'" title="Pengganti LHP yang ditolak', false);
     }
 
     public function test_employee_current_budget_approver_can_print_from_approval_chain(): void
@@ -1238,6 +1807,38 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function seedRejectedTravelReport(int $budgetId): int
+    {
+        $reportId = DB::table('travel_reports')->insertGetId([
+            'employee_id' => 1,
+            'budget_request_id' => $budgetId,
+            'destination_city' => 'Batam',
+            'departure_date' => '2026-06-10',
+            'return_date' => '2026-06-11',
+            'submission_deadline' => '2026-06-18',
+            'is_late' => false,
+            'purpose' => 'Kunjungan klien',
+            'conclusion' => 'Selesai',
+            'status' => 'rejected',
+            'current_step' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('approval_logs')->insert([
+            'approvable_type' => TravelReport::class,
+            'approvable_id' => $reportId,
+            'approver_id' => 2,
+            'action' => 'rejected',
+            'step_order' => 1,
+            'notes' => 'Foto kegiatan hari kedua belum ada',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $reportId;
     }
 
     private function seedApprovedBudgetRequest(): int
