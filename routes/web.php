@@ -172,6 +172,9 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
 
     Route::get('/approvals', [EmployeeApprovalController::class, 'index'])->name('approvals.index');
     Route::get('/approvals/budget/{id}/print', [EmployeeApprovalController::class, 'printBudget'])->name('approvals.budget.print');
+    // Approver step aktif boleh menyesuaikan item anggaran (mis. HR mengisi tunjangan luar kota).
+    Route::get('/approvals/budget/{id}/edit', [EmployeeApprovalController::class, 'editBudget'])->name('approvals.budget.edit');
+    Route::put('/approvals/budget/{id}', [EmployeeApprovalController::class, 'updateBudget'])->name('approvals.budget.update');
     Route::get('/approvals/travel-report/{id}/print', [EmployeeApprovalController::class, 'printTravelReport'])->name('approvals.travel_report.print');
     Route::get('/approvals/lpj/{id}/print', [EmployeeApprovalController::class, 'printLpj'])->name('approvals.lpj.print');
     Route::get('/approvals/lpj/{id}/export-excel', [EmployeeApprovalController::class, 'exportLpjExcel'])->name('approvals.lpj.export-excel');

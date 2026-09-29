@@ -58,6 +58,13 @@
         </div>
     </section>
 
+    @if($budgetRequest->revisions->isNotEmpty())
+        <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <h2 class="text-[15px] font-black text-gray-900 mb-3">Penyesuaian oleh Approver</h2>
+            @include('budget-requests.partials.revisions', ['revisions' => $budgetRequest->revisions])
+        </section>
+    @endif
+
     @if($budgetRequest->approvalLogs->isNotEmpty())
         <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
             <h2 class="text-[15px] font-black text-gray-900">Riwayat Approval</h2>

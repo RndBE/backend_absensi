@@ -293,10 +293,16 @@
                     </div>
 
                     @if($type === 'budget')
-                    <a href="{{ route('employee.approvals.budget.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
-                        <span class="material-symbols-outlined text-[16px]">print</span>
-                        Cetak
-                    </a>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <a href="{{ route('employee.approvals.budget.edit', $request->id) }}" class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-[12px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100">
+                            <span class="material-symbols-outlined text-[16px]">edit</span>
+                            Edit Item
+                        </a>
+                        <a href="{{ route('employee.approvals.budget.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
+                            <span class="material-symbols-outlined text-[16px]">print</span>
+                            Cetak
+                        </a>
+                    </div>
                     @elseif($type === 'travel_report')
                     <a href="{{ route('employee.approvals.travel_report.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
                         <span class="material-symbols-outlined text-[16px]">print</span>
@@ -349,6 +355,10 @@
                                 <div class="text-[11.5px] text-indigo-600 mt-0.5">oleh {{ $previousRejection->approver?->full_name ?? 'approver' }} · step {{ $previousRejection->step_order }} · {{ $previousRejection->created_at?->format('d/m/Y') }}</div>
                             @endif
                         </div>
+                    @endif
+
+                    @if($type === 'budget')
+                        @include('budget-requests.partials.revisions', ['revisions' => $request->revisions, 'compact' => true])
                     @endif
 
                     <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">

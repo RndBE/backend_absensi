@@ -30,6 +30,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'lpjs',
             'travel_reports',
             'budget_payments',
+            'budget_request_revisions',
             'budget_request_participants',
             'budget_request_items',
             'budget_requests',
@@ -230,6 +231,17 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->string('type');
             $table->text('description')->nullable();
             $table->decimal('amount', 15, 2)->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('budget_request_revisions', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('editor_id')->nullable();
+            $table->unsignedTinyInteger('step_order')->nullable();
+            $table->json('before');
+            $table->json('after');
+            $table->text('notes')->nullable();
             $table->timestamps();
         });
 
@@ -1778,6 +1790,186 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             ->assertOk()
             ->assertSee('Ada 1 pengajuan menunggu approval Anda')
             ->assertSee('/employee/approvals', false);
+    }
+
+    public function test_current_budget_approver_can_adjust_items_before_approving(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'EMP002',
+            'email' => 'hr@example.test',
+            'full_name' => 'Maritza HR',
+            'department_id' => 1,
+        ]);
+        $this->seedApprover(1, 'budget', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_requests')->where('id', $budgetId)->update(['status' => 'pending']);
+        $bensinId = DB::table('budget_request_items')->insertGetId([
+            'budget_request_id' => $budgetId,
+            'type' => 'transport',
+            'description' => 'Bensin',
+            'amount' => 200000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $tolId = DB::table('budget_request_items')->insertGetId([
+            'budget_request_id' => $budgetId,
+            'type' => 'transport',
+            'description' => 'E-Tol',
+            'amount' => 25000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('request_attachments')->insert([
+            'attachable_type' => \App\Models\BudgetRequestItem::class,
+            'attachable_id' => $bensinId,
+            'file_path' => 'budget-attachments/struk.jpg',
+            'file_name' => 'struk.jpg',
+            'file_size' => 1000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee("/employee/approvals/budget/{$budgetId}/edit", false)
+            ->assertSee('Edit Item');
+
+        $this->withSession(['employee_id' => 2])
+            ->get("/employee/approvals/budget/{$budgetId}/edit")
+            ->assertOk()
+            ->assertSee('Sesuaikan Item Anggaran')
+            ->assertSee('Bensin')
+            ->assertSee('struk.jpg')
+            ->assertSee('name="items[0][id]" value="'.$bensinId.'"', false);
+
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/budget/{$budgetId}", [
+                'items' => [
+                    ['id' => $bensinId, 'type' => 'transport', 'description' => 'Bensin', 'amount' => 150000],
+                    ['id' => '', 'type' => 'meal', 'description' => 'Tunjangan luar kota 2 hari', 'amount' => 100000],
+                ],
+                'notes' => 'Tunjangan diisi HR',
+            ])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        // Item lama diperbarui di tempat: id & lampirannya tetap.
+        $this->assertDatabaseHas('budget_request_items', ['id' => $bensinId, 'amount' => 150000]);
+        $this->assertDatabaseHas('request_attachments', ['attachable_id' => $bensinId, 'file_name' => 'struk.jpg']);
+        $this->assertDatabaseMissing('budget_request_items', ['id' => $tolId]);
+        $this->assertDatabaseHas('budget_request_items', [
+            'budget_request_id' => $budgetId,
+            'type' => 'meal',
+            'description' => 'Tunjangan luar kota 2 hari',
+            'amount' => 100000,
+        ]);
+        $this->assertDatabaseHas('budget_requests', [
+            'id' => $budgetId,
+            'total_amount' => 250000,
+            'status' => 'pending',
+            'current_step' => 1,
+        ]);
+        $this->assertDatabaseHas('budget_request_revisions', [
+            'budget_request_id' => $budgetId,
+            'editor_id' => 2,
+            'step_order' => 1,
+            'notes' => 'Tunjangan diisi HR',
+        ]);
+        $this->assertDatabaseHas('notifications', [
+            'employee_id' => 1,
+            'title' => 'Pengajuan Anggaran Disesuaikan',
+            'reference_id' => $budgetId,
+        ]);
+        $this->assertSame(0, DB::table('approval_logs')->count());
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('Disesuaikan oleh')
+            ->assertSee('Rp 250.000');
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/budget-requests/{$budgetId}")
+            ->assertOk()
+            ->assertSee('Penyesuaian oleh Approver')
+            ->assertSee('Maritza HR')
+            ->assertSee('Tunjangan luar kota 2 hari')
+            ->assertSee('Rp 200.000 → Rp 150.000');
+
+        // Tanpa perubahan: tidak ada revisi baru.
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/budget/{$budgetId}", [
+                'items' => DB::table('budget_request_items')->where('budget_request_id', $budgetId)->orderBy('id')->get()
+                    ->map(fn ($item) => ['id' => $item->id, 'type' => $item->type, 'description' => $item->description, 'amount' => $item->amount])
+                    ->all(),
+            ])
+            ->assertRedirect(route('employee.approvals.index'));
+        $this->assertSame(1, DB::table('budget_request_revisions')->count());
+
+        $this->withSession(['employee_id' => 2])
+            ->post("/employee/approvals/budget/{$budgetId}/approve")
+            ->assertRedirect(route('employee.approvals.index'));
+        $this->assertDatabaseHas('budget_requests', ['id' => $budgetId, 'status' => 'approved', 'total_amount' => 250000]);
+    }
+
+    public function test_budget_items_cannot_be_adjusted_by_other_approvers_or_after_decision(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        foreach ([2 => 'Approver One', 3 => 'Bukan Approver'] as $id => $name) {
+            $this->seedEmployee([
+                'id' => $id,
+                'employee_code' => "EMP00{$id}",
+                'email' => "emp{$id}@example.test",
+                'full_name' => $name,
+                'department_id' => 1,
+            ]);
+        }
+        $this->seedApprover(1, 'budget', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_requests')->where('id', $budgetId)->update(['status' => 'pending']);
+        $itemId = DB::table('budget_request_items')->insertGetId([
+            'budget_request_id' => $budgetId,
+            'type' => 'transport',
+            'description' => 'Bensin',
+            'amount' => 225000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $otherBudgetId = $this->seedApprovedBudgetRequest();
+        $foreignItemId = DB::table('budget_request_items')->insertGetId([
+            'budget_request_id' => $otherBudgetId,
+            'type' => 'meal',
+            'description' => 'Item pengajuan lain',
+            'amount' => 50000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $payload = ['items' => [['id' => $itemId, 'type' => 'transport', 'description' => 'Bensin', 'amount' => 1]]];
+
+        $this->withSession(['employee_id' => 3])
+            ->get("/employee/approvals/budget/{$budgetId}/edit")
+            ->assertRedirect(route('employee.approvals.index'));
+        $this->withSession(['employee_id' => 3])
+            ->put("/employee/approvals/budget/{$budgetId}", $payload)
+            ->assertRedirect(route('employee.approvals.index'));
+
+        // Id item milik pengajuan lain ditolak.
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/budget/{$budgetId}", [
+                'items' => [['id' => $foreignItemId, 'type' => 'meal', 'description' => 'Curian', 'amount' => 1]],
+            ])
+            ->assertSessionHas('error');
+        $this->assertDatabaseHas('budget_request_items', ['id' => $foreignItemId, 'budget_request_id' => $otherBudgetId, 'amount' => 50000]);
+
+        DB::table('budget_requests')->where('id', $budgetId)->update(['status' => 'approved']);
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/budget/{$budgetId}", $payload)
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertDatabaseHas('budget_request_items', ['id' => $itemId, 'amount' => 225000]);
+        $this->assertSame(0, DB::table('budget_request_revisions')->count());
     }
 
     private function seedEmployee(array $attributes = []): void

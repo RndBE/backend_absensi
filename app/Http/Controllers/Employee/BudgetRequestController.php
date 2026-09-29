@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 
 class BudgetRequestController extends Controller
 {
-    private const ITEM_TYPES = [
+    public const ITEM_TYPES = [
         'transport' => 'Transportasi',
         'meal' => 'Makan',
         'lumpsum' => 'Lumpsum',
@@ -296,6 +296,7 @@ class BudgetRequestController extends Controller
                 'participants:id,full_name',
                 'approvalLogs.approver:id,full_name',
                 'travelZone',
+                'revisions.editor:id,full_name',
                 'employee:id,company_id',
             ])
                 ->withExists(['travelReport as has_lhp' => fn ($q) => $q->where('employee_id', $employee->id)])

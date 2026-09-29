@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Employee;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Employee\BudgetRequestController as EmployeeBudgetRequestController;
 use App\Models\ApprovalLog;
 use App\Models\AttendanceRequest;
 use App\Models\BudgetRequest;
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class ApprovalController extends Controller
@@ -115,6 +117,135 @@ class ApprovalController extends Controller
             'approvalChain' => EmployeeApprover::getChain($budgetRequest->employee_id, 'budget'),
             'backUrl' => route('employee.approvals.index', $isCurrentApprover ? [] : ['tab' => 'history']),
         ]);
+    }
+
+    /**
+     * Form penyesuaian item anggaran untuk approver step aktif. Dipakai HR/keuangan yang
+     * mengisi komponen seperti tunjangan luar kota sebelum menyetujui.
+     */
+    public function editBudget(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $budgetRequest = BudgetRequest::with([
+            'employee:id,full_name,position',
+            'items.attachments',
+            'travelZone',
+            'revisions.editor:id,full_name',
+        ])->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'budget', $budgetRequest)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Anda bukan approver untuk step ini.');
+        }
+
+        return view('employee.approvals.budget-edit', [
+            'budgetRequest' => $budgetRequest,
+            'itemTypes' => EmployeeBudgetRequestController::ITEM_TYPES,
+        ]);
+    }
+
+    public function updateBudget(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'nullable|integer',
+            'items.*.type' => 'required|in:'.implode(',', array_keys(EmployeeBudgetRequestController::ITEM_TYPES)),
+            'items.*.description' => 'nullable|string|max:500',
+            'items.*.amount' => 'required|numeric|min:0',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $budgetRequest = BudgetRequest::with(['employee', 'items'])->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'budget', $budgetRequest)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Anda bukan approver untuk step ini.');
+        }
+
+        $existing = $budgetRequest->items->keyBy('id');
+        $keptIds = collect($validated['items'])->pluck('id')->filter()->map(fn ($itemId) => (int) $itemId);
+
+        if ($keptIds->diff($existing->keys())->isNotEmpty()) {
+            return back()->withInput()->with('error', 'Ada item yang bukan milik pengajuan ini.');
+        }
+
+        $before = $this->budgetSnapshot($budgetRequest->items);
+
+        DB::transaction(function () use ($budgetRequest, $validated, $existing, $keptIds) {
+            // Item yang dihapus approver ikut membuang catatan lampirannya, sama seperti edit oleh pengaju.
+            $existing->except($keptIds->all())->each(function ($item) {
+                $item->attachments()->delete();
+                $item->delete();
+            });
+
+            foreach ($validated['items'] as $data) {
+                $values = [
+                    'type' => $data['type'],
+                    'description' => $data['description'] ?? '',
+                    'amount' => (float) $data['amount'],
+                ];
+
+                // Item lama diperbarui di tempat supaya lampiran & id-nya (dipakai LPJ) tetap.
+                filled($data['id'] ?? null)
+                    ? $existing->get((int) $data['id'])->update($values)
+                    : $budgetRequest->items()->create($values);
+            }
+
+            $budgetRequest->recalculateTotal();
+        });
+
+        $after = $this->budgetSnapshot($budgetRequest->items()->get());
+
+        if ($before === $after) {
+            return redirect()->route('employee.approvals.index')
+                ->with('success', 'Tidak ada perubahan pada item anggaran.');
+        }
+
+        $budgetRequest->revisions()->create([
+            'editor_id' => $employee->id,
+            'step_order' => (int) ($budgetRequest->current_step ?? 1),
+            'before' => $before,
+            'after' => $after,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        if ($budgetRequest->employee) {
+            $format = fn (float $amount) => 'Rp '.number_format($amount, 0, ',', '.');
+            $notification = Notification::create([
+                'employee_id' => $budgetRequest->employee_id,
+                'title' => 'Pengajuan Anggaran Disesuaikan',
+                'message' => "{$employee->full_name} menyesuaikan item \"{$budgetRequest->title}\": "
+                    .$format($before['total']).' → '.$format($after['total'])
+                    .(filled($validated['notes'] ?? null) ? ". Catatan: {$validated['notes']}" : ''),
+                'type' => 'info',
+                'reference_type' => BudgetRequest::class,
+                'reference_id' => $budgetRequest->id,
+            ]);
+
+            FcmService::sendToEmployee($budgetRequest->employee, $notification->title, $notification->message);
+        }
+
+        return redirect()->route('employee.approvals.index')
+            ->with('success', 'Item anggaran disesuaikan. Lanjutkan dengan menyetujui atau menolak pengajuan.');
+    }
+
+    /** @return array{total: float, items: array<int, array{id: int, type: string, description: string, amount: float}>} */
+    private function budgetSnapshot(Collection $items): array
+    {
+        $rows = $items->sortBy('id')->values()->map(fn ($item) => [
+            'id' => (int) $item->id,
+            'type' => (string) $item->type,
+            'description' => (string) ($item->description ?? ''),
+            'amount' => (float) $item->amount,
+        ])->all();
+
+        return [
+            'total' => (float) array_sum(array_column($rows, 'amount')),
+            'items' => $rows,
+        ];
     }
 
     public function printTravelReport(Request $request, int $id)
@@ -468,7 +599,7 @@ class ApprovalController extends Controller
         return match ($type) {
             'leave' => ['employee:id,full_name,position,photo', 'leaveType', 'attachments'],
             'overtime' => ['employee:id,full_name,position,photo', 'attachments'],
-            'budget' => ['employee:id,full_name,position,photo', 'items', 'attachments'],
+            'budget' => ['employee:id,full_name,position,photo', 'items', 'attachments', 'revisions.editor:id,full_name'],
             'travel_report' => [
                 'employee:id,full_name,position,photo',
                 'budgetRequest',

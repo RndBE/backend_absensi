@@ -59,6 +59,12 @@ class BudgetRequest extends Model
         return $this->morphMany(ApprovalLog::class, 'approvable');
     }
 
+    /** Perubahan item oleh approver, terbaru di atas. */
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(BudgetRequestRevision::class)->latest('id');
+    }
+
     public function travelZone()
     {
         return $this->belongsTo(TravelZone::class);

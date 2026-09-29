@@ -272,6 +272,20 @@
                 </div>
             </div>
 
+            @if($budgetRequest->revisions->isNotEmpty())
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div class="px-5 py-4 border-b border-gray-100">
+                    <h3 class="text-[14px] font-bold text-gray-900 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[17px] text-amber-500">edit_note</span>
+                        Penyesuaian oleh Approver
+                    </h3>
+                </div>
+                <div class="p-5">
+                    @include('budget-requests.partials.revisions', ['revisions' => $budgetRequest->revisions])
+                </div>
+            </div>
+            @endif
+
             <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
                 <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
                     <h3 class="text-[14px] font-bold text-gray-900 flex items-center gap-1.5">
