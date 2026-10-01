@@ -2475,10 +2475,23 @@ class PayrollRunController extends Controller
             ->where('end_date', '>=', $periodStart)
             ->get();
 
+        // Jangan pakai max()/min() Carbon langsung terhadap $periodStart/$periodEnd: keduanya
+        // bisa mengembalikan instance milik pemanggil itu sendiri (mis. cuti yang mulai tepat
+        // tanggal 1), lalu addDay() di bawah ikut menggeser awal periode payroll untuk semua
+        // karyawan yang diproses sesudahnya. Lembur/telat/alpha di awal bulan jadi hilang.
+        $periodFrom = Carbon::parse($periodStart)->startOfDay();
+        $periodUntil = Carbon::parse($periodEnd)->startOfDay();
+
         $dates = [];
         foreach ($leaves as $leave) {
-            $start = Carbon::parse($leave->start_date)->max($periodStart);
-            $end = Carbon::parse($leave->end_date)->min($periodEnd);
+            $start = Carbon::parse($leave->start_date)->startOfDay();
+            if ($start->lt($periodFrom)) {
+                $start = $periodFrom->copy();
+            }
+            $end = Carbon::parse($leave->end_date)->startOfDay();
+            if ($end->gt($periodUntil)) {
+                $end = $periodUntil->copy();
+            }
             while ($start->lte($end)) {
                 $dates[] = $start->format('Y-m-d');
                 $start->addDay();
