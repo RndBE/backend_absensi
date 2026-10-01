@@ -638,7 +638,7 @@ class PayrollRunController extends Controller
                 // Pembilang = hari kerja terjadwal yang dijalani (lompati OFF; libur yang ada
                 // shift-nya tetap dihitung kerja karena override menang atas libur).
                 $workedDays = $usesSchedule
-                    ? ScheduledWorkingDays::count($employee, $effectiveStart, $effectiveEnd, $holidayDates)
+                    ? ScheduledWorkingDays::count($employee, $effectiveStart, $effectiveEnd, $holidayDates, forPayroll: true)
                     : ($effectiveStart->copy()->startOfDay()->diffInDays($effectiveEnd->copy()->startOfDay()) + 1);
                 $proRateRatio = $totalDaysRef > 0 ? min(1, $workedDays / $totalDaysRef) : 1;
             } else {

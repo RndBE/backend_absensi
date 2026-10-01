@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Employee;
 use App\Models\Holiday;
 use App\Models\ScheduleAssignment;
+use App\Models\ScheduleTemplate;
 use Illuminate\Support\Carbon;
 
 class ScheduledWorkingDays
@@ -19,8 +20,10 @@ class ScheduledWorkingDays
      * Hari OFF, libur nasional, dan hari tanpa jadwal tidak dihitung.
      *
      * @param  array<int,string>|null  $holidayDates  Daftar tanggal libur (Y-m-d). Null = query sendiri.
+     * @param  bool  $forPayroll  Tanggal sebelum riwayat template paling awal memakai template
+     *                            baris itu (lihat templateForCounting). Hanya untuk hitungan payroll.
      */
-    public static function count(Employee $employee, Carbon $start, Carbon $end, ?array $holidayDates = null): int
+    public static function count(Employee $employee, Carbon $start, Carbon $end, ?array $holidayDates = null, bool $forPayroll = false): int
     {
         if ($end->lt($start)) {
             return 0;
@@ -48,7 +51,7 @@ class ScheduledWorkingDays
         $last = $end->copy()->startOfDay();
 
         while ($cursor->lte($last)) {
-            if (self::isWorkingDay($employee, $cursor, $overrides, $holidaySet)) {
+            if (self::isWorkingDay($employee, $cursor, $overrides, $holidaySet, $forPayroll)) {
                 $count++;
             }
             $cursor->addDay();
@@ -79,7 +82,7 @@ class ScheduledWorkingDays
         // `schedule_template_id` tetap menjadi penunjuk "template yang berlaku sekarang",
         // jadi cukup diperiksa itu — riwayat selalu punya penunjuk yang bersesuaian.
         if ($employee->schedule_template_id || $employee->work_schedule_id) {
-            return self::count($employee, $start, $end, $holidayDates);
+            return self::count($employee, $start, $end, $holidayDates, forPayroll: true);
         }
 
         $assignments = ScheduleAssignment::with('shift')
@@ -179,7 +182,31 @@ class ScheduledWorkingDays
         return self::isWorkingDay($employee, $date->copy()->startOfDay(), $overrides, $holidaySet);
     }
 
-    private static function isWorkingDay(Employee $employee, Carbon $date, $overrides, array $holidaySet): bool
+    /**
+     * Template untuk menghitung hari kerja pada $date.
+     *
+     * Riwayat template karyawan baru biasanya baru dimulai di tanggal join, sehingga
+     * scheduleTemplateOn() bernilai null untuk hari-hari sebelumnya. Kalau dibiarkan, pembagi
+     * pro-rate ikut terpotong ke tanggal join (rasio jadi 1, gaji tidak terprorata). Tanggal
+     * sebelum baris riwayat paling awal memakai template baris itu. Baris dengan template_id
+     * NULL ("sejak tanggal ini tanpa template") tetap dihormati.
+     */
+    private static function templateForCounting(Employee $employee, Carbon $date): ?ScheduleTemplate
+    {
+        $template = $employee->scheduleTemplateOn($date);
+        if ($template || ! Employee::hasScheduleTemplateHistory()) {
+            return $template;
+        }
+
+        $earliest = $employee->scheduleTemplateHistory->sortBy('effective_from')->first();
+        if (! $earliest || ! $earliest->effective_from->copy()->startOfDay()->gt($date)) {
+            return $template;
+        }
+
+        return $earliest->template;
+    }
+
+    private static function isWorkingDay(Employee $employee, Carbon $date, $overrides, array $holidaySet, bool $forPayroll = false): bool
     {
         $dateStr = $date->toDateString();
 
@@ -197,7 +224,8 @@ class ScheduledWorkingDays
         // 3. Template mingguan YANG BERLAKU pada tanggal itu (bukan yang terpasang sekarang).
         //    Sengaja TIDAK memakai isEmployedOn(): pembagi pro-rate payroll harus tetap
         //    "hari kerja sebulan penuh", termasuk hari sebelum karyawan join.
-        if ($shift = $employee->scheduleTemplateOn($date)?->getShiftForDay($date->dayOfWeekIso)) {
+        $template = $forPayroll ? self::templateForCounting($employee, $date) : $employee->scheduleTemplateOn($date);
+        if ($shift = $template?->getShiftForDay($date->dayOfWeekIso)) {
             return ! $shift->is_off;
         }
 
