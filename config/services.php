@@ -54,6 +54,8 @@ return [
         'url' => env('DAILY_APP_URL', 'http://127.0.0.1:8001'),
         'internal_secret' => env('DAILY_INTERNAL_SECRET'),
         'verify_ssl' => env('DAILY_VERIFY_SSL', true),
+        // Periode payroll (Y-m, dipisah koma) yang sengaja dibuat tanpa potongan laporan harian.
+        'skip_penalty_periods' => array_values(array_filter(array_map('trim', explode(',', (string) env('DAILY_REPORT_PENALTY_SKIP_PERIODS', ''))))),
     ],
 
     'violation_report' => [

@@ -72,6 +72,36 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
      * merincinya di `missing_dates`. Rinciannya harus ikut terbaca, tapi tidak
      * boleh menambah jumlah hari — kalau dijumlahkan, hari bolong dihitung dua kali.
      */
+    public function test_skipped_period_generates_without_daily_report_penalty(): void
+    {
+        config([
+            'services.daily.url' => 'http://daily.test',
+            'services.daily.internal_secret' => 'bridge-secret',
+            'services.daily.skip_penalty_periods' => ['2026-09'],
+        ]);
+
+        Http::fake([
+            'http://daily.test/api/internal/payroll/daily-report-late*' => Http::response([
+                'success' => true,
+                'data' => [['email' => 'staff@example.test', 'late_days' => 2, 'late_dates' => ['2026-09-04', '2026-09-05']]],
+            ]),
+        ]);
+
+        $controller = new PayrollRunController;
+        $args = fn (string $period) => [
+            new PayrollRun(['period' => $period]),
+            collect(['staff@example.test']),
+            Carbon::parse($period.'-01')->startOfMonth(),
+            Carbon::parse($period.'-01')->endOfMonth(),
+        ];
+
+        $this->assertSame([], $this->invokePrivate($controller, 'dailyReportLateDataFor', $args('2026-09')));
+        Http::assertNothingSent();
+
+        $october = $this->invokePrivate($controller, 'dailyReportLateDataFor', $args('2026-10'));
+        $this->assertSame(2, $october['staff@example.test']['days']);
+    }
+
     public function test_payroll_reads_missing_report_dates_without_double_counting(): void
     {
         config([

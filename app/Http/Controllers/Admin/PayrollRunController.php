@@ -584,7 +584,8 @@ class PayrollRunController extends Controller
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
 
-        $dailyReportLateData = $this->fetchDailyReportLateCounts(
+        $dailyReportLateData = $this->dailyReportLateDataFor(
+            $run,
             $payrolls->pluck('employee.email'),
             $periodStart,
             $periodEnd
@@ -1918,6 +1919,20 @@ class PayrollRunController extends Controller
             'per_day' => $penaltyPerDay,
             'lines' => $lines,
         ];
+    }
+
+    /**
+     * Data sanksi laporan harian untuk generate payroll. Periode di
+     * services.daily.skip_penalty_periods (DAILY_REPORT_PENALTY_SKIP_PERIODS) sengaja dibuat
+     * tanpa potongan laporan harian, jadi datanya tidak diambil sama sekali.
+     */
+    private function dailyReportLateDataFor(PayrollRun $run, Collection $emails, Carbon $periodStart, Carbon $periodEnd): array
+    {
+        if (in_array($run->period, (array) config('services.daily.skip_penalty_periods', []), true)) {
+            return [];
+        }
+
+        return $this->fetchDailyReportLateCounts($emails, $periodStart, $periodEnd);
     }
 
     private function fetchDailyReportLateCounts(Collection $emails, Carbon $periodStart, Carbon $periodEnd): array
