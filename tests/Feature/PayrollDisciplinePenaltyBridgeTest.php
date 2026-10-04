@@ -102,6 +102,17 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         $this->assertSame(2, $october['staff@example.test']['days']);
     }
 
+    public function test_overtime_can_be_skipped_for_one_employee_in_one_period(): void
+    {
+        config(['services.payroll.skip_overtime' => ['2026-09:27']]);
+
+        $controller = new PayrollRunController;
+
+        $this->assertTrue($this->invokePrivate($controller, 'skipsOvertime', ['2026-09', 27]));
+        $this->assertFalse($this->invokePrivate($controller, 'skipsOvertime', ['2026-10', 27]));
+        $this->assertFalse($this->invokePrivate($controller, 'skipsOvertime', ['2026-09', 24]));
+    }
+
     public function test_payroll_reads_missing_report_dates_without_double_counting(): void
     {
         config([

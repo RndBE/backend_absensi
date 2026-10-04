@@ -836,7 +836,7 @@ class PayrollRunController extends Controller
 
             // 3. Auto-calculate: Lembur
             $overtimeMultiplier = (float) ($payroll->overtime_multiplier ?? 1);
-            if ($overtimeMultiplier > 0) {
+            if ($overtimeMultiplier > 0 && ! $this->skipsOvertime($run->period, $empId)) {
                 $overtimeData = $this->calculateOvertime($empId, $periodStart, $periodEnd, $holidayDates, $payroll->basic_salary, $overtimeMultiplier);
                 if ($overtimeData['total_amount'] > 0) {
                     $components[] = [
@@ -1919,6 +1919,15 @@ class PayrollRunController extends Controller
             'per_day' => $penaltyPerDay,
             'lines' => $lines,
         ];
+    }
+
+    /**
+     * Lembur karyawan yang sengaja tidak dibayar di satu periode, dari
+     * services.payroll.skip_overtime (PAYROLL_SKIP_OVERTIME, mis. "2026-09:27,2026-10:12").
+     */
+    private function skipsOvertime(string $period, int $employeeId): bool
+    {
+        return in_array($period.':'.$employeeId, (array) config('services.payroll.skip_overtime', []), true);
     }
 
     /**

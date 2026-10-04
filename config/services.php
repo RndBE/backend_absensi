@@ -58,6 +58,11 @@ return [
         'skip_penalty_periods' => array_values(array_filter(array_map('trim', explode(',', (string) env('DAILY_REPORT_PENALTY_SKIP_PERIODS', ''))))),
     ],
 
+    'payroll' => [
+        // Pasangan periode:employee_id (dipisah koma) yang lemburnya sengaja tidak dibayar di periode itu.
+        'skip_overtime' => array_values(array_filter(array_map('trim', explode(',', (string) env('PAYROLL_SKIP_OVERTIME', ''))))),
+    ],
+
     'violation_report' => [
         'form_url' => env('VIOLATION_REPORT_FORM_URL', 'https://tinyurl.com/PELAPORAN-PELANGGARAN-ATC'),
     ],
