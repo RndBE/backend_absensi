@@ -113,6 +113,36 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         $this->assertFalse($this->invokePrivate($controller, 'skipsOvertime', ['2026-09', 24]));
     }
 
+    public function test_clock_in_penalty_follows_kpi_level_from_october(): void
+    {
+        config([
+            'services.payroll.late_penalty_by_level_from' => '2026-10',
+            'services.payroll.late_penalty_by_level' => ['L2' => 25000.0, 'L3' => 20000.0, 'L4' => 15000.0],
+        ]);
+
+        $controller = new PayrollRunController;
+        $withLevel = function (?string $code) {
+            $employee = new Employee;
+            $employee->setRelation('kpiLevel', $code ? new \App\Models\KpiLevel(['code' => $code]) : null);
+
+            return $employee;
+        };
+        $rate = fn (float $stored, ?Employee $employee, string $period) => $this->invokePrivate(
+            $controller, 'clockInPenaltyPerDay', [$stored, $employee, $period]
+        );
+
+        $this->assertSame(25000.0, $rate(50000, $withLevel('L2'), '2026-10'));
+        $this->assertSame(20000.0, $rate(50000, $withLevel('L3'), '2026-10'));
+        $this->assertSame(15000.0, $rate(50000, $withLevel('L4'), '2027-01'));
+        // Sebelum Oktober tarifnya tetap tarif di data payroll.
+        $this->assertSame(50000.0, $rate(50000, $withLevel('L4'), '2026-09'));
+        // Tanpa level atau level tidak terdaftar (L1) memakai tarif di data payroll.
+        $this->assertSame(50000.0, $rate(50000, $withLevel(null), '2026-10'));
+        $this->assertSame(50000.0, $rate(50000, $withLevel('L1'), '2026-10'));
+        // Tarif 0 di data payroll tetap berarti tanpa potongan.
+        $this->assertSame(0.0, $rate(0, $withLevel('L4'), '2026-10'));
+    }
+
     public function test_payroll_reads_missing_report_dates_without_double_counting(): void
     {
         config([

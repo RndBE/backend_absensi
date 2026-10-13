@@ -571,7 +571,7 @@ class PayrollRunController extends Controller
         }
 
         // Satu payroll per karyawan: utamakan yang aktif, lalu effective_date terbaru.
-        $payrolls = $query->with('employee')->get()
+        $payrolls = $query->with(['employee', 'employee.kpiLevel'])->get()
             ->sortByDesc('effective_date')
             ->sortByDesc(fn ($p) => $p->is_active ? 1 : 0)
             ->unique('employee_id')
@@ -766,10 +766,12 @@ class PayrollRunController extends Controller
 
             // 2. Auto-calculate: Keterlambatan & Alpha (skip if exempt)
             if (! $payroll->is_exempt_penalty) {
+                // Tarif sanksi laporan harian tetap dari data payroll; tarif per level hanya untuk presensi.
                 $latePenalty = (float) ($payroll->late_penalty_per_day ?? 50000);
+                $clockInPenalty = $this->clockInPenaltyPerDay($latePenalty, $employee, $run->period);
 
-                if ($latePenalty > 0) {
-                    $lateData = $this->calculateLatePenalty($empId, $periodStart, $periodEnd, $holidayDates, $latePenalty);
+                if ($clockInPenalty > 0) {
+                    $lateData = $this->calculateLatePenalty($empId, $periodStart, $periodEnd, $holidayDates, $clockInPenalty);
                     if ($lateData['days'] > 0) {
                         $components[] = [
                             'id' => null,
@@ -779,12 +781,12 @@ class PayrollRunController extends Controller
                             'amount' => $lateData['amount'],
                             'is_taxable' => false,
                             'is_auto' => true,
-                            'detail' => $lateData['days'].' hari × Rp '.number_format($latePenalty, 0, ',', '.'),
+                            'detail' => $lateData['days'].' hari × Rp '.number_format($clockInPenalty, 0, ',', '.'),
                             'penalty' => [
                                 'source' => 'Data presensi',
                                 'count' => $lateData['days'],
                                 'unit_label' => 'hari terlambat',
-                                'unit_amount' => $latePenalty,
+                                'unit_amount' => $clockInPenalty,
                             ],
                             'lines' => $lateData['lines'],
                         ];
@@ -1919,6 +1921,29 @@ class PayrollRunController extends Controller
             'per_day' => $penaltyPerDay,
             'lines' => $lines,
         ];
+    }
+
+    /**
+     * Tarif potongan terlambat clock in per hari. Sejak periode
+     * services.payroll.late_penalty_by_level_from tarifnya mengikuti Level KPI karyawan
+     * (services.payroll.late_penalty_by_level). Tarif di data payroll 0 = tanpa potongan,
+     * dan karyawan tanpa level / level yang tidak terdaftar tetap memakai tarif di data payroll.
+     */
+    private function clockInPenaltyPerDay(float $storedRate, ?Employee $employee, string $period): float
+    {
+        if ($storedRate <= 0) {
+            return 0.0;
+        }
+
+        $from = (string) config('services.payroll.late_penalty_by_level_from', '');
+        if ($from === '' || $period < $from) {
+            return $storedRate;
+        }
+
+        $code = strtoupper((string) $employee?->kpiLevel?->code);
+        $byLevel = (array) config('services.payroll.late_penalty_by_level', []);
+
+        return isset($byLevel[$code]) ? (float) $byLevel[$code] : $storedRate;
     }
 
     /**

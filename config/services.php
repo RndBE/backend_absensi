@@ -61,6 +61,17 @@ return [
     'payroll' => [
         // Pasangan periode:employee_id (dipisah koma) yang lemburnya sengaja tidak dibayar di periode itu.
         'skip_overtime' => array_values(array_filter(array_map('trim', explode(',', (string) env('PAYROLL_SKIP_OVERTIME', ''))))),
+
+        // Potongan terlambat clock in per hari menurut Level KPI, berlaku mulai periode (Y-m) di bawah.
+        // Format env: "L2:25000,L3:20000,L4:15000". Level lain / tanpa level memakai tarif di data payroll.
+        'late_penalty_by_level_from' => env('PAYROLL_LATE_PENALTY_BY_LEVEL_FROM', '2026-10'),
+        'late_penalty_by_level' => collect(explode(',', (string) env('PAYROLL_LATE_PENALTY_BY_LEVEL', 'L2:25000,L3:20000,L4:15000')))
+            ->mapWithKeys(function ($pair) {
+                [$code, $rate] = array_pad(explode(':', trim($pair), 2), 2, null);
+
+                return $code !== null && is_numeric($rate) ? [strtoupper(trim($code)) => (float) $rate] : [];
+            })
+            ->all(),
     ],
 
     'violation_report' => [
