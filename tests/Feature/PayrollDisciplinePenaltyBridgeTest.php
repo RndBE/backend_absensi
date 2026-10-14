@@ -139,6 +139,10 @@ class PayrollDisciplinePenaltyBridgeTest extends TestCase
         // Tanpa level atau level tidak terdaftar (L1) memakai tarif di data payroll.
         $this->assertSame(50000.0, $rate(50000, $withLevel(null), '2026-10'));
         $this->assertSame(50000.0, $rate(50000, $withLevel('L1'), '2026-10'));
+        // Level KPI kosong tapi job_level terisi: job_level 3/4 dipakai sebagai L3/L4.
+        $noKpi = fn (int $jobLevel) => tap(new Employee(['job_level' => $jobLevel]), fn ($e) => $e->setRelation('kpiLevel', null));
+        $this->assertSame(20000.0, $rate(50000, $noKpi(3), '2026-10'));
+        $this->assertSame(15000.0, $rate(50000, $noKpi(4), '2026-10'));
         // Tarif 0 di data payroll tetap berarti tanpa potongan.
         $this->assertSame(0.0, $rate(0, $withLevel('L4'), '2026-10'));
     }

@@ -1926,8 +1926,9 @@ class PayrollRunController extends Controller
     /**
      * Tarif potongan terlambat clock in per hari. Sejak periode
      * services.payroll.late_penalty_by_level_from tarifnya mengikuti Level KPI karyawan
-     * (services.payroll.late_penalty_by_level). Tarif di data payroll 0 = tanpa potongan,
-     * dan karyawan tanpa level / level yang tidak terdaftar tetap memakai tarif di data payroll.
+     * (services.payroll.late_penalty_by_level), atau job_level bila Level KPI kosong. Tarif di
+     * data payroll 0 = tanpa potongan, dan karyawan tanpa level / level yang tidak terdaftar
+     * tetap memakai tarif di data payroll.
      */
     private function clockInPenaltyPerDay(float $storedRate, ?Employee $employee, string $period): float
     {
@@ -1940,7 +1941,9 @@ class PayrollRunController extends Controller
             return $storedRate;
         }
 
-        $code = strtoupper((string) $employee?->kpiLevel?->code);
+        // Level KPI belum tentu diisi; job_level 1-4 di data karyawan sejajar dengan L1-L4.
+        $code = strtoupper((string) $employee?->kpiLevel?->code)
+            ?: ($employee?->job_level ? 'L'.(int) $employee->job_level : '');
         $byLevel = (array) config('services.payroll.late_penalty_by_level', []);
 
         return isset($byLevel[$code]) ? (float) $byLevel[$code] : $storedRate;
