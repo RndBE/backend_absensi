@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Support\DepartmentTree;
+use App\Support\OrgLevel;
 use App\Support\MonthlyAttendance;
 use App\Support\TodayTeamStatus;
 use Illuminate\Http\Request;
@@ -13,7 +14,10 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * Presensi tim untuk role MANAGER di portal employee.
+ * Presensi tim di portal employee untuk level 1-3 (Direksi, Manajer, Leader/SPV).
+ *
+ * Yang terlihat hanya anggota yang levelnya DI BAWAH pelihat: L2 melihat L3 dan L4, L3 hanya
+ * L4. Level diambil dari Level KPI, atau job_level bila Level KPI kosong (App\Support\OrgLevel).
  *
  * Cakupan: departemen manager BESERTA seluruh turunannya. Perbandingan `department_id` yang
  * persis tidak cukup — manager menempel di simpul induk sementara anak buahnya tersebar di
@@ -90,13 +94,14 @@ class TeamAttendanceController extends Controller
         ]);
     }
 
-    /** Hanya manager, dan hanya yang punya departemen. */
+    /** Hanya level 1-3 (atau manager tanpa level), dan hanya yang punya departemen. */
     private function authorizeManager(Request $request): Employee
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
+        $employee->loadMissing('kpiLevel');
 
-        abort_unless($employee->role === 'manager', 403, 'Halaman ini hanya untuk manager.');
+        abort_unless(OrgLevel::viewerLevel($employee) !== null, 403, 'Halaman ini hanya untuk level 3 ke atas.');
         abort_unless($employee->department_id, 403, 'Anda belum ditetapkan ke departemen mana pun.');
 
         return $employee;
@@ -121,22 +126,27 @@ class TeamAttendanceController extends Controller
     }
 
     /**
-     * Anggota tim: karyawan aktif di departemen manager dan seluruh turunannya, kecuali
-     * manager itu sendiri.
+     * Anggota tim: karyawan aktif di departemen pelihat dan seluruh turunannya, kecuali
+     * dirinya sendiri, dan hanya yang levelnya di bawah pelihat. Level yang tidak diketahui
+     * dianggap staf.
      *
      * @return Collection<int, Employee>
      */
     private function teamMembers(Employee $manager): Collection
     {
+        $viewerLevel = OrgLevel::viewerLevel($manager);
+
         return Employee::query()
             ->whereIn('department_id', $this->teamDepartmentIds($manager))
             ->where('company_id', $manager->company_id)
             ->where('is_active', true)
             ->where('id', '!=', $manager->id)
-            ->with(['department:id,name', ...Employee::scheduleTemplateEagerLoads()])
+            ->with(['department:id,name', 'kpiLevel:id,code', ...Employee::scheduleTemplateEagerLoads()])
             ->orderBy('department_id')
             ->orderBy('full_name')
-            ->get();
+            ->get()
+            ->filter(fn (Employee $member) => (OrgLevel::of($member) ?? OrgLevel::UNKNOWN_AS) > $viewerLevel)
+            ->values();
     }
 
     /** Nama departemen yang tercakup, untuk ditampilkan sebagai konteks. */

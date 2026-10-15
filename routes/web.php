@@ -164,7 +164,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::post('/lpj', [EmployeeLpjController::class, 'store'])->name('lpj.store');
     Route::get('/lpj/{id}', [EmployeeLpjController::class, 'show'])->name('lpj.show');
     Route::get('/lpj/{id}/export-excel', [EmployeeLpjController::class, 'exportExcel'])->name('lpj.export-excel');
-    // Presensi tim — hanya manager (dijaga di dalam controller: role + departemen).
+    // Presensi tim — level 1-3 (dijaga di dalam controller: level + departemen).
     Route::get('/team-attendance', [EmployeeTeamAttendanceController::class, 'index'])->name('team-attendance.index');
     Route::get('/team-attendance/{employee}', [EmployeeTeamAttendanceController::class, 'show'])
         ->whereNumber('employee')

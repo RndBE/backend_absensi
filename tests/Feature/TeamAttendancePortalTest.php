@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
- * Presensi Tim di portal employee — hanya untuk manager.
+ * Presensi Tim di portal employee — untuk level 1-3, hanya melihat level di bawahnya.
  *
  * Cakupannya departemen manager BESERTA turunannya. Perbandingan `department_id` yang persis
  * membuat manager yang menempel di simpul induk tidak melihat siapa pun, karena anak buahnya
@@ -44,10 +44,17 @@ class TeamAttendancePortalTest extends TestCase
             $table->string('password');
             $table->string('role')->default('employee');
             $table->string('position')->nullable();
+            $table->unsignedTinyInteger('job_level')->nullable();
+            $table->unsignedBigInteger('kpi_level_id')->nullable();
             $table->date('join_date')->nullable();
             $table->date('resign_date')->nullable();
             $table->date('last_working_date')->nullable();
             $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+        Schema::create('kpi_levels', function (Blueprint $table) {
+            $table->id();
+            $table->string('code', 5);
             $table->timestamps();
         });
         Schema::create('shifts', function (Blueprint $table) {
@@ -139,6 +146,10 @@ class TeamAttendancePortalTest extends TestCase
             ['id' => 4, 'company_id' => 1, 'parent_id' => null, 'name' => 'LAIN'],
         ]);
 
+        DB::table('kpi_levels')->insert([
+            ['id' => 1, 'code' => 'L1'], ['id' => 2, 'code' => 'L2'], ['id' => 3, 'code' => 'L3'], ['id' => 4, 'code' => 'L4'],
+        ]);
+
         $this->employee(1, 'Manager Induk', 'manager', departmentId: 1);
         $this->employee(2, 'Anggota Purchasing', 'employee', departmentId: 2);
         $this->employee(3, 'Anggota Finance', 'employee', departmentId: 3);
@@ -147,8 +158,15 @@ class TeamAttendancePortalTest extends TestCase
         $this->employee(6, 'Staff Biasa', 'employee', departmentId: 2);
     }
 
-    private function employee(int $id, string $name, string $role, ?int $departmentId, bool $isActive = true): void
-    {
+    private function employee(
+        int $id,
+        string $name,
+        string $role,
+        ?int $departmentId,
+        bool $isActive = true,
+        ?int $kpiLevelId = null,
+        ?int $jobLevel = null,
+    ): void {
         DB::table('employees')->insert([
             'id' => $id,
             'company_id' => 1,
@@ -158,6 +176,8 @@ class TeamAttendancePortalTest extends TestCase
             'email' => "emp{$id}@example.test",
             'password' => Hash::make('password'),
             'role' => $role,
+            'kpi_level_id' => $kpiLevelId,
+            'job_level' => $jobLevel,
             'is_active' => $isActive,
             'join_date' => '2020-01-01',
             'created_at' => now(),
@@ -190,6 +210,98 @@ class TeamAttendancePortalTest extends TestCase
         preg_match_all('#/employee/team-attendance/(\d+)#', $html, $cocok);
         $this->assertEqualsCanonicalizing([2, 3, 6], array_unique(array_map('intval', $cocok[1])));
         $this->assertStringNotContainsString('/employee/team-attendance/1?', $html);
+    }
+
+    /**
+     * Departemen 2 (PURCHASING): Dewi (L2), Leader A dan Leader B (L3), Staff X (L4),
+     * Aris (L3 hanya lewat job_level, Level KPI kosong) dan Latasha (L4 lewat job_level).
+     */
+    private function seedLevels(): void
+    {
+        DB::table('employees')->whereIn('id', [1, 2, 3, 4, 5, 6])->delete();
+
+        $this->employee(10, 'Dewi L2', 'employee', 2, kpiLevelId: 2, jobLevel: 2);
+        $this->employee(11, 'Leader A', 'employee', 2, kpiLevelId: 3, jobLevel: 3);
+        $this->employee(12, 'Leader B', 'payroll_admin', 2, kpiLevelId: 3, jobLevel: 3);
+        $this->employee(13, 'Staff X', 'employee', 2, kpiLevelId: 4, jobLevel: 4);
+        $this->employee(14, 'Aris Tanpa KPI', 'employee', 2, jobLevel: 3);
+        $this->employee(15, 'Latasha Tanpa KPI', 'employee', 2, jobLevel: 4);
+        $this->employee(16, 'Staff Departemen Lain', 'employee', 4, kpiLevelId: 4, jobLevel: 4);
+        $this->employee(17, 'Orang Tanpa Level', 'employee', 2);
+    }
+
+    /** @return array<int, int> id anggota yang tampil di daftar tim. */
+    private function visibleTo(int $viewerId): array
+    {
+        $html = $this->withSession(['employee_id' => $viewerId])
+            ->get('/employee/team-attendance')
+            ->assertOk()
+            ->getContent();
+
+        preg_match_all('#/employee/team-attendance/(\d+)#', $html, $cocok);
+
+        $ids = array_unique(array_map('intval', $cocok[1]));
+        sort($ids);
+
+        return $ids;
+    }
+
+    public function test_level_two_sees_level_three_and_four(): void
+    {
+        $this->seedLevels();
+
+        // L3 (A, B, Aris), L4 (Staff X, Latasha) dan orang tanpa level (dianggap staf).
+        $this->assertSame([11, 12, 13, 14, 15, 17], $this->visibleTo(10));
+    }
+
+    public function test_level_three_sees_only_level_four(): void
+    {
+        $this->seedLevels();
+
+        // Tidak melihat Leader B, Aris (L3 lewat job_level) maupun Dewi (L2).
+        $this->assertSame([13, 15, 17], $this->visibleTo(11));
+        $this->assertSame([13, 15, 17], $this->visibleTo(12));
+    }
+
+    /** Aris: Level KPI kosong, job_level 3 → dianggap L3, bisa membuka halaman tim sendiri. */
+    public function test_job_level_stands_in_when_kpi_level_is_empty(): void
+    {
+        $this->seedLevels();
+
+        $this->assertSame([13, 15, 17], $this->visibleTo(14));
+    }
+
+    public function test_level_four_is_forbidden_even_with_a_staff_job_level(): void
+    {
+        $this->seedLevels();
+
+        $this->withSession(['employee_id' => 13])->get('/employee/team-attendance')->assertForbidden();
+        $this->withSession(['employee_id' => 15])->get('/employee/team-attendance')->assertForbidden();
+    }
+
+    public function test_level_three_cannot_open_a_peer_or_a_superior(): void
+    {
+        $this->seedLevels();
+
+        $this->withSession(['employee_id' => 11])->get('/employee/team-attendance/12')->assertForbidden();
+        $this->withSession(['employee_id' => 11])->get('/employee/team-attendance/10')->assertForbidden();
+        $this->withSession(['employee_id' => 11])->get('/employee/team-attendance/13')->assertOk();
+        // Staf di departemen lain tetap di luar jangkauan.
+        $this->withSession(['employee_id' => 11])->get('/employee/team-attendance/16')->assertForbidden();
+    }
+
+    /** Pintasan di dashboard memakai aturan yang sama dengan halamannya (OrgLevel::viewerLevel). */
+    public function test_viewer_level_matches_who_may_open_the_page(): void
+    {
+        $this->seedLevels();
+        $level = fn (int $id) => \App\Support\OrgLevel::viewerLevel(\App\Models\Employee::with('kpiLevel')->find($id));
+
+        $this->assertSame(2, $level(10));
+        $this->assertSame(3, $level(11));
+        $this->assertSame(3, $level(14));   // job_level 3, Level KPI kosong
+        $this->assertNull($level(13));      // L4
+        $this->assertNull($level(15));      // job_level 4
+        $this->assertNull($level(17));      // tanpa level dan bukan manager
     }
 
     /** Di HP tabel disembunyikan, diganti kartu bertumpuk — tanpa scroll horizontal. */

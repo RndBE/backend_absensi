@@ -274,9 +274,9 @@
             ],
         ];
 
-        // Presensi tim hanya untuk manager yang punya departemen — sama seperti penjagaan
+        // Presensi tim hanya untuk level 1-3 yang punya departemen — sama seperti penjagaan
         // di TeamAttendanceController, jadi pintasan ini tak pernah menuju halaman 403.
-        if ($employee->role === 'manager' && $employee->department_id) {
+        if (\App\Support\OrgLevel::viewerLevel($employee) !== null && $employee->department_id) {
             $shortcuts[] = [
                 'href' => route('employee.team-attendance.index'),
                 'icon' => 'groups',
