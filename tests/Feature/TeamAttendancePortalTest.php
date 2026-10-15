@@ -330,6 +330,55 @@ class TeamAttendancePortalTest extends TestCase
         $this->assertSame([10, 11, 12, 13, 14, 15, 16, 17], $this->visibleTo(22));
     }
 
+    /** Menyimpan role utama di form karyawan tidak boleh menghapus hr_admin yang sudah menempel. */
+    public function test_saving_primary_role_keeps_an_attached_hr_admin_role(): void
+    {
+        Schema::create('roles', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->string('description')->nullable();
+            $table->boolean('is_system')->default(false);
+            $table->timestamps();
+        });
+        Schema::create('employee_roles', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->unsignedBigInteger('role_id');
+            $table->timestamps();
+        });
+        DB::table('roles')->insert([
+            ['id' => 1, 'name' => 'Superadmin', 'slug' => 'superadmin'],
+            ['id' => 2, 'name' => 'HR Admin', 'slug' => 'hr_admin'],
+            ['id' => 3, 'name' => 'Manager', 'slug' => 'manager'],
+        ]);
+        $this->employee(30, 'Avissa', 'superadmin', 3);
+        $this->employee(31, 'Bukan HR', 'manager', 3);
+        DB::table('employee_roles')->insert([
+            ['employee_id' => 30, 'role_id' => 1], ['employee_id' => 30, 'role_id' => 2], ['employee_id' => 31, 'role_id' => 3],
+        ]);
+
+        $controller = new \App\Http\Controllers\Admin\EmployeeController;
+        $sync = new \ReflectionMethod($controller, 'syncPrimaryRole');
+        $slugs = fn (int $id) => \App\Models\Employee::find($id)->roles()->pluck('roles.slug')->sort()->values()->all();
+
+        // Avissa disimpan ulang dengan role utama superadmin → hr_admin tetap ada.
+        $sync->invoke($controller, \App\Models\Employee::find(30), 'superadmin');
+        $this->assertSame(['hr_admin', 'superadmin'], $slugs(30));
+
+        // Ganti role utama → role utama berganti, hr_admin tetap.
+        $sync->invoke($controller, \App\Models\Employee::find(30), 'manager');
+        $this->assertSame(['hr_admin', 'manager'], $slugs(30));
+
+        // Orang tanpa hr_admin: perilaku lama, hanya satu role.
+        $sync->invoke($controller, \App\Models\Employee::find(31), 'superadmin');
+        $this->assertSame(['superadmin'], $slugs(31));
+
+        // Memilih hr_admin sebagai role utama tidak menggandakan barisnya.
+        $sync->invoke($controller, \App\Models\Employee::find(30), 'hr_admin');
+        $this->assertSame(['hr_admin'], $slugs(30));
+    }
+
     public function test_level_rule_still_applies_without_hr_admin(): void
     {
         $this->seedLevels();

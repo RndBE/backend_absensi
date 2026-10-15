@@ -17,6 +17,7 @@ use App\Services\InventoryClient;
 use App\Services\Pph21Calculator;
 use App\Services\WhatsAppGatewayService;
 use App\Support\AdminPermission;
+use App\Support\OrgLevel;
 use App\Support\SimpleXlsxExporter;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -454,7 +455,11 @@ class EmployeeController extends Controller
 
         $roleId = Role::where('slug', $roleSlug)->value('id');
         if ($roleId) {
-            $employee->roles()->sync([$roleId]);
+            // hr_admin yang sudah menempel (mis. HR yang juga superadmin) tidak ikut terhapus
+            // saat role utama di form disimpan; role itu memberi akses Presensi Tim se-perusahaan.
+            $keep = $employee->roles()->where('slug', OrgLevel::COMPANY_WIDE_ROLE)->pluck('roles.id')->all();
+
+            $employee->roles()->sync(array_values(array_unique([$roleId, ...$keep])));
         }
     }
 
