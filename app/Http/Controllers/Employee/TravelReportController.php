@@ -14,6 +14,7 @@ use App\Services\FcmService;
 use App\Support\TravelReportResubmission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
@@ -385,6 +386,8 @@ class TravelReportController extends Controller
 
     private function availableBudgetRequests(Employee $employee, ?TravelReport $report = null)
     {
+        $linksLetters = Schema::hasColumn('budget_requests', 'assignment_letter_id');
+
         return BudgetRequest::where(function ($query) use ($employee) {
                 // Budget milik sendiri ATAU budget yang men-tag user sebagai peserta tim.
                 $query->where('employee_id', $employee->id)
@@ -399,7 +402,12 @@ class TravelReportController extends Controller
                 }
             })
             ->latest()
-            ->get(['id', 'title', 'total_amount', 'surat_tugas_no', 'surat_tugas_date', 'distance_km', 'travel_zone_id', 'return_date', 'lhp_deadline_days']);
+            // Surat tugas mengisi "Maksud dan Tujuan" LHP (lihat partial form).
+            ->when($linksLetters, fn ($q) => $q->with('assignmentLetter.destinations'))
+            ->get(array_merge(
+                ['id', 'title', 'total_amount', 'surat_tugas_no', 'surat_tugas_date', 'distance_km', 'travel_zone_id', 'departure_date', 'return_date', 'lhp_deadline_days'],
+                $linksLetters ? ['assignment_letter_id'] : []
+            ));
     }
 
     /**

@@ -117,7 +117,7 @@
                             {{-- Pengajuan ulang = baris LHP baru; badge menautkan pasangan LHP lama dan penggantinya. --}}
                             @if($report->resubmission_of_id)
                                 <div class="mt-1">
-                                    <a href="{{ route('admin.travel-reports.show', $report->resubmission_of_id) }}" title="Pengganti LHP yang ditolak. Klik untuk membuka LHP lama."
+                                    <a href="{{ route('admin.travel-reports.show', ['id' => $report->resubmission_of_id] + \App\Support\AdminBackLink::here()) }}" title="Pengganti LHP yang ditolak. Klik untuk membuka LHP lama."
                                        class="inline-flex items-center gap-0.5 whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-all">
                                         PENGAJUAN ULANG <span class="material-symbols-outlined text-[12px]">history</span>
                                     </a>
@@ -127,7 +127,7 @@
                                     $replacementStatus = ['pending' => 'Pending', 'in_review' => 'Diproses', 'approved' => 'Disetujui', 'rejected' => 'Ditolak'][$report->resubmission->status] ?? $report->resubmission->status;
                                 @endphp
                                 <div class="mt-1">
-                                    <a href="{{ route('admin.travel-reports.show', $report->resubmission->id) }}" title="LHP pengganti berstatus {{ $replacementStatus }}. Klik untuk membukanya."
+                                    <a href="{{ route('admin.travel-reports.show', ['id' => $report->resubmission->id] + \App\Support\AdminBackLink::here()) }}" title="LHP pengganti berstatus {{ $replacementStatus }}. Klik untuk membukanya."
                                        class="inline-flex items-center gap-0.5 whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">
                                         DIAJUKAN ULANG <span class="material-symbols-outlined text-[12px]">arrow_outward</span>
                                     </a>
@@ -136,7 +136,7 @@
                         </td>
                         <td class="py-3 px-3 text-center whitespace-nowrap">
                             <div class="flex items-center justify-center gap-1.5">
-                                <a href="{{ route('admin.travel-reports.show', $report) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
+                                <a href="{{ route('admin.travel-reports.show', ['id' => $report->id] + \App\Support\AdminBackLink::here()) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
                                 <a href="{{ route('admin.travel-reports.print', $report) }}" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">🖨️</a>
                                 @if($canManageTravelReports)
                                 <form method="POST" action="{{ route('admin.travel-reports.destroy', $report) }}" class="inline" data-confirm="Yakin ingin menghapus LHP ini?">

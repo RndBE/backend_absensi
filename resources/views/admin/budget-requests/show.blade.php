@@ -51,9 +51,9 @@
                     <span class="material-symbols-outlined text-[16px]">print</span>
                     Cetak
                 </a>
-                <a href="{{ route('admin.budget-requests.index') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <a href="{{ \App\Support\AdminBackLink::url(request(), 'admin.budget-requests.index') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
                     <span class="material-symbols-outlined text-[16px]">arrow_back</span>
-                    Kembali
+                    {{ \App\Support\AdminBackLink::label(request()) }}
                 </a>
             </div>
         </div>
@@ -87,6 +87,18 @@
                         <p class="text-[13px] text-gray-700 break-words">
                             {{ $budgetRequest->surat_tugas_no }} - {{ $budgetRequest->surat_tugas_date?->format('d M Y') }}
                         </p>
+                        @if($budgetRequest->assignmentLetter)
+                            @php $letterAccess = app(\App\Support\AdminPermission::class)->can($currentAdmin, 'assignment_letters.view'); @endphp
+                            <div class="mt-1 flex flex-wrap items-center gap-2 text-[12px]">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-indigo-50 text-indigo-700 border-indigo-200">Terhubung ke surat tugas sistem</span>
+                                @if($budgetRequest->assignmentLetter->isCancelled())
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-red-50 text-red-700 border-red-200">Surat tugas dibatalkan</span>
+                                @endif
+                                @if($letterAccess)
+                                    <a href="{{ route('admin.assignment-letters.show', $budgetRequest->assignment_letter_id) }}" class="font-semibold text-indigo-600 hover:underline">Buka surat tugas</a>
+                                @endif
+                            </div>
+                        @endif
                     </div>
                     @endif
 

@@ -77,6 +77,10 @@
                         ['route' => 'admin.leave-policies.index', 'icon' => 'tune', 'label' => 'Kebijakan Cuti', 'match' => 'admin.leave-policies.*'],
                         ['route' => 'admin.leave-balances.index', 'icon' => 'account_balance_wallet', 'label' => 'Saldo Cuti', 'match' => 'admin.leave-balances.*'],
                     ]],
+                    ['label' => 'Surat Tugas', 'icon' => 'assignment', 'key' => 'assignment', 'items' => [
+                        ['route' => 'admin.assignment-letters.index', 'icon' => 'assignment', 'label' => 'Surat Tugas', 'match' => 'admin.assignment-letters.*'],
+                        ['route' => 'admin.assignment-facilities.index', 'icon' => 'directions_car', 'label' => 'Kendaraan & HT', 'match' => 'admin.assignment-facilities.*'],
+                    ]],
                     ['label' => 'Anggaran', 'icon' => 'request_quote', 'key' => 'budget', 'items' => [
                         ['route' => 'admin.budget-requests.index', 'icon' => 'request_quote', 'label' => 'Pengajuan Anggaran', 'match' => 'admin.budget-requests.*'],
                         ['route' => 'admin.travel-reports.index', 'icon' => 'flight_takeoff', 'label' => 'LHP', 'match' => 'admin.travel-reports.*'],
@@ -192,7 +196,14 @@
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="text-white text-[13px] font-semibold truncate">{{ $currentAdmin->full_name ?? 'Admin' }}</div>
-                    <div class="text-white/45 text-[11px]">{{ ucfirst($currentAdmin->role ?? 'admin') }}</div>
+                    @php
+                        // Role buatan admin hanya ada di employee_roles; kolom lama employees.role
+                        // untuk mereka berisi "employee".
+                        $footerRoleLabel = $currentAdmin && \Illuminate\Support\Facades\Schema::hasTable('employee_roles')
+                            ? $currentAdmin->roles->pluck('name')->join(', ')
+                            : '';
+                    @endphp
+                    <div class="text-white/45 text-[11px] truncate">{{ $footerRoleLabel ?: ucfirst($currentAdmin->role ?? 'admin') }}</div>
                 </div>
             </div>
         </div>

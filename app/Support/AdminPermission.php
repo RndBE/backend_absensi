@@ -7,6 +7,7 @@ use App\Models\EmployeePermissionOverride;
 use App\Models\Role;
 use App\Models\RolePermission;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -134,8 +135,41 @@ class AdminPermission
             return true;
         }
 
-        return $this->can($employee, 'dashboard.view')
-            && count(array_diff($this->roleSlugs($employee), ['employee'])) > 0;
+        // Cukup punya role selain Employee dan minimal satu permission admin. Dashboard tidak
+        // diwajibkan: role sempit (mis. GA HSE yang hanya mengurus surat tugas) tetap bisa masuk
+        // tanpa ikut melihat ringkasan seluruh perusahaan.
+        if (count(array_diff($this->roleSlugs($employee), ['employee'])) === 0) {
+            return false;
+        }
+
+        foreach ($this->allPermissions() as $permission) {
+            if ($this->can($employee, $permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Halaman pertama yang boleh dibuka setelah login: dashboard bila diizinkan, selain itu
+     * halaman daftar pertama (urutan route_permissions) yang permission-nya dimiliki.
+     */
+    public function homeRoute(Employee $employee): ?string
+    {
+        foreach (array_keys(config('admin_permissions.route_permissions', [])) as $pattern) {
+            $route = str_ends_with($pattern, '.*') ? substr($pattern, 0, -2).'.index' : $pattern;
+            if ($route !== 'admin.dashboard' && ! str_ends_with($route, '.index')) {
+                continue;
+            }
+
+            $permission = $this->permissionForRoute($route);
+            if ($permission && Route::has($route) && $this->can($employee, $permission)) {
+                return $route;
+            }
+        }
+
+        return null;
     }
 
     public function can(Employee $employee, string $permission): bool

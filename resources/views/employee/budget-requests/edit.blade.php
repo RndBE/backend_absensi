@@ -28,6 +28,8 @@
         @method('PUT')
 
         <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+            @include('employee.budget-requests.partials.assignment-letter', ['selectedLetterId' => $budgetRequest->assignment_letter_id])
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tipe</span>

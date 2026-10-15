@@ -93,7 +93,7 @@
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold {{ $statusBg }}">{{ $statusLabel }}</span>
                         </td>
                         <td class="py-3 px-3 text-center">
-                            <a href="{{ route('admin.lpj.show', $lpj->id) }}" class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">
+                            <a href="{{ route('admin.lpj.show', ['id' => $lpj->id] + \App\Support\AdminBackLink::here()) }}" class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">
                                 <span class="material-symbols-outlined text-[13px]">visibility</span> Detail
                             </a>
                         </td>

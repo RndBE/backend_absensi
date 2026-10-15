@@ -9,6 +9,7 @@ use App\Models\EmployeeApprover;
 use App\Models\Notification;
 use App\Models\TravelZone;
 use App\Services\FcmService;
+use App\Support\AssignmentLetterBudgetLink;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -54,6 +55,7 @@ class BudgetRequestController extends Controller
         return view('employee.budget-requests.create', [
             'employee' => $employee,
             'itemTypes' => self::ITEM_TYPES,
+            'assignmentLetters' => AssignmentLetterBudgetLink::availableFor($employee),
             'employees' => Employee::where('is_active', true)
                 ->where('id', '!=', $employee->id)
                 ->orderBy('full_name')
@@ -69,6 +71,7 @@ class BudgetRequestController extends Controller
             'description' => 'nullable|string',
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
+            'assignment_letter_id' => 'nullable|integer',
             'distance_km' => 'nullable|integer|min:0',
             'departure_date' => 'nullable|required_with:distance_km|date',
             'return_date' => 'nullable|required_with:distance_km|date|after_or_equal:departure_date',
@@ -86,13 +89,16 @@ class BudgetRequestController extends Controller
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
+        $letter = AssignmentLetterBudgetLink::resolve($employee, $validated['assignment_letter_id'] ?? null);
 
         DB::beginTransaction();
         try {
+            // Dicek ulang dengan kunci baris: dua peserta bisa mengajukan surat yang sama bersamaan.
+            $letter = $letter ? AssignmentLetterBudgetLink::resolve($employee, $letter->id, null, true) : null;
             $distanceKm = $request->filled('distance_km') ? (int) $validated['distance_km'] : null;
             $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
 
-            $budgetRequest = BudgetRequest::create([
+            $budgetRequest = BudgetRequest::create(array_merge([
                 'employee_id' => $employee->id,
                 'type' => $validated['type'],
                 'title' => $validated['title'],
@@ -106,7 +112,7 @@ class BudgetRequestController extends Controller
                 'travel_zone_id' => $travelZone?->id,
                 'departure_date' => $validated['departure_date'] ?? null,
                 'return_date' => $validated['return_date'] ?? null,
-            ]);
+            ], $letter ? AssignmentLetterBudgetLink::budgetAttributes($letter) : []));
 
             $total = 0;
             foreach ($validated['items'] as $index => $itemData) {
@@ -139,7 +145,9 @@ class BudgetRequestController extends Controller
                 ]);
             }
 
-            $budgetRequest->participants()->sync($validated['participants'] ?? []);
+            $budgetRequest->participants()->sync($letter
+                ? AssignmentLetterBudgetLink::participantIds($letter, $employee)
+                : ($validated['participants'] ?? []));
 
             DB::commit();
 
@@ -175,6 +183,7 @@ class BudgetRequestController extends Controller
             'employee' => $employee,
             'budgetRequest' => $budgetRequest,
             'itemTypes' => self::ITEM_TYPES,
+            'assignmentLetters' => AssignmentLetterBudgetLink::availableFor($employee, $budgetRequest),
             'employees' => Employee::where('is_active', true)
                 ->where('id', '!=', $employee->id)
                 ->orderBy('full_name')
@@ -190,6 +199,7 @@ class BudgetRequestController extends Controller
             'description' => 'nullable|string',
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
+            'assignment_letter_id' => 'nullable|integer',
             'distance_km' => 'nullable|integer|min:0',
             'departure_date' => 'nullable|required_with:distance_km|date',
             'return_date' => 'nullable|required_with:distance_km|date|after_or_equal:departure_date',
@@ -217,12 +227,15 @@ class BudgetRequestController extends Controller
                 ->with('error', 'Pengajuan hanya bisa diedit saat status pending.');
         }
 
+        $letter = AssignmentLetterBudgetLink::resolve($employee, $validated['assignment_letter_id'] ?? null, $budgetRequest);
+
         DB::beginTransaction();
         try {
+            $letter = $letter ? AssignmentLetterBudgetLink::resolve($employee, $letter->id, $budgetRequest, true) : null;
             $distanceKm = $request->filled('distance_km') ? (int) $validated['distance_km'] : null;
             $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
 
-            $budgetRequest->update([
+            $budgetRequest->update(array_merge([
                 'type' => $validated['type'],
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
@@ -232,9 +245,14 @@ class BudgetRequestController extends Controller
                 'travel_zone_id' => $travelZone?->id,
                 'departure_date' => $validated['departure_date'] ?? null,
                 'return_date' => $validated['return_date'] ?? null,
-            ]);
+            ],
+                // Surat tugas dilepas bila pengaju mengosongkan pilihannya.
+                $budgetRequest->assignment_letter_id && ! $letter ? ['assignment_letter_id' => null] : [],
+                $letter ? AssignmentLetterBudgetLink::budgetAttributes($letter) : []));
 
-            $budgetRequest->participants()->sync($validated['participants'] ?? []);
+            $budgetRequest->participants()->sync($letter
+                ? AssignmentLetterBudgetLink::participantIds($letter, $employee)
+                : ($validated['participants'] ?? []));
 
             $budgetRequest->items->each(fn ($item) => $item->attachments()->delete());
             $budgetRequest->items()->delete();
@@ -298,6 +316,7 @@ class BudgetRequestController extends Controller
                 'travelZone',
                 'revisions.editor:id,full_name',
                 'employee:id,company_id',
+                'assignmentLetter:id,number,status,letter_date',
             ])
                 ->withExists(['travelReport as has_lhp' => fn ($q) => $q->where('employee_id', $employee->id)])
                 ->where('employee_id', $employee->id)

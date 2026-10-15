@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\Role;
 use App\Support\AdminPermission;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class RolePermissionController extends Controller
@@ -39,7 +41,17 @@ class RolePermissionController extends Controller
             ? $permissions->overridesForEmployee($selectedEmployee)
             : [];
 
+        // Tab Role: daftar role beserta jumlah pemakainya. Urutan mengikuti kartu di tab Permission.
+        $roleOrder = array_flip(array_keys($roles));
+        $roleRecords = Schema::hasTable('roles')
+            ? Role::withCount('employees')->get()
+                ->sortBy(fn (Role $role) => [$roleOrder[$role->slug] ?? PHP_INT_MAX, $role->name])
+                ->values()
+            : collect();
+
         return view('admin.role-permissions.index', [
+            'activeTab' => $request->query('tab') === 'role' ? 'role' : 'permission',
+            'roleRecords' => $roleRecords,
             'groups' => $permissions->groupedPermissions(),
             'roles' => $roles,
             'editableRoles' => $editableRoles,

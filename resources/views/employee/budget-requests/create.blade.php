@@ -16,6 +16,8 @@
         @csrf
 
         <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+            @include('employee.budget-requests.partials.assignment-letter')
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label>
                     <span class="block text-[12px] font-bold text-gray-600 mb-1">Tipe</span>
@@ -284,6 +286,23 @@
         cityInput?.addEventListener('input', function () {
             window.clearTimeout(debounceTimer);
             debounceTimer = window.setTimeout(() => estimateZone(this.value.trim()), 800);
+        });
+
+        // Surat tugas yang dipilih membawa jarak terjauh dan zonanya; tampilkan kartu zona yang
+        // sama supaya tombol "Tambah Uang Makan" tetap bisa dipakai.
+        document.addEventListener('assignment-letter:selected', function (event) {
+            const letter = event.detail;
+            if (!letter || letter.distance_km === null) return;
+            hide(error);
+            if (distanceInput) distanceInput.value = letter.distance_km;
+            currentZone = letter.travel_zone;
+            if (!currentZone) {
+                showError('Zona perjalanan belum ditemukan untuk jarak di surat tugas.');
+                return;
+            }
+            title.textContent = `${currentZone.name} (${currentZone.km_range}) - ${letter.distance_km} km`;
+            meal.textContent = `Uang makan: ${formatRupiah(Number(currentZone.meal_allowance || 0))}/hari`;
+            show(card);
         });
 
         const mealModal = document.getElementById('mealDaysModal');

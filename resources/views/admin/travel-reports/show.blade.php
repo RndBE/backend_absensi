@@ -3,8 +3,8 @@
 
 @section('content')
 <div class="flex items-center justify-between mb-5">
-    <a href="{{ route('admin.travel-reports.index') }}" class="inline-flex items-center gap-1 text-[13px] font-semibold text-gray-500 hover:text-gray-700 transition-colors">
-        <span class="material-symbols-outlined text-[16px]">arrow_back</span> Kembali
+    <a href="{{ \App\Support\AdminBackLink::url(request(), 'admin.travel-reports.index') }}" class="inline-flex items-center gap-1 text-[13px] font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+        <span class="material-symbols-outlined text-[16px]">arrow_back</span> {{ \App\Support\AdminBackLink::label(request()) }}
     </a>
     <div class="flex gap-2">
         @if(in_array($report->status, ['pending', 'in_review']))
@@ -67,7 +67,7 @@
             @if($report->budgetRequest)
             <div>
                 <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Request Terkait</div>
-                <a href="{{ route('admin.budget-requests.show', $report->budget_request_id) }}" class="text-[13px] text-indigo-600 hover:underline">{{ $report->budgetRequest->title }}</a>
+                <a href="{{ route('admin.budget-requests.show', ['id' => $report->budget_request_id] + \App\Support\AdminBackLink::here()) }}" class="text-[13px] text-indigo-600 hover:underline">{{ $report->budgetRequest->title }}</a>
             </div>
             @endif
             <div>
@@ -96,14 +96,14 @@
                 @endif
             </div>
         </div>
-        <a href="{{ route('admin.travel-reports.show', $report->resubmissionOf->id) }}" class="inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Lihat LHP yang ditolak</a>
+        <a href="{{ route('admin.travel-reports.show', ['id' => $report->resubmissionOf->id] + \App\Support\AdminBackLink::forward()) }}" class="inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Lihat LHP yang ditolak</a>
     </div>
 @endif
 @if($report->resubmission)
     <div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 mb-5">
         <span class="material-symbols-outlined text-[20px] text-gray-500">redo</span>
         <div class="min-w-0 flex-1 text-[13px] font-semibold text-gray-700">LHP ini sudah diajukan ulang oleh karyawan.</div>
-        <a href="{{ route('admin.travel-reports.show', $report->resubmission->id) }}" class="inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Lihat LHP pengganti</a>
+        <a href="{{ route('admin.travel-reports.show', ['id' => $report->resubmission->id] + \App\Support\AdminBackLink::forward()) }}" class="inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Lihat LHP pengganti</a>
     </div>
 @endif
 

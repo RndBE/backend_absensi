@@ -455,9 +455,14 @@ class EmployeeController extends Controller
 
         $roleId = Role::where('slug', $roleSlug)->value('id');
         if ($roleId) {
-            // hr_admin yang sudah menempel (mis. HR yang juga superadmin) tidak ikut terhapus
-            // saat role utama di form disimpan; role itu memberi akses Presensi Tim se-perusahaan.
-            $keep = $employee->roles()->where('slug', OrgLevel::COMPANY_WIDE_ROLE)->pluck('roles.id')->all();
+            // Role yang tidak dipilih lewat form ini tidak ikut terhapus saat role utama disimpan:
+            // hr_admin yang sudah menempel (mis. HR yang juga superadmin) memberi akses Presensi Tim
+            // se-perusahaan, dan role buatan admin (mis. GA HSE) dipasang lewat menu Role. Role buatan
+            // dikenali dari slug-nya (bukan role bawaan), tidak dari flag is_system.
+            $keep = $employee->roles()
+                ->where(fn ($query) => $query->where('slug', OrgLevel::COMPANY_WIDE_ROLE)->orWhereNotIn('slug', Role::LEGACY_SLUGS))
+                ->pluck('roles.id')
+                ->all();
 
             $employee->roles()->sync(array_values(array_unique([$roleId, ...$keep])));
         }

@@ -39,6 +39,12 @@ return [
             'approvals.action' => 'Approve/reject pengajuan',
             'approvals.rules.manage' => 'Kelola aturan approval',
         ],
+        'Surat Tugas' => [
+            'assignment_letters.view' => 'Lihat dan cetak surat tugas',
+            'assignment_letters.manage' => 'Buat dan ubah draft surat tugas, unggah surat bertanda tangan',
+            'assignment_letters.issue' => 'Terbitkan dan batalkan surat tugas, atur nomor terakhir',
+            'assignment_facilities.manage' => 'Kelola kendaraan & HT',
+        ],
         'Anggaran & LHP' => [
             'budget.view' => 'Lihat pengajuan anggaran',
             'budget.manage' => 'Kelola pengajuan anggaran',
@@ -104,6 +110,7 @@ return [
             'kpi.assessments.fill', 'kpi.assessments.view', 'kpi.results.view',
             'kpi.cross.master.manage', 'kpi.cross.fill', 'kpi.processing.manage',
             'kpi.calibration.manage', 'kpi.followup.manage',
+            'assignment_letters.view', 'assignment_letters.manage', 'assignment_letters.issue', 'assignment_facilities.manage',
         ],
         'payroll_admin' => [
             'dashboard.view',
@@ -120,6 +127,7 @@ return [
             'employees.view',
             'budget.view', 'budget.manage',
             'travel.reports.view', 'travel.reports.manage', 'travel.settings.manage',
+            'assignment_letters.view',
             'payroll.loans.view', 'payroll.loans.manage',
             'tax.manage',
             'reports.view', 'reports.payroll.view',
@@ -132,6 +140,7 @@ return [
             'schedule.view', 'schedule.manage', 'schedule.master.manage',
             'leaves.view', 'leaves.create', 'leaves.delete', 'leave.settings.manage',
             'approvals.view', 'approvals.action', 'approvals.rules.manage',
+            'assignment_letters.view', 'assignment_letters.manage', 'assignment_letters.issue', 'assignment_facilities.manage',
             'budget.view', 'budget.manage',
             'travel.reports.view', 'travel.reports.manage', 'travel.settings.manage',
             'payroll.master.view', 'payroll.master.manage',
@@ -215,8 +224,20 @@ return [
         'admin.monitor-approvals.index' => 'approvals.view',
         'admin.approval-rules.*' => 'approvals.rules.manage',
 
+        // Urutan penting: pola dicocokkan dari atas, jadi rute baca ditulis sebelum wildcard.
+        'admin.assignment-letters.index' => 'assignment_letters.view',
+        'admin.assignment-letters.show' => 'assignment_letters.view',
+        'admin.assignment-letters.print' => 'assignment_letters.view',
+        'admin.assignment-letters.signed.show' => 'assignment_letters.view',
+        'admin.assignment-letters.issue' => 'assignment_letters.issue',
+        'admin.assignment-letters.cancel' => 'assignment_letters.issue',
+        'admin.assignment-letters.numbering' => 'assignment_letters.issue',
+        'admin.assignment-letters.*' => 'assignment_letters.manage',
+        'admin.assignment-facilities.*' => 'assignment_facilities.manage',
+
         'admin.budget-requests.index' => 'budget.view',
         'admin.budget-requests.show' => 'budget.view',
+        'admin.budget-requests.print' => 'budget.view',
         'admin.budget-requests.destroy' => 'budget.manage',
         'admin.budget-payments.*' => 'budget.manage',
         'admin.travel-reports.index' => 'travel.reports.view',

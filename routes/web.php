@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Admin\ApprovalController;
 use App\Http\Controllers\Admin\ApprovalRuleController;
+use App\Http\Controllers\Admin\AssignmentFacilityController;
+use App\Http\Controllers\Admin\AssignmentLetterController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\AttendancePhotoArchiveController;
 use App\Http\Controllers\Admin\AttendanceRecapController;
@@ -54,7 +56,9 @@ use App\Http\Controllers\Admin\TaxController;
 use App\Http\Controllers\Admin\TravelReportController;
 use App\Http\Controllers\Admin\TravelZoneController;
 use App\Http\Controllers\Api\TravelZoneController as ApiTravelZoneController;
+use App\Http\Controllers\Api\AssignmentLetterController as ApiAssignmentLetterController;
 use App\Http\Controllers\Employee\AnnouncementFileController as EmployeeAnnouncementFileController;
+use App\Http\Controllers\Employee\AssignmentLetterController as EmployeeAssignmentLetterController;
 use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceController;
 use App\Http\Controllers\Employee\AttendanceRequestController as EmployeeAttendanceRequestController;
 use App\Http\Controllers\Employee\ApprovalController as EmployeeApprovalController;
@@ -97,6 +101,13 @@ Route::middleware('throttle:30,1')->group(function () {
     Route::post('/tinjau/rantai-kerja/{token}/rantai', [KpiWorkChainReviewController::class, 'store'])->name('kpi-review.store');
     Route::post('/tinjau/rantai-kerja/{token}/pasangan', [KpiWorkChainReviewController::class, 'addPairs'])->name('kpi-review.add-pairs');
     Route::delete('/tinjau/rantai-kerja/{token}/pasangan/{kpiWorkRelation}', [KpiWorkChainReviewController::class, 'destroyPair'])->name('kpi-review.destroy-pair');
+});
+
+// Tautan surat tugas untuk aplikasi mobile: bertanda tangan & berbatas waktu, dibuat oleh API
+// /api/assignment-letters. Dibuka di browser HP yang tidak membawa token API.
+Route::middleware('signed:relative')->prefix('files/assignment-letters')->name('assignment-letters.link.')->group(function () {
+    Route::get('/{id}/print', [ApiAssignmentLetterController::class, 'printFromLink'])->whereNumber('id')->name('print');
+    Route::get('/{id}/signed', [ApiAssignmentLetterController::class, 'signedFileFromLink'])->whereNumber('id')->name('signed');
 });
 
 // Employee Portal Auth
@@ -150,6 +161,8 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/budget-requests/{id}/edit', [EmployeeBudgetRequestController::class, 'edit'])->name('budget-requests.edit');
     Route::put('/budget-requests/{id}', [EmployeeBudgetRequestController::class, 'update'])->name('budget-requests.update');
     Route::get('/budget-requests/{id}', [EmployeeBudgetRequestController::class, 'show'])->name('budget-requests.show');
+    Route::get('/assignment-letters/{id}/print', [EmployeeAssignmentLetterController::class, 'print'])->name('assignment-letters.print');
+    Route::get('/assignment-letters/{id}/signed', [EmployeeAssignmentLetterController::class, 'signed'])->name('assignment-letters.signed');
     Route::get('/travel/estimate-zone', [ApiTravelZoneController::class, 'estimateZone'])->name('travel.estimate-zone');
     Route::get('/travel-reports', [EmployeeTravelReportController::class, 'index'])->name('travel-reports.index');
     Route::get('/travel-reports/create', [EmployeeTravelReportController::class, 'create'])->name('travel-reports.create');
@@ -325,6 +338,34 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::get('/approval-rules', [ApprovalRuleController::class, 'index'])->name('approval-rules.index');
     Route::post('/approval-rules/bulk-assign', [ApprovalRuleController::class, 'bulkAssign'])->name('approval-rules.bulk-assign');
 
+    // Surat Tugas
+    Route::get('/assignment-letters', [AssignmentLetterController::class, 'index'])->name('assignment-letters.index');
+    Route::get('/assignment-letters/create', [AssignmentLetterController::class, 'create'])->name('assignment-letters.create');
+    Route::post('/assignment-letters', [AssignmentLetterController::class, 'store'])->name('assignment-letters.store');
+    // Harus di atas route {id}, kalau tidak "numbering" ikut tertangkap sebagai id.
+    Route::put('/assignment-letters/numbering', [AssignmentLetterController::class, 'updateNumbering'])->name('assignment-letters.numbering');
+    Route::get('/assignment-letters/availability', [AssignmentLetterController::class, 'availability'])->name('assignment-letters.availability');
+    Route::get('/assignment-letters/{id}', [AssignmentLetterController::class, 'show'])->name('assignment-letters.show');
+    Route::get('/assignment-letters/{id}/edit', [AssignmentLetterController::class, 'edit'])->name('assignment-letters.edit');
+    Route::put('/assignment-letters/{id}', [AssignmentLetterController::class, 'update'])->name('assignment-letters.update');
+    Route::delete('/assignment-letters/{id}', [AssignmentLetterController::class, 'destroy'])->name('assignment-letters.destroy');
+    Route::post('/assignment-letters/{id}/issue', [AssignmentLetterController::class, 'issue'])->name('assignment-letters.issue');
+    Route::post('/assignment-letters/{id}/cancel', [AssignmentLetterController::class, 'cancel'])->name('assignment-letters.cancel');
+    Route::post('/assignment-letters/{id}/duplicate', [AssignmentLetterController::class, 'duplicate'])->name('assignment-letters.duplicate');
+    Route::get('/assignment-letters/{id}/print', [AssignmentLetterController::class, 'print'])->name('assignment-letters.print');
+    Route::post('/assignment-letters/{id}/signed', [AssignmentLetterController::class, 'storeSigned'])->name('assignment-letters.signed.store');
+    Route::get('/assignment-letters/{id}/signed', [AssignmentLetterController::class, 'showSigned'])->name('assignment-letters.signed.show');
+    Route::delete('/assignment-letters/{id}/signed', [AssignmentLetterController::class, 'destroySigned'])->name('assignment-letters.signed.destroy');
+
+    // Kendaraan & perangkat komunikasi untuk surat tugas
+    Route::get('/assignment-facilities', [AssignmentFacilityController::class, 'index'])->name('assignment-facilities.index');
+    Route::post('/assignment-facilities/vehicles', [AssignmentFacilityController::class, 'storeVehicle'])->name('assignment-facilities.vehicles.store');
+    Route::put('/assignment-facilities/vehicles/{id}', [AssignmentFacilityController::class, 'updateVehicle'])->name('assignment-facilities.vehicles.update');
+    Route::delete('/assignment-facilities/vehicles/{id}', [AssignmentFacilityController::class, 'destroyVehicle'])->name('assignment-facilities.vehicles.destroy');
+    Route::post('/assignment-facilities/devices', [AssignmentFacilityController::class, 'storeDevice'])->name('assignment-facilities.devices.store');
+    Route::put('/assignment-facilities/devices/{id}', [AssignmentFacilityController::class, 'updateDevice'])->name('assignment-facilities.devices.update');
+    Route::delete('/assignment-facilities/devices/{id}', [AssignmentFacilityController::class, 'destroyDevice'])->name('assignment-facilities.devices.destroy');
+
     // Budget Requests
     Route::get('/budget-requests', [BudgetRequestController::class, 'index'])->name('budget-requests.index');
     Route::get('/budget-requests/{id}/print', [BudgetRequestController::class, 'print'])->name('budget-requests.print');
@@ -471,6 +512,10 @@ Route::prefix('admin')->name('admin.')->middleware([
     // Security
     Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');
     Route::put('/roles/employees/{employee}', [RoleController::class, 'updateEmployee'])->name('roles.employees.update');
+    // Tambah/ubah/hapus role (tab Role di halaman Role Permission).
+    Route::post('/roles', [RoleController::class, 'store'])->name('roles.store');
+    Route::put('/roles/{role}', [RoleController::class, 'update'])->name('roles.update');
+    Route::delete('/roles/{role}', [RoleController::class, 'destroy'])->name('roles.destroy');
     Route::get('/role-permissions', [RolePermissionController::class, 'index'])->name('role-permissions.index');
     Route::put('/role-permissions/roles/{role}', [RolePermissionController::class, 'updateRole'])->name('role-permissions.roles.update');
     Route::put('/role-permissions/employees/{employee}', [RolePermissionController::class, 'updateEmployee'])->name('role-permissions.employees.update');

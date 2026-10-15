@@ -18,7 +18,7 @@ class BudgetRequest extends Model
     protected $fillable = [
         'employee_id', 'type', 'title', 'description',
         'status', 'current_step', 'total_amount',
-        'surat_tugas_no', 'surat_tugas_date', 'rejection_reason',
+        'surat_tugas_no', 'surat_tugas_date', 'assignment_letter_id', 'rejection_reason',
         'distance_km', 'travel_zone_id',
         'departure_date', 'return_date', 'lhp_deadline_days',
     ];
@@ -68,6 +68,11 @@ class BudgetRequest extends Model
     public function travelZone()
     {
         return $this->belongsTo(TravelZone::class);
+    }
+
+    public function assignmentLetter(): BelongsTo
+    {
+        return $this->belongsTo(AssignmentLetter::class);
     }
 
     public function travelReport()

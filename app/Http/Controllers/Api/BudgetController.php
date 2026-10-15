@@ -9,6 +9,7 @@ use App\Models\EmployeeApprover;
 use App\Models\Notification;
 use App\Models\TravelZone;
 use App\Services\FcmService;
+use App\Support\AssignmentLetterBudgetLink;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -58,15 +59,20 @@ class BudgetController extends Controller
             'items.*.amount' => 'required|numeric|min:0',
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
+            // Opsional: aplikasi versi lama tidak mengirimnya dan tetap berjalan seperti biasa.
+            'assignment_letter_id' => 'nullable|integer',
             'distance_km' => 'nullable|integer|min:0',
             'participants' => 'nullable|array',
             'participants.*' => 'exists:employees,id',
         ]);
 
         $employee = $request->user();
+        $letter = AssignmentLetterBudgetLink::resolve($employee, $request->input('assignment_letter_id'));
 
         DB::beginTransaction();
         try {
+            // Dicek ulang dengan kunci baris: dua peserta bisa mengajukan surat yang sama bersamaan.
+            $letter = $letter ? AssignmentLetterBudgetLink::resolve($employee, $letter->id, null, true) : null;
             $distanceKm = $request->filled('distance_km') ? (int) $request->distance_km : null;
             $canStoreDistance = Schema::hasColumn('budget_requests', 'distance_km');
             $canStoreTravelZone = Schema::hasColumn('budget_requests', 'travel_zone_id');
@@ -91,6 +97,10 @@ class BudgetController extends Controller
             }
             if ($canStoreTravelZone) {
                 $payload['travel_zone_id'] = $travelZone?->id;
+            }
+
+            if ($letter) {
+                $payload = array_merge($payload, AssignmentLetterBudgetLink::budgetAttributes($letter));
             }
 
             $budgetRequest = BudgetRequest::create($payload);
@@ -134,8 +144,10 @@ class BudgetController extends Controller
                 }
             }
 
-            // Sync participants
-            if ($request->filled('participants')) {
+            // Sync participants: surat tugas menentukan peserta bila dipakai.
+            if ($letter) {
+                $budgetRequest->participants()->sync(AssignmentLetterBudgetLink::participantIds($letter, $employee));
+            } elseif ($request->filled('participants')) {
                 $participantIds = is_string($request->participants)
                     ? json_decode($request->participants, true)
                     : $request->participants;
@@ -179,6 +191,20 @@ class BudgetController extends Controller
     }
 
     /**
+     * Surat tugas terbit yang mencantumkan karyawan ini dan belum dipakai pengajuan lain.
+     * Kirim `id`-nya sebagai `assignment_letter_id` saat membuat pengajuan.
+     */
+    public function assignmentLetters(Request $request)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => AssignmentLetterBudgetLink::availableFor($request->user())
+                ->map(fn ($letter) => AssignmentLetterBudgetLink::summary($letter))
+                ->values(),
+        ]);
+    }
+
+    /**
      * Show a single budget request.
      */
     public function show(Request $request, $id)
@@ -192,6 +218,7 @@ class BudgetController extends Controller
             'approvalLogs.approver:id,full_name,photo',
             'payments.processor:id,full_name',
             'travelZone',
+            'assignmentLetter:id,number,letter_date,status',
         ])->findOrFail($id);
 
         return response()->json([

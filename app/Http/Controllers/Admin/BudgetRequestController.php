@@ -63,6 +63,7 @@ class BudgetRequestController extends Controller
             'approvalLogs.approver:id,full_name,photo',
             'payments.processor:id,full_name',
             'revisions.editor:id,full_name',
+            'assignmentLetter:id,number,status',
         ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
           ->findOrFail($id);
 

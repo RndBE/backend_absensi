@@ -1607,9 +1607,10 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             // LHP yang ditolak menautkan ke penggantinya, dan sebaliknya.
             ->assertSee('DIAJUKAN ULANG')
             ->assertSee('LHP pengganti berstatus Pending')
-            ->assertSee('href="'.route('admin.travel-reports.show', $replacementId).'" title="LHP pengganti', false)
+            // Tautan ke detail membawa asal (daftar ini), supaya tombol Kembali di detail kembali ke sini.
+            ->assertSee('href="'.e(route('admin.travel-reports.show', ['id' => $replacementId, 'back' => '/admin/travel-reports'])).'" title="LHP pengganti', false)
             ->assertSee('PENGAJUAN ULANG')
-            ->assertSee('href="'.route('admin.travel-reports.show', $rejectedId).'" title="Pengganti LHP yang ditolak', false);
+            ->assertSee('href="'.e(route('admin.travel-reports.show', ['id' => $rejectedId, 'back' => '/admin/travel-reports'])).'" title="Pengganti LHP yang ditolak', false);
     }
 
     public function test_employee_current_budget_approver_can_print_from_approval_chain(): void

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ApprovalController;
+use App\Http\Controllers\Api\AssignmentLetterController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AttendanceRequestController;
 use App\Http\Controllers\Api\AuthController;
@@ -104,7 +105,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/budget/requests', [BudgetController::class, 'store']);
     Route::get('/budget/item-types', [BudgetController::class, 'itemTypes']);
     Route::get('/budget/detect-zone', [BudgetController::class, 'detectZone']);
+    Route::get('/budget/assignment-letters', [BudgetController::class, 'assignmentLetters']);
     Route::get('/budget/requests/{id}', [BudgetController::class, 'show']);
+
+    // Surat tugas yang mencantumkan karyawan (bukan draft)
+    Route::get('/assignment-letters', [AssignmentLetterController::class, 'index']);
+    Route::get('/assignment-letters/{id}', [AssignmentLetterController::class, 'show'])->whereNumber('id');
 
     // Travel Zone
     Route::get('/travel/estimate-zone', [TravelZoneController::class, 'estimateZone']);

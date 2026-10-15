@@ -29,6 +29,15 @@
         <div>
             <div class="text-[11px] font-bold uppercase text-gray-400">Surat Tugas</div>
             <div class="mt-1 text-[13px] text-gray-700">{{ $budgetRequest->surat_tugas_no ?: '-' }} @if($budgetRequest->surat_tugas_date) · {{ $budgetRequest->surat_tugas_date->format('d/m/Y') }} @endif</div>
+            @if($budgetRequest->assignmentLetter && ! $budgetRequest->assignmentLetter->isDraft())
+                <a href="{{ route('employee.assignment-letters.print', $budgetRequest->assignment_letter_id) }}" target="_blank"
+                   class="mt-1 inline-flex items-center gap-1 text-[12px] font-bold text-indigo-600 hover:text-indigo-800">
+                    <span class="material-symbols-outlined text-[15px]">print</span> Lihat surat tugas
+                </a>
+                @if($budgetRequest->assignmentLetter->isCancelled())
+                    <span class="ml-1 text-[11px] font-bold text-red-600">(surat tugas dibatalkan)</span>
+                @endif
+            @endif
         </div>
         <div>
             <div class="text-[11px] font-bold uppercase text-gray-400">Jarak / Zona</div>

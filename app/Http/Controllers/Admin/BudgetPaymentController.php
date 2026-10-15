@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BudgetPayment;
 use App\Models\BudgetRequest;
 use App\Models\Employee;
+use App\Support\AdminBackLink;
 use Illuminate\Http\Request;
 
 class BudgetPaymentController extends Controller
@@ -47,14 +48,14 @@ class BudgetPaymentController extends Controller
         // Update budget request status to 'paid'
         $budgetRequest->update(['status' => 'paid']);
 
-        return redirect()->route('admin.budget-requests.show', $budgetRequestId)
+        return redirect()->route('admin.budget-requests.show', ['id' => $budgetRequestId] + AdminBackLink::fromReferer($request))
             ->with('success', 'Pembayaran berhasil diproses.');
     }
 
     /**
      * Delete a payment.
      */
-    public function destroy($budgetRequestId, $paymentId)
+    public function destroy(Request $request, $budgetRequestId, $paymentId)
     {
         $admin = Employee::find(session('admin_id'));
         if ($admin->role !== 'superadmin') {
@@ -78,7 +79,7 @@ class BudgetPaymentController extends Controller
         }
         $payment->delete();
 
-        return redirect()->route('admin.budget-requests.show', $budgetRequestId)
+        return redirect()->route('admin.budget-requests.show', ['id' => $budgetRequestId] + AdminBackLink::fromReferer($request))
             ->with('success', 'Pembayaran berhasil dihapus.');
     }
 }

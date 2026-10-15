@@ -382,7 +382,7 @@
                                     @csrf
                                     <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer" data-confirm="Tolak pengajuan anggaran ini?"><span class="material-symbols-outlined text-[14px] align-text-bottom">cancel</span> Tolak</button>
                                 </form>
-                                <a href="{{ route('admin.budget-requests.show', $br->id) }}" class="inline-flex items-center px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
+                                <a href="{{ route('admin.budget-requests.show', ['id' => $br->id] + \App\Support\AdminBackLink::here()) }}" class="inline-flex items-center px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
                             </div>
                         </td>
                     </tr>
@@ -443,7 +443,7 @@
                         </td>
                         <td class="px-4 py-3 text-center whitespace-nowrap">
                             <div class="flex items-center justify-center gap-2">
-                                <a href="{{ route('admin.travel-reports.show', $tr->id) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
+                                <a href="{{ route('admin.travel-reports.show', ['id' => $tr->id] + \App\Support\AdminBackLink::here()) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all">Detail</a>
                                 <form method="POST" action="{{ route('admin.approvals.approve', ['type' => 'travel_report', 'id' => $tr->id]) }}" class="inline">
                                     @csrf
                                     <button type="submit" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-all cursor-pointer">✓ Setujui</button>
@@ -537,7 +537,7 @@
                         <td class="px-4 py-3.5 text-[13px] text-right text-gray-700 border-b border-gray-100">Rp {{ number_format($l->total_realisasi, 0, ',', '.') }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <div class="flex gap-2 items-center">
-                                <a href="{{ route('admin.lpj.show', $l->id) }}" class="inline-flex items-center px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100">
+                                <a href="{{ route('admin.lpj.show', ['id' => $l->id] + \App\Support\AdminBackLink::here()) }}" class="inline-flex items-center px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100">
                                     <span class="material-symbols-outlined text-[14px] align-text-bottom mr-0.5">visibility</span> Detail
                                 </a>
                                 <form action="{{ route('admin.approvals.approve', ['type' => 'lpj', 'id' => $l->id]) }}" method="POST" class="inline">

@@ -10,9 +10,29 @@
 <div class="space-y-5">
     <div>
         <h1 class="text-xl font-bold text-gray-900">Role Permission</h1>
-        <p class="text-sm text-gray-500 mt-1">Atur akses default per role dan override khusus untuk admin tertentu.</p>
+        <p class="text-sm text-gray-500 mt-1">Kelola daftar role, akses default per role, dan override khusus untuk admin tertentu.</p>
     </div>
 
+    <div class="flex gap-0 border-b-2 border-gray-200">
+        @foreach([
+            'permission' => ['label' => 'Permission', 'icon' => 'admin_panel_settings', 'query' => array_filter(['employee_id' => request('employee_id')])],
+            'role' => ['label' => 'Role', 'icon' => 'badge', 'query' => ['tab' => 'role']],
+        ] as $tabKey => $tab)
+            <a href="{{ route('admin.role-permissions.index', $tab['query']) }}"
+               class="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-semibold border-b-2 -mb-[2px] transition-all duration-200
+                      {{ $activeTab === $tabKey ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-700' }}">
+                <span class="material-symbols-outlined text-[18px]">{{ $tab['icon'] }}</span>
+                {{ $tab['label'] }}
+                @if($tabKey === 'role')
+                    <span class="ml-0.5 px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[10px] font-bold">{{ $roleRecords->count() }}</span>
+                @endif
+            </a>
+        @endforeach
+    </div>
+
+    @if($activeTab === 'role')
+        @include('admin.role-permissions.partials.role-tab')
+    @else
     <div class="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-5">
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             @foreach($roles as $role => $roleLabel)
@@ -124,6 +144,7 @@
             </div>
         </div>
     </div>
+    @endif
 </div>
 
 <div id="rolePermissionModal" class="role-permission-modal-shell hidden fixed inset-0 items-center justify-center p-4 sm:p-6" style="z-index: 1000;">

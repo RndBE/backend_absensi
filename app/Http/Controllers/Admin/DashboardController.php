@@ -427,7 +427,7 @@ class DashboardController extends Controller
                 $request->type === 'reimbursement' ? 'Reimbursement' : 'Budget',
                 $request->title,
                 $request->created_at,
-                route('admin.budget-requests.show', $request->id)
+                route('admin.budget-requests.show', ['id' => $request->id] + \App\Support\AdminBackLink::here())
             ));
     }
 
@@ -444,7 +444,7 @@ class DashboardController extends Controller
                 'Laporan Perjalanan',
                 $request->destination_city,
                 $request->departure_date,
-                route('admin.travel-reports.show', $request->id)
+                route('admin.travel-reports.show', ['id' => $request->id] + \App\Support\AdminBackLink::here())
             ));
     }
 

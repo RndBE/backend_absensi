@@ -43,7 +43,7 @@ class AuthController extends Controller
         session(['admin_id' => $employee->id]);
         $this->logAuthActivity($employee, 'login', $request);
 
-        return redirect()->route('admin.dashboard');
+        return redirect()->route(app(AdminPermission::class)->homeRoute($employee) ?? 'admin.dashboard');
     }
 
     public function logout(Request $request)

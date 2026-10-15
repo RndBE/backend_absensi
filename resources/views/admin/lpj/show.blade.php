@@ -8,8 +8,8 @@
 @endphp
 
 <div class="flex items-center justify-between mb-5">
-    <a href="{{ route('admin.lpj.index') }}" class="inline-flex items-center gap-1 text-[13px] font-semibold text-gray-500 hover:text-gray-700 transition-colors">
-        <span class="material-symbols-outlined text-[16px]">arrow_back</span> Kembali
+    <a href="{{ \App\Support\AdminBackLink::url(request(), 'admin.lpj.index') }}" class="inline-flex items-center gap-1 text-[13px] font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+        <span class="material-symbols-outlined text-[16px]">arrow_back</span> {{ \App\Support\AdminBackLink::label(request()) }}
     </a>
     <div class="admin-lpj-actions flex flex-wrap justify-end gap-2">
         <a href="{{ route('admin.lpj.export-excel', $lpj->id) }}"

@@ -23,6 +23,15 @@ class AdminPermissionMiddleware
         }
 
         if ($permissions && !app(AdminPermission::class)->canAny($admin, $permissions)) {
+            // Banyak tautan (logo, tombol kembali, halaman 403) menuju dashboard. Admin tanpa izin
+            // dashboard dialihkan ke halaman pertama yang boleh ia buka, bukan diberi 403.
+            if ($request->route()?->getName() === 'admin.dashboard' && $request->isMethod('GET')) {
+                $home = app(AdminPermission::class)->homeRoute($admin);
+                if ($home && $home !== 'admin.dashboard') {
+                    return redirect()->route($home);
+                }
+            }
+
             // Halaman biasa → tampilkan halaman 403 bergaya admin; API/AJAX → JSON.
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'message' => 'Anda tidak memiliki permission untuk mengakses fitur ini.'], 403);

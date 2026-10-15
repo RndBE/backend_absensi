@@ -81,6 +81,9 @@
                             data-surat-no="{{ $budgetRequest->surat_tugas_no }}"
                             data-surat-date="{{ $budgetRequest->surat_tugas_date?->format('Y-m-d') }}"
                             data-distance="{{ $budgetRequest->distance_km }}"
+                            data-departure="{{ $budgetRequest->departure_date?->format('Y-m-d') }}"
+                            data-return="{{ $budgetRequest->return_date?->format('Y-m-d') }}"
+                            data-purpose="{{ $budgetRequest->assignmentLetter && ! $budgetRequest->assignmentLetter->isDraft() ? trim(implode(' ', array_filter([$budgetRequest->assignmentLetter->purposeHeading(), ...$budgetRequest->assignmentLetter->destinationSentences()]))) : '' }}"
                             data-deadline="{{ $hint['date'] ?? '' }}"
                             data-deadline-days="{{ $hint['days'] ?? '' }}"
                             data-deadline-late="{{ $hint ? ($hint['late'] ? '1' : '0') : '' }}"
@@ -286,6 +289,11 @@
         setVal('surat_tugas_no', opt.dataset.suratNo);
         setVal('surat_tugas_date', opt.dataset.suratDate);
         setVal('distance_km', opt.dataset.distance);
+        setVal('departure_date', opt.dataset.departure);
+        setVal('return_date', opt.dataset.return);
+        // Maksud & tujuan dari surat tugas hanya mengisi kolom yang masih kosong.
+        const purpose = form?.querySelector('[name="purpose"]');
+        if (purpose && !purpose.value.trim() && opt.dataset.purpose) purpose.value = opt.dataset.purpose;
     });
 
     // Tampilkan hint untuk pilihan awal (mis. saat edit / old input).
