@@ -57,6 +57,9 @@
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100">
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700">{{ \Carbon\Carbon::parse($ps->payrollRun->period . '-01')->translatedFormat('F Y') }}</span>
+                            @if($ps->is_held)
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-amber-100 text-amber-800" title="{{ $ps->hold_reason }}">Ditahan</span>
+                            @endif
                         </td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-right text-[13px] text-gray-700">Rp {{ number_format($ps->basic_salary, 0, ',', '.') }}</td>
                         <td class="px-4 py-3.5 border-b border-gray-100 text-right text-[13px] font-semibold text-emerald-700">Rp {{ number_format($ps->total_earning, 0, ',', '.') }}</td>

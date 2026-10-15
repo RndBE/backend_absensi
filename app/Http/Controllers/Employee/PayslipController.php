@@ -29,7 +29,7 @@ class PayslipController extends Controller
         $payslips = $unlocked
             ? PayrollRunDetail::with(['payrollRun:id,period,status'])
                 ->where('employee_id', $employee->id)
-                ->whereHas('payrollRun', fn ($q) => $q->whereIn('status', ['published', 'locked']))
+                ->visibleToEmployee()
                 ->orderByDesc('id')
                 ->get()
             : collect();
@@ -75,7 +75,7 @@ class PayslipController extends Controller
             'employee.activePayroll',
             'payrollRun:id,period,status',
         ])->where('employee_id', $employee->id)
-          ->whereHas('payrollRun', fn ($q) => $q->whereIn('status', ['published', 'locked']))
+          ->visibleToEmployee()
           ->findOrFail($id);
 
         $company = Company::find($detail->employee->company_id);

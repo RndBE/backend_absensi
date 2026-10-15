@@ -1816,6 +1816,10 @@ class PayrollLoanDeductionTest extends TestCase
             $table->json('components')->nullable();
             $table->boolean('is_manual_edited')->default(false);
             $table->json('manual_overrides')->nullable();
+            $table->boolean('is_held')->default(false);
+            $table->string('hold_reason', 500)->nullable();
+            $table->timestamp('held_at')->nullable();
+            $table->unsignedBigInteger('held_by')->nullable();
             $table->timestamps();
         });
 

@@ -8,6 +8,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PayrollRun extends Model
 {
+    /** Status run yang slipnya sudah boleh dilihat karyawan (kecuali slip yang ditahan). */
+    public const EMPLOYEE_VISIBLE_STATUSES = ['published', 'locked'];
+
+    /** Status run tempat slip boleh ditahan, dan slip yang ditahan boleh diedit/di-regenerate. */
+    public const HOLDABLE_STATUSES = ['draft', 'finalized', 'published'];
+
     protected $fillable = [
         'company_id', 'period', 'status',
         'total_earning', 'total_deduction', 'total_net',

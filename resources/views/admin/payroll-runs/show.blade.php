@@ -6,6 +6,8 @@
     $adminPermission = app(\App\Support\AdminPermission::class);
     $canUpdatePayrollRun = $adminPermission->can($currentAdmin, 'payroll.runs.update');
     $canPublishPayrollRun = $adminPermission->can($currentAdmin, 'payroll.runs.publish');
+    $heldCount = $details->where('is_held', true)->count();
+    $canHoldInStatus = in_array($run->status, \App\Models\PayrollRun::HOLDABLE_STATUSES, true);
     $isPenaltyDetailComponent = static function (array $component): bool {
         if (($component['type'] ?? '') !== 'deduction') {
             return false;
@@ -35,7 +37,7 @@
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Periode</div>
         <div class="text-[18px] font-bold text-gray-900">{{ \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y') }}</div>
-        <div class="text-[12px] text-gray-500 mt-0.5">{{ $details->count() }} karyawan</div>
+        <div class="text-[12px] text-gray-500 mt-0.5">{{ $details->count() }} karyawan @if($heldCount > 0)<span class="font-semibold text-amber-600">· {{ $heldCount }} ditahan</span>@endif</div>
     </div>
     <div class="bg-white rounded-xl border border-emerald-200 shadow-sm p-4">
         <div class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Total Earning</div>
@@ -82,18 +84,24 @@
     @endif
 
     @if($run->status === 'finalized' && $canPublishPayrollRun)
-    <form action="{{ route('admin.payroll-runs.publish', $run->id) }}" method="POST" data-confirm="Publish payslip ke karyawan?">
+    <form action="{{ route('admin.payroll-runs.publish', $run->id) }}" method="POST" data-confirm="{{ $heldCount > 0 ? 'Publish payslip ke '.($details->count() - $heldCount).' karyawan? '.$heldCount.' slip yang ditahan tidak ikut dipublish.' : 'Publish payslip ke karyawan?' }}">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-blue-600 to-blue-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">publish</span> Publish Payslip
         </button>
     </form>
+    @if($heldCount === 0)
     <form action="{{ route('admin.payroll-runs.lock', $run->id) }}" method="POST" data-confirm="Lock payroll? Data tidak bisa diubah.">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-gray-700 to-gray-600 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">lock</span> Lock Payroll
         </button>
     </form>
+    @else
+    <button type="button" disabled title="Rilis dulu {{ $heldCount }} slip yang ditahan sebelum lock" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-400 bg-gray-100 border border-gray-200 rounded-lg cursor-not-allowed">
+        <span class="material-symbols-outlined text-[16px]">lock</span> Lock Payroll
+    </button>
+    @endif
     <form action="{{ route('admin.payroll-runs.reopen', $run->id) }}" method="POST" data-confirm="Reopen ke draft?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer">
@@ -109,12 +117,18 @@
             <span class="material-symbols-outlined text-[16px]">unpublished</span> Unpublish
         </button>
     </form>
+    @if($heldCount === 0)
     <form action="{{ route('admin.payroll-runs.lock', $run->id) }}" method="POST" data-confirm="Lock payroll?">
         @csrf
         <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-gray-700 to-gray-600 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">lock</span> Lock
         </button>
     </form>
+    @else
+    <button type="button" disabled title="Rilis dulu {{ $heldCount }} slip yang ditahan sebelum lock" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-gray-400 bg-gray-100 border border-gray-200 rounded-lg cursor-not-allowed">
+        <span class="material-symbols-outlined text-[16px]">lock</span> Lock
+    </button>
+    @endif
     @endif
 
     @if($run->status === 'locked' && $canPublishPayrollRun)
@@ -200,6 +214,17 @@
 </div>
 @endif
 
+@if($heldCount > 0)
+<div class="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-5 text-amber-800">
+    <span class="material-symbols-outlined text-[18px] text-amber-500">pause_circle</span>
+    <div>
+        <strong>{{ $heldCount }} slip ditahan.</strong>
+        Slip yang ditahan tidak terlihat oleh karyawan dan tidak ikut dikirim email saat publish, tapi tetap dihitung di total run.
+        Perbaiki lewat Edit atau Regenerate di barisnya, lalu klik Rilis. Payroll baru bisa di-lock setelah semua slip dirilis.
+    </div>
+</div>
+@endif
+
 {{-- Detail Table --}}
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-5">
     <div class="px-5 py-4 border-b border-gray-100">
@@ -220,13 +245,20 @@
             </thead>
             <tbody>
                 @forelse($details as $detail)
-                <tr class="hover:bg-gray-50 transition-colors">
+                @php $detailEditable = $canUpdatePayrollRun && $detail->isEditableIn($run); @endphp
+                <tr class="{{ $detail->is_held ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-gray-50' }} transition-colors">
                     <td class="px-4 py-3.5 border-b border-gray-100">
                         <div class="flex items-center gap-2">
                             <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[11px] font-bold shrink-0">{{ substr($detail->employee->full_name ?? '?', 0, 1) }}</div>
                             <div>
                                 <div class="text-[13px] font-semibold text-gray-800">{{ $detail->employee->full_name ?? '-' }}</div>
                                 <div class="text-[11px] text-gray-400">{{ $detail->employee->employee_code ?? '' }} · {{ $detail->employee->department->name ?? '' }}</div>
+                                @if($detail->is_held)
+                                <div class="mt-1 inline-flex max-w-[260px] items-start gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-800" title="Ditahan {{ $detail->held_at?->format('d/m/Y H:i') }}{{ $detail->holder ? ' oleh '.$detail->holder->full_name : '' }}">
+                                    <span class="material-symbols-outlined text-[13px]">pause_circle</span>
+                                    <span>Ditahan · <span class="font-normal">{{ $detail->hold_reason }}</span></span>
+                                </div>
+                                @endif
                             </div>
                         </div>
                     </td>
@@ -285,8 +317,20 @@
                     <td class="px-4 py-3.5 border-b border-gray-100 text-right text-[14px] font-bold text-gray-900">Rp {{ number_format($detail->net_salary, 0, ',', '.') }}</td>
                     <td class="px-4 py-3.5 border-b border-gray-100 text-center">
                         <div class="flex items-center justify-center gap-1">
-                            @if($run->status === 'draft' && $canUpdatePayrollRun)
+                            @if($detailEditable)
                             <button type="button" onclick="openPayrollDetailEdit({{ $detail->id }})" class="p-1 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer" title="Edit Detail"><span class="material-symbols-outlined text-[14px]">edit</span></button>
+                            <form action="{{ route('admin.payroll-runs.regenerate-detail', [$run->id, $detail->id]) }}" method="POST" class="inline" data-confirm="Regenerate data otomatis {{ $detail->employee->full_name ?? 'karyawan' }}? Perubahan manual tetap dipertahankan.">
+                                @csrf
+                                <button type="submit" class="p-1 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors cursor-pointer" title="Regenerate karyawan ini"><span class="material-symbols-outlined text-[14px]">refresh</span></button>
+                            </form>
+                            @endif
+                            @if($canPublishPayrollRun && $detail->is_held)
+                            <form action="{{ route('admin.payroll-runs.release-detail', [$run->id, $detail->id]) }}" method="POST" class="inline" data-confirm="{{ $run->status === 'published' ? 'Rilis slip '.($detail->employee->full_name ?? 'karyawan').'? Slip langsung terlihat oleh karyawan dan email slip gaji dikirim.' : 'Rilis slip '.($detail->employee->full_name ?? 'karyawan').'? Slip akan ikut terkirim saat payroll di-publish.' }}">
+                                @csrf
+                                <button type="submit" class="p-1 rounded-lg hover:bg-emerald-50 text-amber-500 hover:text-emerald-600 transition-colors cursor-pointer" title="Rilis slip"><span class="material-symbols-outlined text-[14px]">play_circle</span></button>
+                            </form>
+                            @elseif($canPublishPayrollRun && $canHoldInStatus)
+                            <button type="button" onclick="openPayrollHoldModal(this)" data-action="{{ route('admin.payroll-runs.hold-detail', [$run->id, $detail->id]) }}" data-name="{{ $detail->employee->full_name ?? 'karyawan' }}" class="p-1 rounded-lg hover:bg-amber-50 text-gray-400 hover:text-amber-600 transition-colors cursor-pointer" title="Tahan slip"><span class="material-symbols-outlined text-[14px]">pause_circle</span></button>
                             @endif
                             @if(in_array($run->status, ['finalized', 'published', 'locked']))
                             <a href="{{ route('admin.payslips.show', ['id' => $detail->id, 'from_run' => $run->id]) }}" class="p-1 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors" title="Lihat Payslip"><span class="material-symbols-outlined text-[14px]">receipt</span></a>
@@ -477,8 +521,8 @@
 @endforeach
 @endforeach
 
-@if($run->status === 'draft' && $canUpdatePayrollRun)
-@foreach($details as $detail)
+@if($canUpdatePayrollRun)
+@foreach($details->filter(fn ($detail) => $detail->isEditableIn($run)) as $detail)
 @php
     $components = collect($detail->components ?? [])->values();
 @endphp
@@ -579,6 +623,46 @@
 @endforeach
 @endif
 
+@if($canPublishPayrollRun && $canHoldInStatus)
+<div id="payrollHoldModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/45 backdrop-blur-sm px-4 py-5 overflow-y-auto">
+    <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+            <div>
+                <h3 class="text-[15px] font-bold text-gray-900">Tahan Slip Gaji</h3>
+                <p class="mt-0.5 text-[11.5px] text-gray-500" id="payrollHoldName"></p>
+            </div>
+            <button type="button" onclick="closePayrollHoldModal()" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer">
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        </div>
+        <form method="POST" id="payrollHoldForm">
+            @csrf
+            <div class="p-5">
+                <label for="payrollHoldReason" class="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Alasan ditahan</label>
+                <textarea id="payrollHoldReason" name="reason" rows="3" maxlength="500" required placeholder="Mis. lembur 12 Okt belum masuk, menunggu konfirmasi atasan" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-[12.5px] focus:border-amber-500 focus:ring-1 focus:ring-amber-500"></textarea>
+                <p class="mt-2.5 flex items-start gap-1.5 text-[11px] leading-4 text-gray-500">
+                    <span class="material-symbols-outlined text-[14px] mt-px">info</span>
+                    <span>
+                    @if($run->status === 'published')
+                        Slip langsung disembunyikan dari karyawan. Email slip yang sudah terkirim tidak bisa ditarik.
+                    @else
+                        Slip tidak terlihat oleh karyawan dan tidak ikut dikirim email saat payroll di-publish.
+                    @endif
+                    Selama ditahan, slip ini tetap bisa diedit dan di-regenerate.
+                    </span>
+                </p>
+            </div>
+            <div class="flex justify-end gap-2 rounded-b-2xl border-t border-gray-100 bg-gray-50/60 px-5 py-3.5">
+                <button type="button" onclick="closePayrollHoldModal()" class="rounded-lg px-4 py-2 text-[12.5px] font-semibold text-gray-600 hover:bg-gray-200/70 transition-colors cursor-pointer">Batal</button>
+                <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-amber-500 to-amber-400 px-5 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer">
+                    <span class="material-symbols-outlined text-[16px]">pause_circle</span> Tahan Slip
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+@endif
+
 {{-- Activity Log --}}
 @if($run->logs && $run->logs->count() > 0)
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -593,7 +677,8 @@
                 <div class="absolute -left-6 top-0.5 w-[18px] h-[18px] rounded-full border-2 border-white shadow-sm
                     @if(in_array($log->action, ['created', 'finalized', 'published'])) bg-emerald-400
                     @elseif($log->action === 'locked') bg-gray-600
-                    @elseif(in_array($log->action, ['unlocked', 'reopened', 'unpublished'])) bg-amber-400
+                    @elseif(in_array($log->action, ['unlocked', 'reopened', 'unpublished', 'held'])) bg-amber-400
+                    @elseif($log->action === 'released') bg-emerald-400
                     @elseif($log->action === 'regenerated') bg-blue-400
                     @else bg-gray-300
                     @endif
@@ -675,6 +760,28 @@ function closeAllPayrollPenaltyDetails() {
     });
 }
 
+function openPayrollHoldModal(trigger) {
+    const modal = document.getElementById('payrollHoldModal');
+    if (!modal) return;
+    document.getElementById('payrollHoldForm').action = trigger.dataset.action;
+    document.getElementById('payrollHoldName').textContent = trigger.dataset.name;
+    document.getElementById('payrollHoldReason').value = '';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('payrollHoldReason').focus();
+}
+
+function closePayrollHoldModal() {
+    const modal = document.getElementById('payrollHoldModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+document.getElementById('payrollHoldModal')?.addEventListener('click', function (e) {
+    if (e.target === this) closePayrollHoldModal();
+});
+
 function openPayrollDetailEdit(id) {
     document.getElementById('editPayrollDetail-' + id)?.classList.remove('hidden');
 }
@@ -721,6 +828,7 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeAllPayrollOvertimeDetails();
         closeAllPayrollPenaltyDetails();
+        closePayrollHoldModal();
     }
 });
 </script>

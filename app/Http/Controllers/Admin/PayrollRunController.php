@@ -25,6 +25,7 @@ use App\Support\LoanPayrollComponentSync;
 use App\Support\PayrollManualOverrides;
 use App\Support\PayrollBpjs;
 use App\Support\ScheduledWorkingDays;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -104,7 +105,7 @@ class PayrollRunController extends Controller
         $run = PayrollRun::with(['creator:id,full_name', 'logs.performer:id,full_name'])->findOrFail($id);
 
         $details = PayrollRunDetail::where('payroll_run_id', $id)
-            ->with(['employee:id,company_id,full_name,email,employee_code,department_id,position,join_date,resign_date,last_working_date', 'employee.department:id,name'])
+            ->with(['employee:id,company_id,full_name,email,employee_code,department_id,position,join_date,resign_date,last_working_date', 'employee.department:id,name', 'holder:id,full_name'])
             ->orderBy('net_salary', 'desc')
             ->get();
 
@@ -133,12 +134,11 @@ class PayrollRunController extends Controller
     public function updateDetail(Request $request, $runId, $detailId)
     {
         $run = PayrollRun::findOrFail($runId);
-
-        if ($run->status !== 'draft') {
-            return back()->with('error', 'Payroll hanya bisa diedit saat status draft.');
-        }
-
         $detail = PayrollRunDetail::where('payroll_run_id', $runId)->findOrFail($detailId);
+
+        if (! $detail->isEditableIn($run)) {
+            return back()->with('error', 'Payroll hanya bisa diedit saat status draft, atau slipnya sedang ditahan.');
+        }
 
         $request->validate([
             'components' => 'required|array',
@@ -226,11 +226,177 @@ class PayrollRunController extends Controller
             return back()->with('error', 'Hanya payroll finalized yang bisa di-publish.');
         }
 
+        $heldCount = $run->details()->where('is_held', true)->count();
+
         $run->update(['status' => 'published', 'published_at' => now()]);
-        $this->logAction($run, 'published', $admin->id);
+        $this->logAction($run, 'published', $admin->id, $heldCount > 0 ? "{$heldCount} slip ditahan, tidak ikut dipublish" : null);
         $this->queuePayslipEmails($run);
 
-        return back()->with('success', 'Payslip berhasil di-publish. Email slip gaji sedang dikirim ke karyawan.');
+        $message = 'Payslip berhasil di-publish. Email slip gaji sedang dikirim ke karyawan.';
+        if ($heldCount > 0) {
+            $message .= " {$heldCount} slip yang ditahan tidak ikut dipublish.";
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Tahan slip satu karyawan: slipnya disembunyikan dari karyawan dan tidak ikut
+     * dikirim email, sementara slip lain di run yang sama tetap bisa di-publish.
+     */
+    public function holdDetail(Request $request, $runId, $detailId)
+    {
+        $run = PayrollRun::findOrFail($runId);
+        $detail = PayrollRunDetail::with('employee:id,full_name')->where('payroll_run_id', $runId)->findOrFail($detailId);
+        $admin = Employee::find(session('admin_id'));
+
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ], [], ['reason' => 'alasan']);
+
+        if (! in_array($run->status, PayrollRun::HOLDABLE_STATUSES, true)) {
+            return back()->with('error', 'Slip tidak bisa ditahan saat payroll sudah locked.');
+        }
+
+        if ($detail->is_held) {
+            return back()->with('error', 'Slip ini sudah ditahan.');
+        }
+
+        $detail->update([
+            'is_held' => true,
+            'hold_reason' => trim($request->reason),
+            'held_at' => now(),
+            'held_by' => $admin->id,
+        ]);
+
+        $name = $detail->employee->full_name ?? 'karyawan';
+        $this->logAction($run, 'held', $admin->id, "{$name}: ".trim($request->reason));
+
+        $message = "Slip {$name} ditahan dan tidak terlihat oleh karyawan.";
+        if ($run->status === 'published') {
+            $message .= ' Email slip yang sudah terkirim sebelumnya tidak bisa ditarik.';
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Lepas tahanan slip. Bila run sudah published, slipnya langsung terlihat dan
+     * emailnya dikirim sekarang; bila belum, slip ikut terkirim saat run di-publish.
+     */
+    public function releaseDetail($runId, $detailId)
+    {
+        $run = PayrollRun::findOrFail($runId);
+        $detail = PayrollRunDetail::with('employee:id,full_name,email')->where('payroll_run_id', $runId)->findOrFail($detailId);
+        $admin = Employee::find(session('admin_id'));
+
+        if (! $detail->is_held) {
+            return back()->with('error', 'Slip ini tidak sedang ditahan.');
+        }
+
+        $detail->update([
+            'is_held' => false,
+            'hold_reason' => null,
+            'held_at' => null,
+            'held_by' => null,
+        ]);
+
+        $name = $detail->employee->full_name ?? 'karyawan';
+        $this->logAction($run, 'released', $admin->id, $name);
+
+        if ($run->status === 'published') {
+            if (filled($detail->employee?->email)) {
+                SendPayslipEmailJob::dispatch($detail->id);
+            }
+
+            return back()->with('success', "Slip {$name} dirilis dan sekarang terlihat oleh karyawan. Email slip gaji sedang dikirim.");
+        }
+
+        return back()->with('success', "Slip {$name} dirilis dan akan ikut terkirim saat payroll di-publish.");
+    }
+
+    /**
+     * Regenerate data otomatis untuk satu karyawan saja. Setelah finalize/publish ini
+     * hanya boleh untuk slip yang ditahan; potongan cicilan pinjamannya dibatalkan lalu
+     * dipotong ulang supaya saldo pinjaman tetap mengikuti angka slip yang baru.
+     */
+    public function regenerateDetail($runId, $detailId)
+    {
+        $run = PayrollRun::findOrFail($runId);
+        $detail = PayrollRunDetail::with('employee:id,full_name')->where('payroll_run_id', $runId)->findOrFail($detailId);
+        $admin = Employee::find(session('admin_id'));
+
+        if (! $detail->isEditableIn($run)) {
+            return back()->with('error', 'Regenerate per karyawan hanya bisa saat status draft, atau slipnya sedang ditahan.');
+        }
+
+        $name = $detail->employee->full_name ?? 'karyawan';
+        $employeeId = (int) $detail->employee_id;
+        $loansApplied = $run->status !== 'draft';
+
+        try {
+            DB::transaction(function () use ($run, $detail, $admin, $name, $employeeId, $loansApplied) {
+                $this->regenerateSingleDetail($run, $detail, $employeeId, $loansApplied);
+                $this->recalculateRunTotals($run);
+                $this->logAction($run, 'regenerated', $admin->id, "Regenerate 1 karyawan: {$name}");
+            });
+        } catch (ModelNotFoundException) {
+            return back()->with('error', "Data payroll {$name} untuk periode ini tidak ditemukan, regenerate dibatalkan.");
+        }
+
+        return back()->with('success', "Data otomatis {$name} berhasil di-regenerate tanpa menghapus perubahan manual.");
+    }
+
+    /**
+     * Isi regenerateDetail(); dipanggil di dalam transaksi. Bila karyawan tidak lagi
+     * memenuhi syarat payroll periode ini (mis. data payroll-nya dihapus), tidak ada
+     * detail baru yang terbentuk dan exception-nya membatalkan seluruh transaksi,
+     * supaya slip lamanya tidak ikut hilang.
+     */
+    private function regenerateSingleDetail(PayrollRun $run, PayrollRunDetail $detail, int $employeeId, bool $loansApplied): void
+    {
+        if ($loansApplied) {
+            $this->revertLoanDeductions($run, $detail);
+            $detail->refresh();
+        }
+
+        // Penyesuaian yang sudah tertempel di slip lama dikembalikan ke pending supaya
+        // ikut lagi di slip baru, bukan hilang bersama baris detail yang dihapus.
+        PayrollAdjustment::where('employee_id', $employeeId)
+            ->where('payroll_run_id', $run->id)
+            ->where('status', 'applied')
+            ->update(['status' => 'pending', 'payroll_run_id' => null]);
+
+        $snapshots = collect([$employeeId => $detail]);
+        $detail->delete();
+        $this->generateDetails($run, [$employeeId]);
+
+        $run->details()->where('employee_id', $employeeId)->firstOrFail();
+
+        $this->restoreManualOverrides($run, $snapshots);
+        $this->restoreHoldState($run, $snapshots);
+
+        if ($loansApplied) {
+            $this->applyLoanDeductions($run, $run->details()->where('employee_id', $employeeId)->first());
+        }
+    }
+
+    /**
+     * Regenerate menghapus lalu membuat ulang baris detail, jadi status tahan slip
+     * dibawa dari snapshot lama ke baris barunya.
+     */
+    private function restoreHoldState(PayrollRun $run, Collection $snapshots): void
+    {
+        $held = $snapshots->filter(fn ($old) => $old instanceof PayrollRunDetail && $old->is_held);
+
+        foreach ($held as $employeeId => $old) {
+            $run->details()->where('employee_id', $employeeId)->update([
+                'is_held' => true,
+                'hold_reason' => $old->hold_reason,
+                'held_at' => $old->held_at,
+                'held_by' => $old->held_by,
+            ]);
+        }
     }
 
     public function unpublish($id)
@@ -255,6 +421,13 @@ class PayrollRunController extends Controller
 
         if (! in_array($run->status, ['finalized', 'published'])) {
             return back()->with('error', 'Hanya payroll finalized/published yang bisa di-lock.');
+        }
+
+        // Slip yang ditahan masih menunggu perbaikan. Lock akan membekukannya dalam
+        // keadaan tersembunyi, jadi semuanya harus dirilis dulu.
+        $heldCount = $run->details()->where('is_held', true)->count();
+        if ($heldCount > 0) {
+            return back()->with('error', "Masih ada {$heldCount} slip yang ditahan. Rilis dulu sebelum lock payroll.");
         }
 
         $run->update(['status' => 'locked', 'locked_at' => now()]);
@@ -312,6 +485,7 @@ class PayrollRunController extends Controller
             $run->details()->delete();
             $this->generateDetails($run, $employeeIds);
             $this->restoreManualOverrides($run, $snapshots);
+            $this->restoreHoldState($run, $snapshots);
             $this->recalculateRunTotals($run);
             $this->logAction($run, 'regenerated', $admin->id);
         });
@@ -532,6 +706,7 @@ class PayrollRunController extends Controller
     {
         PayrollRunDetail::with('employee:id,email')
             ->where('payroll_run_id', $run->id)
+            ->where('is_held', false)
             ->get()
             ->filter(fn (PayrollRunDetail $detail) => filled($detail->employee?->email))
             ->each(fn (PayrollRunDetail $detail) => SendPayslipEmailJob::dispatch($detail->id));
@@ -1708,12 +1883,14 @@ class PayrollRunController extends Controller
      * komponen tetap ditulis untuk tampilan slip, tapi TIDAK boleh dipakai sebagai
      * pengaman: baris payroll_run_details dihapus tiap regenerate, jadi flagnya ikut
      * hilang dan finalize berikutnya akan memotong saldo untuk kedua kalinya.
+     *
+     * $only membatasi ke satu detail (regenerate slip yang ditahan setelah finalize).
      */
-    private function applyLoanDeductions(PayrollRun $run): void
+    private function applyLoanDeductions(PayrollRun $run, ?PayrollRunDetail $only = null): void
     {
-        $run->loadMissing('details');
+        $details = $only ? collect([$only]) : $run->loadMissing('details')->details;
 
-        foreach ($run->details as $detail) {
+        foreach ($details as $detail) {
             $components = is_array($detail->components)
                 ? $detail->components
                 : (json_decode((string) $detail->components, true) ?: []);
@@ -1790,20 +1967,26 @@ class PayrollRunController extends Controller
      * Dipanggil saat run mundur dari finalized ke draft (reopen) atau dihapus,
      * supaya finalize berikutnya memotong sekali lagi dari saldo yang benar —
      * bukan menumpuk di atas potongan lama.
+     *
+     * $only membatasi ke potongan milik satu detail (regenerate slip yang ditahan).
      */
-    private function revertLoanDeductions(PayrollRun $run): void
+    private function revertLoanDeductions(PayrollRun $run, ?PayrollRunDetail $only = null): void
     {
-        $run->loadMissing('details');
+        $details = $only ? collect([$only]) : $run->loadMissing('details')->details;
 
         $revertedLoanIds = [];
 
-        foreach (LoanRepayment::where('payroll_run_id', $run->id)->get() as $repayment) {
+        $repayments = LoanRepayment::where('payroll_run_id', $run->id)
+            ->when($only, fn ($query) => $query->where('employee_id', $only->employee_id))
+            ->get();
+
+        foreach ($repayments as $repayment) {
             $this->restoreLoanBalance((int) $repayment->loan_request_id, (float) $repayment->amount);
             $revertedLoanIds[] = (int) $repayment->loan_request_id;
             $repayment->delete();
         }
 
-        foreach ($run->details as $detail) {
+        foreach ($details as $detail) {
             $components = is_array($detail->components)
                 ? $detail->components
                 : (json_decode((string) $detail->components, true) ?: []);

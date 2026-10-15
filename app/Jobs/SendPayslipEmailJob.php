@@ -32,7 +32,9 @@ class SendPayslipEmailJob implements ShouldQueue
             'payrollRun:id,period,status',
         ])->findOrFail($this->payrollRunDetailId);
 
-        if (! in_array($detail->payrollRun?->status, ['published', 'locked'], true)) {
+        // Slip yang ditahan (atau run yang belum published) tidak boleh terkirim,
+        // termasuk job yang sudah masuk antrean sebelum slipnya ditahan.
+        if (! $detail->isVisibleToEmployee()) {
             return;
         }
 

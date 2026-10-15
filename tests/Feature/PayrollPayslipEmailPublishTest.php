@@ -736,6 +736,10 @@ class PayrollPayslipEmailPublishTest extends TestCase
             $table->decimal('net_salary', 15, 2)->default(0);
             $table->json('components')->nullable();
             $table->boolean('is_manual_edited')->default(false);
+            $table->boolean('is_held')->default(false);
+            $table->string('hold_reason', 500)->nullable();
+            $table->timestamp('held_at')->nullable();
+            $table->unsignedBigInteger('held_by')->nullable();
             $table->timestamps();
         });
 

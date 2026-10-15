@@ -20,9 +20,7 @@ class PayslipController extends Controller
         $query = PayrollRunDetail::with([
             'payrollRun:id,period,status',
         ])->where('employee_id', $employee->id)
-          ->whereHas('payrollRun', function ($q) {
-              $q->whereIn('status', ['published', 'locked']);
-          });
+          ->visibleToEmployee();
 
         if ($request->period) {
             $query->whereHas('payrollRun', function ($q) use ($request) {
@@ -54,9 +52,7 @@ class PayslipController extends Controller
 
         $detail = PayrollRunDetail::with(['payrollRun:id,period,status'])
             ->where('employee_id', $employee->id)
-            ->whereHas('payrollRun', function ($q) {
-                $q->whereIn('status', ['published', 'locked']);
-            })
+            ->visibleToEmployee()
             ->findOrFail($id);
 
         $earnings = [];
@@ -107,9 +103,7 @@ class PayslipController extends Controller
             'employee.activePayroll',
             'payrollRun:id,period,status',
         ])->where('employee_id', $employee->id)
-          ->whereHas('payrollRun', function ($q) {
-              $q->whereIn('status', ['published', 'locked']);
-          })
+          ->visibleToEmployee()
           ->findOrFail($id);
 
         $company = Company::find($detail->employee->company_id);
