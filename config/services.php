@@ -74,6 +74,11 @@ return [
             ->all(),
     ],
 
+    'team_attendance' => [
+        // ID karyawan (dipisah koma) yang tidak ditampilkan di Presensi Tim, mis. akun demo App Store.
+        'hidden_employee_ids' => array_values(array_filter(array_map('intval', explode(',', (string) env('TEAM_ATTENDANCE_HIDDEN_EMPLOYEE_IDS', ''))))),
+    ],
+
     'violation_report' => [
         'form_url' => env('VIOLATION_REPORT_FORM_URL', 'https://tinyurl.com/PELAPORAN-PELANGGARAN-ATC'),
     ],

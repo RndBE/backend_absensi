@@ -379,6 +379,20 @@ class TeamAttendancePortalTest extends TestCase
         $this->assertSame(['hr_admin'], $slugs(30));
     }
 
+    /** Akun demo (mis. App Store) bisa disembunyikan lewat daftar ID di config. */
+    public function test_hidden_employee_ids_are_left_out_of_the_team_list(): void
+    {
+        $this->seedLevels();
+        $this->employee(21, 'HR', 'hr_admin', null, kpiLevelId: 3, jobLevel: 3);
+
+        $this->assertContains(13, $this->visibleTo(21));
+
+        config(['services.team_attendance.hidden_employee_ids' => [13, 16]]);
+
+        $this->assertSame([10, 11, 12, 14, 15, 17], $this->visibleTo(21));
+        $this->withSession(['employee_id' => 21])->get('/employee/team-attendance/13')->assertForbidden();
+    }
+
     public function test_level_rule_still_applies_without_hr_admin(): void
     {
         $this->seedLevels();

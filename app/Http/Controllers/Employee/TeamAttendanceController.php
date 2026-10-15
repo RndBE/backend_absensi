@@ -147,6 +147,7 @@ class TeamAttendanceController extends Controller
             ->where('company_id', $manager->company_id)
             ->where('is_active', true)
             ->where('id', '!=', $manager->id)
+            ->whereNotIn('id', (array) config('services.team_attendance.hidden_employee_ids', []))
             ->with(['department:id,name', 'kpiLevel:id,code', ...Employee::scheduleTemplateEagerLoads()])
             ->orderBy('department_id')
             ->orderBy('full_name')
