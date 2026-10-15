@@ -503,8 +503,8 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::post('/payroll-runs', [PayrollRunController::class, 'store'])->name('payroll-runs.store');
     Route::get('/payroll-runs/{id}', [PayrollRunController::class, 'show'])->name('payroll-runs.show');
     Route::put('/payroll-runs/{runId}/details/{detailId}', [PayrollRunController::class, 'updateDetail'])->name('payroll-runs.update-detail');
-    Route::post('/payroll-runs/{runId}/details/{detailId}/hold', [PayrollRunController::class, 'holdDetail'])->name('payroll-runs.hold-detail');
-    Route::post('/payroll-runs/{runId}/details/{detailId}/release', [PayrollRunController::class, 'releaseDetail'])->name('payroll-runs.release-detail');
+    Route::post('/payroll-runs/{id}/hold', [PayrollRunController::class, 'holdDetails'])->name('payroll-runs.hold');
+    Route::post('/payroll-runs/{id}/release', [PayrollRunController::class, 'releaseDetails'])->name('payroll-runs.release');
     Route::post('/payroll-runs/{runId}/details/{detailId}/regenerate', [PayrollRunController::class, 'regenerateDetail'])->name('payroll-runs.regenerate-detail');
     Route::post('/payroll-runs/{id}/finalize', [PayrollRunController::class, 'finalize'])->name('payroll-runs.finalize');
     Route::post('/payroll-runs/{id}/publish', [PayrollRunController::class, 'publish'])->name('payroll-runs.publish');

@@ -241,38 +241,51 @@ class PayrollRunController extends Controller
     }
 
     /**
-     * Tahan slip satu karyawan: slipnya disembunyikan dari karyawan dan tidak ikut
-     * dikirim email, sementara slip lain di run yang sama tetap bisa di-publish.
+     * Tahan slip beberapa karyawan sekaligus (dari picker cari + centang, atau satu
+     * baris). Slipnya disembunyikan dari karyawan dan tidak ikut dikirim email,
+     * sementara slip lain di run yang sama tetap bisa di-publish.
      */
-    public function holdDetail(Request $request, $runId, $detailId)
+    public function holdDetails(Request $request, $id)
     {
-        $run = PayrollRun::findOrFail($runId);
-        $detail = PayrollRunDetail::with('employee:id,full_name')->where('payroll_run_id', $runId)->findOrFail($detailId);
+        $run = PayrollRun::findOrFail($id);
         $admin = Employee::find(session('admin_id'));
 
         $request->validate([
+            'detail_ids' => 'required|array|min:1',
+            'detail_ids.*' => 'integer',
             'reason' => 'required|string|max:500',
-        ], [], ['reason' => 'alasan']);
+        ], [
+            'detail_ids.required' => 'Pilih minimal 1 karyawan.',
+        ], ['reason' => 'alasan', 'detail_ids' => 'karyawan']);
 
         if (! in_array($run->status, PayrollRun::HOLDABLE_STATUSES, true)) {
             return back()->with('error', 'Slip tidak bisa ditahan saat payroll sudah locked.');
         }
 
-        if ($detail->is_held) {
-            return back()->with('error', 'Slip ini sudah ditahan.');
+        $reason = trim($request->reason);
+        $details = PayrollRunDetail::with('employee:id,full_name')
+            ->where('payroll_run_id', $run->id)
+            ->whereIn('id', $request->detail_ids)
+            ->where('is_held', false)
+            ->get();
+
+        if ($details->isEmpty()) {
+            return back()->with('error', 'Tidak ada slip yang bisa ditahan dari pilihan ini.');
         }
 
-        $detail->update([
-            'is_held' => true,
-            'hold_reason' => trim($request->reason),
-            'held_at' => now(),
-            'held_by' => $admin->id,
-        ]);
+        DB::transaction(function () use ($run, $details, $admin, $reason) {
+            foreach ($details as $detail) {
+                $detail->update([
+                    'is_held' => true,
+                    'hold_reason' => $reason,
+                    'held_at' => now(),
+                    'held_by' => $admin->id,
+                ]);
+                $this->logAction($run, 'held', $admin->id, ($detail->employee->full_name ?? 'karyawan').': '.$reason);
+            }
+        });
 
-        $name = $detail->employee->full_name ?? 'karyawan';
-        $this->logAction($run, 'held', $admin->id, "{$name}: ".trim($request->reason));
-
-        $message = "Slip {$name} ditahan dan tidak terlihat oleh karyawan.";
+        $message = $this->slipLabel($details).' ditahan dan tidak terlihat oleh karyawan.';
         if ($run->status === 'published') {
             $message .= ' Email slip yang sudah terkirim sebelumnya tidak bisa ditarik.';
         }
@@ -281,38 +294,62 @@ class PayrollRunController extends Controller
     }
 
     /**
-     * Lepas tahanan slip. Bila run sudah published, slipnya langsung terlihat dan
-     * emailnya dikirim sekarang; bila belum, slip ikut terkirim saat run di-publish.
+     * Lepas tahanan beberapa slip sekaligus. Bila run sudah published, slipnya langsung
+     * terlihat dan emailnya dikirim sekarang; bila belum, ikut terkirim saat publish.
      */
-    public function releaseDetail($runId, $detailId)
+    public function releaseDetails(Request $request, $id)
     {
-        $run = PayrollRun::findOrFail($runId);
-        $detail = PayrollRunDetail::with('employee:id,full_name,email')->where('payroll_run_id', $runId)->findOrFail($detailId);
+        $run = PayrollRun::findOrFail($id);
         $admin = Employee::find(session('admin_id'));
 
-        if (! $detail->is_held) {
-            return back()->with('error', 'Slip ini tidak sedang ditahan.');
+        $request->validate([
+            'detail_ids' => 'required|array|min:1',
+            'detail_ids.*' => 'integer',
+        ], [
+            'detail_ids.required' => 'Pilih minimal 1 karyawan.',
+        ], ['detail_ids' => 'karyawan']);
+
+        $details = PayrollRunDetail::with('employee:id,full_name,email')
+            ->where('payroll_run_id', $run->id)
+            ->whereIn('id', $request->detail_ids)
+            ->where('is_held', true)
+            ->get();
+
+        if ($details->isEmpty()) {
+            return back()->with('error', 'Tidak ada slip ditahan yang bisa dirilis dari pilihan ini.');
         }
 
-        $detail->update([
-            'is_held' => false,
-            'hold_reason' => null,
-            'held_at' => null,
-            'held_by' => null,
-        ]);
+        DB::transaction(function () use ($run, $details, $admin) {
+            foreach ($details as $detail) {
+                $detail->update([
+                    'is_held' => false,
+                    'hold_reason' => null,
+                    'held_at' => null,
+                    'held_by' => null,
+                ]);
+                $this->logAction($run, 'released', $admin->id, $detail->employee->full_name ?? 'karyawan');
+            }
+        });
 
-        $name = $detail->employee->full_name ?? 'karyawan';
-        $this->logAction($run, 'released', $admin->id, $name);
+        $label = $this->slipLabel($details);
 
         if ($run->status === 'published') {
-            if (filled($detail->employee?->email)) {
-                SendPayslipEmailJob::dispatch($detail->id);
-            }
+            $details
+                ->filter(fn (PayrollRunDetail $detail) => filled($detail->employee?->email))
+                ->each(fn (PayrollRunDetail $detail) => SendPayslipEmailJob::dispatch($detail->id));
 
-            return back()->with('success', "Slip {$name} dirilis dan sekarang terlihat oleh karyawan. Email slip gaji sedang dikirim.");
+            return back()->with('success', "{$label} dirilis dan sekarang terlihat oleh karyawan. Email slip gaji sedang dikirim.");
         }
 
-        return back()->with('success', "Slip {$name} dirilis dan akan ikut terkirim saat payroll di-publish.");
+        return back()->with('success', "{$label} dirilis dan akan ikut terkirim saat payroll di-publish.");
+    }
+
+    /** "Slip Budi" untuk satu orang, "3 slip" untuk beberapa. */
+    private function slipLabel(Collection $details): string
+    {
+        return $details->count() === 1
+            ? 'Slip '.($details->first()->employee->full_name ?? 'karyawan')
+            : $details->count().' slip';
     }
 
     /**

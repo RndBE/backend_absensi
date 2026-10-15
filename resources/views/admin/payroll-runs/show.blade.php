@@ -140,6 +140,17 @@
     </form>
     @endif
 
+    @if($canPublishPayrollRun && $canHoldInStatus && $details->count() > $heldCount)
+    <button type="button" onclick="openSlipPicker('payrollHoldPicker')" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all duration-200 cursor-pointer">
+        <span class="material-symbols-outlined text-[16px]">pause_circle</span> Tahan Slip
+    </button>
+    @endif
+    @if($canPublishPayrollRun && $heldCount > 0)
+    <button type="button" onclick="openSlipPicker('payrollReleasePicker')" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all duration-200 cursor-pointer">
+        <span class="material-symbols-outlined text-[16px]">play_circle</span> Rilis Slip ({{ $heldCount }})
+    </button>
+    @endif
+
     {{-- Download semua payslip jadi satu PDF (tersedia setelah finalized) --}}
     @if(in_array($run->status, ['finalized', 'published', 'locked']))
     <button type="button" onclick="openPayslipDownloadModal()" class="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold text-white bg-gradient-to-br from-red-600 to-red-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
@@ -325,12 +336,13 @@
                             </form>
                             @endif
                             @if($canPublishPayrollRun && $detail->is_held)
-                            <form action="{{ route('admin.payroll-runs.release-detail', [$run->id, $detail->id]) }}" method="POST" class="inline" data-confirm="{{ $run->status === 'published' ? 'Rilis slip '.($detail->employee->full_name ?? 'karyawan').'? Slip langsung terlihat oleh karyawan dan email slip gaji dikirim.' : 'Rilis slip '.($detail->employee->full_name ?? 'karyawan').'? Slip akan ikut terkirim saat payroll di-publish.' }}">
+                            <form action="{{ route('admin.payroll-runs.release', $run->id) }}" method="POST" class="inline" data-confirm="{{ $run->status === 'published' ? 'Rilis slip '.($detail->employee->full_name ?? 'karyawan').'? Slip langsung terlihat oleh karyawan dan email slip gaji dikirim.' : 'Rilis slip '.($detail->employee->full_name ?? 'karyawan').'? Slip akan ikut terkirim saat payroll di-publish.' }}">
                                 @csrf
+                                <input type="hidden" name="detail_ids[]" value="{{ $detail->id }}">
                                 <button type="submit" class="p-1 rounded-lg hover:bg-emerald-50 text-amber-500 hover:text-emerald-600 transition-colors cursor-pointer" title="Rilis slip"><span class="material-symbols-outlined text-[14px]">play_circle</span></button>
                             </form>
                             @elseif($canPublishPayrollRun && $canHoldInStatus)
-                            <button type="button" onclick="openPayrollHoldModal(this)" data-action="{{ route('admin.payroll-runs.hold-detail', [$run->id, $detail->id]) }}" data-name="{{ $detail->employee->full_name ?? 'karyawan' }}" class="p-1 rounded-lg hover:bg-amber-50 text-gray-400 hover:text-amber-600 transition-colors cursor-pointer" title="Tahan slip"><span class="material-symbols-outlined text-[14px]">pause_circle</span></button>
+                            <button type="button" onclick="openSlipPicker('payrollHoldPicker', {{ $detail->id }})" class="p-1 rounded-lg hover:bg-amber-50 text-gray-400 hover:text-amber-600 transition-colors cursor-pointer" title="Tahan slip"><span class="material-symbols-outlined text-[14px]">pause_circle</span></button>
                             @endif
                             @if(in_array($run->status, ['finalized', 'published', 'locked']))
                             <a href="{{ route('admin.payslips.show', ['id' => $detail->id, 'from_run' => $run->id]) }}" class="p-1 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors" title="Lihat Payslip"><span class="material-symbols-outlined text-[14px]">receipt</span></a>
@@ -623,44 +635,106 @@
 @endforeach
 @endif
 
-@if($canPublishPayrollRun && $canHoldInStatus)
-<div id="payrollHoldModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/45 backdrop-blur-sm px-4 py-5 overflow-y-auto">
-    <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+@if($canPublishPayrollRun)
+@php
+    $slipPickers = [
+        ['id' => 'payrollHoldPicker', 'hold' => true, 'items' => $canHoldInStatus ? $details->where('is_held', false) : collect()],
+        ['id' => 'payrollReleasePicker', 'hold' => false, 'items' => $details->where('is_held', true)],
+    ];
+@endphp
+@foreach($slipPickers as $picker)
+@continue($picker['items']->isEmpty())
+<div id="{{ $picker['id'] }}" data-slip-picker data-verb="{{ $picker['hold'] ? 'Tahan' : 'Rilis' }}" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/45 backdrop-blur-sm px-4 py-5 overflow-y-auto">
+    <div class="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
             <div>
-                <h3 class="text-[15px] font-bold text-gray-900">Tahan Slip Gaji</h3>
-                <p class="mt-0.5 text-[11.5px] text-gray-500" id="payrollHoldName"></p>
+                <h3 class="text-[15px] font-bold text-gray-900">{{ $picker['hold'] ? 'Tahan Slip Gaji' : 'Rilis Slip Gaji' }}</h3>
+                <p class="mt-0.5 text-[11.5px] text-gray-500">{{ \Carbon\Carbon::parse($run->period . '-01')->translatedFormat('F Y') }} · {{ $picker['hold'] ? 'pilih karyawan yang slipnya ditahan' : 'pilih slip yang sudah benar' }}</p>
             </div>
-            <button type="button" onclick="closePayrollHoldModal()" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer">
+            <button type="button" onclick="closeSlipPicker(this.closest('[data-slip-picker]'))" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer">
                 <span class="material-symbols-outlined text-[18px]">close</span>
             </button>
         </div>
-        <form method="POST" id="payrollHoldForm">
+        <form method="POST" action="{{ route($picker['hold'] ? 'admin.payroll-runs.hold' : 'admin.payroll-runs.release', $run->id) }}" class="flex flex-1 flex-col overflow-hidden">
             @csrf
-            <div class="p-5">
-                <label for="payrollHoldReason" class="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Alasan ditahan</label>
-                <textarea id="payrollHoldReason" name="reason" rows="3" maxlength="500" required placeholder="Mis. lembur 12 Okt belum masuk, menunggu konfirmasi atasan" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-[12.5px] focus:border-amber-500 focus:ring-1 focus:ring-amber-500"></textarea>
-                <p class="mt-2.5 flex items-start gap-1.5 text-[11px] leading-4 text-gray-500">
+            <div class="flex-1 space-y-3 overflow-y-auto p-5">
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="toggleSlipPicker(this.closest('[data-slip-picker]'), true)" class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 transition cursor-pointer">
+                        <span class="material-symbols-outlined text-[13px]">select_all</span> Pilih Semua
+                    </button>
+                    <button type="button" onclick="toggleSlipPicker(this.closest('[data-slip-picker]'), false)" class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition cursor-pointer">
+                        <span class="material-symbols-outlined text-[13px]">deselect</span> Hapus Semua
+                    </button>
+                    <span class="ml-auto text-[11px] text-gray-400" data-slip-count>0 dipilih</span>
+                </div>
+
+                <div class="relative">
+                    <span class="material-symbols-outlined text-[16px] text-gray-400 absolute left-3 top-1/2 -translate-y-1/2">search</span>
+                    <input type="text" data-slip-search placeholder="Cari nama atau kode karyawan..." class="w-full pl-9 pr-3 py-2 text-[12px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" autocomplete="off">
+                </div>
+
+                <div class="max-h-[280px] overflow-y-auto rounded-lg border border-gray-200">
+                    @foreach($picker['items']->sortBy(fn ($detail) => $detail->employee->full_name ?? '') as $detail)
+                    <label class="slip-item flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50/50 transition-colors cursor-pointer border-b border-gray-100 last:border-0"
+                           data-search="{{ strtolower(($detail->employee->full_name ?? '').' '.($detail->employee->employee_code ?? '').' '.($detail->employee->department->name ?? '')) }}">
+                        <input type="checkbox" name="detail_ids[]" value="{{ $detail->id }}" class="slip-checkbox w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer">
+                        <div class="flex min-w-0 flex-1 items-center gap-2">
+                            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[10px] font-bold shrink-0">{{ substr($detail->employee->full_name ?? '?', 0, 1) }}</div>
+                            <div class="min-w-0">
+                                <div class="truncate text-[12.5px] font-semibold text-gray-800">{{ $detail->employee->full_name ?? '-' }}</div>
+                                <div class="truncate text-[10.5px] text-gray-400">
+                                    @if($picker['hold'])
+                                        {{ $detail->employee->employee_code ?? '' }} · {{ $detail->employee->department->name ?? '-' }}
+                                    @else
+                                        Ditahan: {{ $detail->hold_reason }}
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="shrink-0 text-right text-[11.5px] font-semibold text-gray-600">Rp {{ number_format($detail->net_salary, 0, ',', '.') }}</div>
+                    </label>
+                    @endforeach
+                    <div class="hidden py-6 text-center text-[12px] text-gray-400" data-slip-empty>Tidak ada karyawan yang cocok.</div>
+                </div>
+
+                @if($picker['hold'])
+                <div>
+                    <label class="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Alasan ditahan</label>
+                    <textarea name="reason" rows="2" maxlength="500" required placeholder="Mis. lembur 12 Okt belum masuk, menunggu konfirmasi atasan" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-[12.5px] focus:border-amber-500 focus:ring-1 focus:ring-amber-500"></textarea>
+                </div>
+                @endif
+
+                <p class="flex items-start gap-1.5 text-[11px] leading-4 text-gray-500">
                     <span class="material-symbols-outlined text-[14px] mt-px">info</span>
                     <span>
-                    @if($run->status === 'published')
-                        Slip langsung disembunyikan dari karyawan. Email slip yang sudah terkirim tidak bisa ditarik.
+                    @if($picker['hold'])
+                        @if($run->status === 'published')
+                            Slip yang dipilih langsung disembunyikan dari karyawan. Email slip yang sudah terkirim tidak bisa ditarik.
+                        @else
+                            Slip yang dipilih tidak terlihat oleh karyawan dan tidak ikut dikirim email saat payroll di-publish.
+                        @endif
+                        Selama ditahan, slipnya tetap bisa diedit dan di-regenerate.
                     @else
-                        Slip tidak terlihat oleh karyawan dan tidak ikut dikirim email saat payroll di-publish.
+                        @if($run->status === 'published')
+                            Slip yang dirilis langsung terlihat oleh karyawan dan email slip gajinya dikirim.
+                        @else
+                            Slip yang dirilis akan ikut terkirim saat payroll di-publish.
+                        @endif
                     @endif
-                    Selama ditahan, slip ini tetap bisa diedit dan di-regenerate.
                     </span>
                 </p>
             </div>
             <div class="flex justify-end gap-2 rounded-b-2xl border-t border-gray-100 bg-gray-50/60 px-5 py-3.5">
-                <button type="button" onclick="closePayrollHoldModal()" class="rounded-lg px-4 py-2 text-[12.5px] font-semibold text-gray-600 hover:bg-gray-200/70 transition-colors cursor-pointer">Batal</button>
-                <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-amber-500 to-amber-400 px-5 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer">
-                    <span class="material-symbols-outlined text-[16px]">pause_circle</span> Tahan Slip
+                <button type="button" onclick="closeSlipPicker(this.closest('[data-slip-picker]'))" class="rounded-lg px-4 py-2 text-[12.5px] font-semibold text-gray-600 hover:bg-gray-200/70 transition-colors cursor-pointer">Batal</button>
+                <button type="submit" data-slip-submit disabled class="inline-flex items-center gap-1.5 rounded-lg px-5 py-2 text-[12.5px] font-semibold text-white shadow-sm transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 {{ $picker['hold'] ? 'bg-gradient-to-br from-amber-500 to-amber-400' : 'bg-gradient-to-br from-emerald-600 to-emerald-500' }}">
+                    <span class="material-symbols-outlined text-[16px]">{{ $picker['hold'] ? 'pause_circle' : 'play_circle' }}</span>
+                    <span data-slip-submit-label>{{ $picker['hold'] ? 'Tahan Slip' : 'Rilis Slip' }}</span>
                 </button>
             </div>
         </form>
     </div>
 </div>
+@endforeach
 @endif
 
 {{-- Activity Log --}}
@@ -760,26 +834,63 @@ function closeAllPayrollPenaltyDetails() {
     });
 }
 
-function openPayrollHoldModal(trigger) {
-    const modal = document.getElementById('payrollHoldModal');
+// Picker tahan/rilis slip: cari + centang, pola yang sama dengan picker karyawan
+// saat membuat payroll run. preselectId dipakai tombol per baris.
+function openSlipPicker(id, preselectId = null) {
+    const modal = document.getElementById(id);
     if (!modal) return;
-    document.getElementById('payrollHoldForm').action = trigger.dataset.action;
-    document.getElementById('payrollHoldName').textContent = trigger.dataset.name;
-    document.getElementById('payrollHoldReason').value = '';
+    const search = modal.querySelector('[data-slip-search]');
+    const reason = modal.querySelector('textarea[name="reason"]');
+    search.value = '';
+    if (reason) reason.value = '';
+    modal.querySelectorAll('.slip-checkbox').forEach((cb) => {
+        cb.checked = preselectId !== null && Number(cb.value) === preselectId;
+    });
+    filterSlipPicker(modal);
     modal.classList.remove('hidden');
     modal.classList.add('flex');
-    document.getElementById('payrollHoldReason').focus();
+    (preselectId !== null && reason ? reason : search).focus();
 }
 
-function closePayrollHoldModal() {
-    const modal = document.getElementById('payrollHoldModal');
+function closeSlipPicker(modal) {
     if (!modal) return;
     modal.classList.add('hidden');
     modal.classList.remove('flex');
 }
 
-document.getElementById('payrollHoldModal')?.addEventListener('click', function (e) {
-    if (e.target === this) closePayrollHoldModal();
+function filterSlipPicker(modal) {
+    const q = (modal.querySelector('[data-slip-search]').value || '').toLowerCase().trim();
+    let visible = 0;
+    modal.querySelectorAll('.slip-item').forEach((item) => {
+        const match = !q || (item.dataset.search || '').includes(q);
+        item.classList.toggle('hidden', !match);
+        if (match) visible++;
+    });
+    modal.querySelector('[data-slip-empty]').classList.toggle('hidden', visible > 0);
+    updateSlipPickerCount(modal);
+}
+
+// Pilih/hapus hanya karyawan yang sedang tampil di hasil pencarian.
+function toggleSlipPicker(modal, select) {
+    modal.querySelectorAll('.slip-item:not(.hidden) .slip-checkbox').forEach((cb) => {
+        cb.checked = select;
+    });
+    updateSlipPickerCount(modal);
+}
+
+function updateSlipPickerCount(modal) {
+    const count = modal.querySelectorAll('.slip-checkbox:checked').length;
+    modal.querySelector('[data-slip-count]').textContent = count + ' dipilih';
+    modal.querySelector('[data-slip-submit]').disabled = count === 0;
+    modal.querySelector('[data-slip-submit-label]').textContent = modal.dataset.verb + ' ' + (count > 0 ? count + ' ' : '') + 'Slip';
+}
+
+document.querySelectorAll('[data-slip-picker]').forEach((modal) => {
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeSlipPicker(modal);
+    });
+    modal.querySelector('[data-slip-search]').addEventListener('input', () => filterSlipPicker(modal));
+    modal.querySelectorAll('.slip-checkbox').forEach((cb) => cb.addEventListener('change', () => updateSlipPickerCount(modal)));
 });
 
 function openPayrollDetailEdit(id) {
@@ -828,7 +939,7 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeAllPayrollOvertimeDetails();
         closeAllPayrollPenaltyDetails();
-        closePayrollHoldModal();
+        document.querySelectorAll('[data-slip-picker]').forEach(closeSlipPicker);
     }
 });
 </script>

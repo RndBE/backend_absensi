@@ -70,7 +70,7 @@ class PayrollHoldSlipTest extends TestCase
         $this->hold($run, $held, 'Cek ulang potongan');
         (new PayrollRunController)->publish($run->id);
 
-        (new PayrollRunController)->releaseDetail($run->id, $held->id);
+        $this->release($run, $held);
 
         $held->refresh();
         $this->assertFalse($held->is_held);
@@ -89,7 +89,7 @@ class PayrollHoldSlipTest extends TestCase
         [$run, , $held] = $this->finalizedRunWithTwoSlips();
         $this->hold($run, $held, 'Menunggu data');
 
-        (new PayrollRunController)->releaseDetail($run->id, $held->id);
+        $this->release($run, $held);
 
         $this->assertFalse($held->fresh()->is_held);
         Queue::assertNothingPushed();
@@ -106,6 +106,70 @@ class PayrollHoldSlipTest extends TestCase
         $this->hold($run, $other, 'Salah hitung lembur');
 
         $this->assertSame([$ready->id], PayrollRunDetail::visibleToEmployee()->pluck('id')->all());
+    }
+
+    public function test_picker_holds_several_slips_at_once_and_ignores_slips_from_other_runs(): void
+    {
+        Queue::fake();
+
+        [$run, $a, $b] = $this->finalizedRunWithTwoSlips();
+        $c = PayrollRunDetail::create([
+            'payroll_run_id' => $run->id,
+            'employee_id' => $this->makeEmployee('EMP-C', 'Karyawan C')->id,
+            'basic_salary' => 5000000, 'total_earning' => 5000000, 'total_deduction' => 0, 'net_salary' => 5000000,
+            'components' => [],
+        ]);
+        $otherRun = PayrollRun::create(['period' => '2026-05', 'status' => 'finalized', 'created_by' => $this->admin->id]);
+        $foreign = PayrollRunDetail::create([
+            'payroll_run_id' => $otherRun->id,
+            'employee_id' => $a->employee_id,
+            'basic_salary' => 5000000, 'total_earning' => 5000000, 'total_deduction' => 0, 'net_salary' => 5000000,
+            'components' => [],
+        ]);
+
+        $this->hold($run, [$a, $c, $foreign], 'Lembur belum masuk');
+
+        $this->assertTrue($a->fresh()->is_held);
+        $this->assertTrue($c->fresh()->is_held);
+        $this->assertFalse($b->fresh()->is_held);
+        $this->assertFalse($foreign->fresh()->is_held, 'Slip dari run lain tidak boleh ikut ditahan.');
+        $this->assertSame(2, PayrollLog::where('payroll_run_id', $run->id)->where('action', 'held')->count());
+
+        (new PayrollRunController)->publish($run->id);
+        Queue::assertPushed(SendPayslipEmailJob::class, 1);
+        Queue::assertPushed(SendPayslipEmailJob::class, fn ($job) => $job->payrollRunDetailId === $b->id);
+
+        // Rilis massal di run published: keduanya langsung terlihat dan emailnya dikirim.
+        $this->release($run, [$a, $c]);
+
+        $this->assertFalse($a->fresh()->is_held);
+        $this->assertFalse($c->fresh()->is_held);
+        Queue::assertPushed(SendPayslipEmailJob::class, 3);
+        $this->assertSame(2, PayrollLog::where('payroll_run_id', $run->id)->where('action', 'released')->count());
+        $this->assertEqualsCanonicalizing([$a->id, $b->id, $c->id], PayrollRunDetail::visibleToEmployee()->where('payroll_run_id', $run->id)->pluck('id')->all());
+    }
+
+    public function test_holding_an_already_held_slip_keeps_its_original_reason(): void
+    {
+        [$run, $a, $b] = $this->finalizedRunWithTwoSlips();
+        $this->hold($run, $a, 'Alasan pertama');
+
+        $this->hold($run, [$a, $b], 'Alasan kedua');
+
+        $this->assertSame('Alasan pertama', $a->fresh()->hold_reason);
+        $this->assertSame('Alasan kedua', $b->fresh()->hold_reason);
+    }
+
+    public function test_hold_requires_at_least_one_employee(): void
+    {
+        [$run] = $this->finalizedRunWithTwoSlips();
+
+        try {
+            (new PayrollRunController)->holdDetails(Request::create('/x', 'POST', ['reason' => 'Tanpa pilihan']), $run->id);
+            $this->fail('Tahan slip tanpa karyawan harus ditolak.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('detail_ids', $e->errors());
+        }
     }
 
     public function test_hold_is_refused_on_a_locked_run_and_requires_a_reason(): void
@@ -129,7 +193,7 @@ class PayrollHoldSlipTest extends TestCase
         (new PayrollRunController)->lock($run->id);
         $this->assertSame('finalized', $run->fresh()->status);
 
-        (new PayrollRunController)->releaseDetail($run->id, $held->id);
+        $this->release($run, $held);
         (new PayrollRunController)->lock($run->id);
         $this->assertSame('locked', $run->fresh()->status);
     }
@@ -375,11 +439,23 @@ class PayrollHoldSlipTest extends TestCase
         return [$run, $details[0], $details[1]];
     }
 
-    private function hold(PayrollRun $run, PayrollRunDetail $detail, string $reason): void
+    private function hold(PayrollRun $run, PayrollRunDetail|array $details, string $reason): void
     {
-        $request = Request::create('/x', 'POST', ['reason' => $reason]);
+        $request = Request::create('/x', 'POST', [
+            'detail_ids' => collect(is_array($details) ? $details : [$details])->pluck('id')->all(),
+            'reason' => $reason,
+        ]);
 
-        (new PayrollRunController)->holdDetail($request, $run->id, $detail->id);
+        (new PayrollRunController)->holdDetails($request, $run->id);
+    }
+
+    private function release(PayrollRun $run, PayrollRunDetail|array $details): void
+    {
+        $request = Request::create('/x', 'POST', [
+            'detail_ids' => collect(is_array($details) ? $details : [$details])->pluck('id')->all(),
+        ]);
+
+        (new PayrollRunController)->releaseDetails($request, $run->id);
     }
 
     private function expectValidationErrorOnHold(PayrollRun $run, PayrollRunDetail $detail, string $reason): void
