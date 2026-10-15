@@ -290,6 +290,54 @@ class TeamAttendancePortalTest extends TestCase
         $this->withSession(['employee_id' => 11])->get('/employee/team-attendance/16')->assertForbidden();
     }
 
+    /** hr_admin melihat L2-L4 se-perusahaan, tanpa batas departemen, tanpa L1 dan tanpa dirinya. */
+    public function test_hr_admin_sees_all_level_two_to_four_across_departments(): void
+    {
+        $this->seedLevels();
+        $this->employee(20, 'Direksi', 'employee', 4, kpiLevelId: 1, jobLevel: 1);
+        $this->employee(21, 'HR Tanpa Departemen', 'hr_admin', null, kpiLevelId: 3, jobLevel: 3);
+
+        // Semua kecuali Direksi (20) dan HR itu sendiri (21); departemen lain (16) ikut.
+        $this->assertSame([10, 11, 12, 13, 14, 15, 16, 17], $this->visibleTo(21));
+
+        $this->withSession(['employee_id' => 21])->get('/employee/team-attendance/16')->assertOk();
+        $this->withSession(['employee_id' => 21])->get('/employee/team-attendance/20')->assertForbidden();
+    }
+
+    /** Di produksi role disimpan di tabel employee_roles, bukan hanya kolom employees.role. */
+    public function test_hr_admin_role_from_employee_roles_table_also_counts(): void
+    {
+        $this->seedLevels();
+        Schema::create('roles', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->string('description')->nullable();
+            $table->boolean('is_system')->default(false);
+            $table->timestamps();
+        });
+        Schema::create('employee_roles', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('employee_id');
+            $table->unsignedBigInteger('role_id');
+            $table->timestamps();
+        });
+        DB::table('roles')->insert([['id' => 1, 'name' => 'Superadmin', 'slug' => 'superadmin'], ['id' => 2, 'name' => 'HR Admin', 'slug' => 'hr_admin']]);
+        // Avissa: role utama superadmin (L3, departemen sendiri) + hr_admin tambahan.
+        $this->employee(22, 'Avissa', 'superadmin', 3, kpiLevelId: 3, jobLevel: 3);
+        DB::table('employee_roles')->insert([['employee_id' => 22, 'role_id' => 1], ['employee_id' => 22, 'role_id' => 2]]);
+
+        $this->assertSame([10, 11, 12, 13, 14, 15, 16, 17], $this->visibleTo(22));
+    }
+
+    public function test_level_rule_still_applies_without_hr_admin(): void
+    {
+        $this->seedLevels();
+        $this->employee(21, 'Bukan HR', 'payroll_admin', 2, kpiLevelId: 3, jobLevel: 3);
+
+        $this->assertSame([13, 15, 17], $this->visibleTo(21));
+    }
+
     /** Pintasan di dashboard memakai aturan yang sama dengan halamannya (OrgLevel::viewerLevel). */
     public function test_viewer_level_matches_who_may_open_the_page(): void
     {

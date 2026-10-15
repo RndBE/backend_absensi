@@ -18,6 +18,7 @@ use Illuminate\Support\Collection;
  *
  * Yang terlihat hanya anggota yang levelnya DI BAWAH pelihat: L2 melihat L3 dan L4, L3 hanya
  * L4. Level diambil dari Level KPI, atau job_level bila Level KPI kosong (App\Support\OrgLevel).
+ * Pemegang role hr_admin melihat SEMUA karyawan aktif L2-L4 se-perusahaan, lintas departemen.
  *
  * Cakupan: departemen manager BESERTA seluruh turunannya. Perbandingan `department_id` yang
  * persis tidak cukup — manager menempel di simpul induk sementara anak buahnya tersebar di
@@ -94,12 +95,16 @@ class TeamAttendanceController extends Controller
         ]);
     }
 
-    /** Hanya level 1-3 (atau manager tanpa level), dan hanya yang punya departemen. */
+    /** Hanya level 1-3 yang punya departemen (atau manager tanpa level), atau pemegang hr_admin. */
     private function authorizeManager(Request $request): Employee
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
         $employee->loadMissing('kpiLevel');
+
+        if (OrgLevel::seesWholeCompany($employee)) {
+            return $employee;
+        }
 
         abort_unless(OrgLevel::viewerLevel($employee) !== null, 403, 'Halaman ini hanya untuk level 3 ke atas.');
         abort_unless($employee->department_id, 403, 'Anda belum ditetapkan ke departemen mana pun.');
@@ -128,16 +133,17 @@ class TeamAttendanceController extends Controller
     /**
      * Anggota tim: karyawan aktif di departemen pelihat dan seluruh turunannya, kecuali
      * dirinya sendiri, dan hanya yang levelnya di bawah pelihat. Level yang tidak diketahui
-     * dianggap staf.
+     * dianggap staf. Pemegang hr_admin melihat seluruh perusahaan, L2 sampai L4.
      *
      * @return Collection<int, Employee>
      */
     private function teamMembers(Employee $manager): Collection
     {
-        $viewerLevel = OrgLevel::viewerLevel($manager);
+        $wholeCompany = OrgLevel::seesWholeCompany($manager);
+        $viewerLevel = $wholeCompany ? 1 : OrgLevel::viewerLevel($manager);
 
         return Employee::query()
-            ->whereIn('department_id', $this->teamDepartmentIds($manager))
+            ->when(! $wholeCompany, fn ($q) => $q->whereIn('department_id', $this->teamDepartmentIds($manager)))
             ->where('company_id', $manager->company_id)
             ->where('is_active', true)
             ->where('id', '!=', $manager->id)
@@ -152,6 +158,10 @@ class TeamAttendanceController extends Controller
     /** Nama departemen yang tercakup, untuk ditampilkan sebagai konteks. */
     private function departmentNames(Employee $manager): Collection
     {
+        if (OrgLevel::seesWholeCompany($manager)) {
+            return collect(['Semua departemen']);
+        }
+
         return Department::whereIn('id', $this->teamDepartmentIds($manager))
             ->orderBy('parent_id')
             ->pluck('name');

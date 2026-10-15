@@ -29,6 +29,21 @@ class OrgLevel
         return $jobLevel >= 1 && $jobLevel <= 4 ? $jobLevel : null;
     }
 
+    /** Role yang melihat presensi SEMUA karyawan L2-L4 se-perusahaan, tanpa batas departemen. */
+    public const COMPANY_WIDE_ROLE = 'hr_admin';
+
+    public static function seesWholeCompany(Employee $employee): bool
+    {
+        return in_array(self::COMPANY_WIDE_ROLE, app(AdminPermission::class)->roleSlugs($employee), true);
+    }
+
+    /** Boleh membuka Presensi Tim: akses se-perusahaan, atau level 1-3 yang punya departemen. */
+    public static function canViewTeam(Employee $employee): bool
+    {
+        return self::seesWholeCompany($employee)
+            || (self::viewerLevel($employee) !== null && $employee->department_id);
+    }
+
     /**
      * Level yang dipakai saat karyawan MELIHAT tim, atau null bila tidak boleh melihat.
      * Role `manager` tanpa level tetap dianggap L2, seperti sebelum ada aturan level.
