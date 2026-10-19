@@ -15,6 +15,9 @@ class AssignmentLetter extends Model
     public const STATUS_ISSUED = 'issued';
     public const STATUS_CANCELLED = 'cancelled';
 
+    /** Status yang sampai ke peserta (portal & API); draft dan proses persetujuan hanya terlihat di admin. */
+    public const PUBLISHED_STATUSES = [self::STATUS_ISSUED, self::STATUS_CANCELLED];
+
     public const STATUSES = [
         self::STATUS_DRAFT => 'Draft',
         self::STATUS_ISSUED => 'Terbit',
@@ -24,10 +27,11 @@ class AssignmentLetter extends Model
     private const ROMAN_MONTHS = [1 => 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 
     protected $fillable = [
-        'company_id', 'number', 'sequence', 'sequence_year',
+        'company_id', 'revises_letter_id', 'revision_reason', 'number', 'sequence', 'sequence_year',
         'letter_date', 'city', 'signer_id', 'signer_name', 'signer_position',
         'purpose', 'departure_date', 'work_start_date', 'return_date',
         'initial_boxes', 'notes', 'status',
+        'submitted_at', 'submitted_by', 'approved_at', 'rejected_at', 'rejected_by', 'rejection_reason',
         'issued_at', 'issued_by', 'cancelled_at', 'cancelled_by', 'cancel_reason',
         'signed_file_path', 'signed_file_name', 'signed_uploaded_at', 'signed_uploaded_by',
         'created_by', 'updated_by',
@@ -41,6 +45,9 @@ class AssignmentLetter extends Model
             'work_start_date' => 'date',
             'return_date' => 'date',
             'initial_boxes' => 'array',
+            'submitted_at' => 'datetime',
+            'approved_at' => 'datetime',
+            'rejected_at' => 'datetime',
             'issued_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'signed_uploaded_at' => 'datetime',
@@ -60,6 +67,23 @@ class AssignmentLetter extends Model
     public function facilities(): HasMany
     {
         return $this->hasMany(AssignmentLetterFacility::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** Surat lama yang diperbaiki surat ini (surat perbaikan bernomor baru). */
+    public function revises(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'revises_letter_id');
+    }
+
+    /** Surat-surat perbaikan atas surat ini. */
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(self::class, 'revises_letter_id')->orderBy('id');
+    }
+
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(AssignmentLetterApproval::class)->orderBy('step_group')->orderBy('sort_order')->orderBy('id');
     }
 
     public function budgetRequests(): HasMany
@@ -92,6 +116,16 @@ class AssignmentLetter extends Model
         return $this->belongsTo(Employee::class, 'cancelled_by');
     }
 
+    public function submitter(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'submitted_by');
+    }
+
+    public function rejecter(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'rejected_by');
+    }
+
     public function signedUploader(): BelongsTo
     {
         return $this->belongsTo(Employee::class, 'signed_uploaded_by');
@@ -106,6 +140,38 @@ class AssignmentLetter extends Model
     public function isDraft(): bool
     {
         return $this->status === self::STATUS_DRAFT;
+    }
+
+    /**
+     * Keadaan paraf digital surat terbit: none (tanpa persetujuan), pending (masih ada yang
+     * menunggu), rejected (ada yang menolak), complete (semua kotak selesai: setuju/dilewati).
+     */
+    public function approvalState(): string
+    {
+        $approvals = $this->relationLoaded('approvals') ? $this->approvals : $this->approvals()->get();
+
+        return match (true) {
+            $approvals->isEmpty() => 'none',
+            $approvals->contains(fn (AssignmentLetterApproval $a) => $a->status === AssignmentLetterApproval::STATUS_REJECTED) => 'rejected',
+            $approvals->contains(fn (AssignmentLetterApproval $a) => $a->isPending()) => 'pending',
+            default => 'complete',
+        };
+    }
+
+    /** Masih ada kotak paraf yang belum selesai (menunggu atau ditolak). */
+    public function hasOutstandingApprovals(): bool
+    {
+        return in_array($this->approvalState(), ['pending', 'rejected'], true);
+    }
+
+    /**
+     * Isi masih boleh diubah: draft, atau surat terbit yang belum ada hasil pindai bertanda tangan
+     * (Direktur belum menandatangani). Pada surat terbit nomor tetap dan persetujuan yang sudah
+     * masuk tidak diulang; begitu pindaian diunggah surat final dan koreksinya lewat surat perbaikan.
+     */
+    public function isEditable(): bool
+    {
+        return $this->isDraft() || ($this->isIssued() && ! $this->hasSignedFile());
     }
 
     public function isIssued(): bool
@@ -142,7 +208,7 @@ class AssignmentLetter extends Model
      */
     public function estimatedNumber(?int $lastNumber = null): ?string
     {
-        if (! $this->isDraft() || ! $this->letter_date) {
+        if ($this->isIssued() || $this->isCancelled() || ! $this->letter_date) {
             return null;
         }
 
@@ -221,6 +287,30 @@ class AssignmentLetter extends Model
             (int) $this->company_id,
             $this->employees->pluck('employee_id')->all()
         ));
+    }
+
+    /**
+     * Kotak paraf untuk cetak: label + keputusan approval-nya (bila ada). Surat yang punya
+     * baris approval mencetak kolom atasan/HRD/GA HSE dari approval, ditambah kolom tambahan
+     * ketikan HRD (paraf basah). Surat lama tanpa approval tetap memakai label initialBoxes().
+     *
+     * @return array<int, array{label: string, approval: ?AssignmentLetterApproval}>
+     */
+    public function initialBoxCells(): array
+    {
+        $approvals = $this->relationLoaded('approvals') ? $this->approvals : $this->approvals()->get();
+
+        if ($approvals->isEmpty()) {
+            return array_map(fn (string $label) => ['label' => $label, 'approval' => null], $this->initialBoxes());
+        }
+
+        $cells = $approvals->map(fn (AssignmentLetterApproval $a) => ['label' => $a->label, 'approval' => $a])->all();
+
+        foreach ((array) $this->initial_boxes as $extra) {
+            $cells[] = ['label' => (string) $extra, 'approval' => null];
+        }
+
+        return $cells;
     }
 
     public static function formatDate(CarbonInterface|string|null $date): string

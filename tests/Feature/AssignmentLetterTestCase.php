@@ -28,6 +28,9 @@ abstract class AssignmentLetterTestCase extends TestCase
         parent::setUp();
         $this->withoutVite();
 
+        // Test lama menerbitkan langsung dari draft; alur persetujuan diuji di AssignmentLetterApprovalTest.
+        config(['assignment_letters.require_approval' => false]);
+
         $this->createAssignmentLetterSchema();
 
         DB::table('companies')->insert([['id' => 1, 'name' => 'PT Arta Teknologi Comunindo'], ['id' => 2, 'name' => 'PT Lain']]);
@@ -347,5 +350,10 @@ abstract class AssignmentLetterTestCase extends TestCase
         (require database_path('migrations/2026_09_30_100000_create_assignment_letter_tables.php'))->up();
         (require database_path('migrations/2026_09_30_110000_add_assignment_letter_id_to_budget_requests.php'))->up();
         (require database_path('migrations/2026_10_01_100000_add_signed_file_to_assignment_letters.php'))->up();
+        (require database_path('migrations/2026_10_19_100000_create_assignment_letter_approvals.php'))->up();
+        (require database_path('migrations/2026_10_20_100000_add_revises_letter_id_to_assignment_letters.php'))->up();
+        (require database_path('migrations/2026_10_21_100000_add_revision_reason_to_assignment_letters.php'))->up();
+        (require database_path('migrations/2026_10_22_100000_fold_approval_statuses_into_draft.php'))->up();
+        (require database_path('migrations/2026_10_22_110000_add_sort_order_to_assignment_letter_approvals.php'))->up();
     }
 }

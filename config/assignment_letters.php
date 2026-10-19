@@ -22,6 +22,13 @@ return [
     // Kolom paraf yang selalu ada setelah kolom LV 2 per divisi peserta.
     'fixed_initial_boxes' => ['HRD', 'GA HSE'],
 
+    // Begitu surat terbit, kotak parafnya diminta ke atasan L3/L2 peserta, HRD, dan GA HSE (tanda
+    // tangan digital). Matikan (false) untuk masa transisi: surat terbit langsung tanpa paraf digital.
+    'require_approval' => (bool) env('ASSIGNMENT_LETTER_REQUIRE_APPROVAL', true),
+
+    // Rantai approval karyawan yang dipakai mencari atasan L3/L2 peserta (employee_approvers.request_type).
+    'approval_chain_type' => 'leave',
+
     // Karyawan yang dipasangi role "GA HSE" oleh GaHseSetupSeeder (nomor karyawan, bukan nama).
     // Ubah lewat env, dipisah koma: ASSIGNMENT_GA_HSE_EMPLOYEE_CODES="007/HRDCS/IX/2026,010/XXX/I/2025"
     // Bawaan: Latasha Nur Fienza Ramadhani (jabatan GA HSE, masuk September 2026). Karyawan

@@ -58,7 +58,7 @@ class AssignmentLetterController extends Controller
     public function printFromLink(int $id)
     {
         $letter = AssignmentLetter::with(['employees', 'destinations', 'facilities'])
-            ->where('status', '!=', AssignmentLetter::STATUS_DRAFT)
+            ->whereIn('status', AssignmentLetter::PUBLISHED_STATUSES)
             ->findOrFail($id);
 
         return view('assignment-letters.print', [
@@ -71,7 +71,7 @@ class AssignmentLetterController extends Controller
     /** Hasil pindai surat bertanda tangan, dibuka dari tautan bertanda tangan. */
     public function signedFileFromLink(int $id)
     {
-        $letter = AssignmentLetter::where('status', '!=', AssignmentLetter::STATUS_DRAFT)->findOrFail($id);
+        $letter = AssignmentLetter::whereIn('status', AssignmentLetter::PUBLISHED_STATUSES)->findOrFail($id);
         abort_unless($letter->hasSignedFile() && Storage::disk('local')->exists($letter->signed_file_path), 404);
 
         return Storage::disk('local')->response($letter->signed_file_path, $letter->signed_file_name);
@@ -81,7 +81,7 @@ class AssignmentLetterController extends Controller
     {
         return AssignmentLetter::query()
             ->where('company_id', $employee->company_id)
-            ->where('status', '!=', AssignmentLetter::STATUS_DRAFT)
+            ->whereIn('status', AssignmentLetter::PUBLISHED_STATUSES)
             ->whereHas('employees', fn ($q) => $q->where('employee_id', $employee->id));
     }
 

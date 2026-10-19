@@ -45,6 +45,56 @@
     @endif
 
     @if($tab === 'history')
+    {{-- Surat tugas: keputusan disimpan di tabel approval-nya sendiri (bukan approval_logs), jadi dirender terpisah. --}}
+    @if($assignmentHistory->isNotEmpty())
+    <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="border-b border-gray-100 bg-gray-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">Surat Tugas</div>
+        @foreach($assignmentHistory as $decision)
+            @php
+                $historyLetter = $decision->letter;
+                $disetujui = $decision->status === 'approved';
+            @endphp
+            <div class="flex flex-col gap-2 border-b border-gray-100 px-4 py-3.5 last:border-b-0 sm:flex-row sm:items-start sm:gap-4">
+                <div class="flex shrink-0 items-center gap-2 sm:w-40">
+                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold
+                        {{ $disetujui ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700' }}">
+                        <span class="material-symbols-outlined text-[14px]">{{ $disetujui ? 'check' : 'close' }}</span>
+                        {{ $disetujui ? 'Disetujui' : 'Ditolak' }}
+                    </span>
+                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[10.5px] font-bold text-gray-500">Paraf {{ $decision->label }}</span>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span class="text-[13px] font-bold text-gray-900">{{ $historyLetter->employees->pluck('name')->implode(', ') }}</span>
+                        <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10.5px] font-bold text-indigo-700">Surat Tugas</span>
+                        <span class="text-[11px] text-gray-400">· status surat: <span class="font-semibold text-gray-600">{{ $historyLetter->number ?? $historyLetter->statusLabel() }}</span></span>
+                    </div>
+                    <div class="mt-0.5 text-[11.5px] text-gray-400">{{ \Illuminate\Support\Str::limit((string) $historyLetter->destinations->first()?->activity, 110) }}</div>
+                    @if($decision->notes)
+                        <div class="mt-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[12.5px] text-gray-700">
+                            <span class="font-bold text-gray-400">Catatan Anda:</span> {{ $decision->notes }}
+                        </div>
+                    @endif
+                </div>
+                <div class="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
+                    <div class="text-left text-[11.5px] text-gray-400 sm:text-right">
+                        {{ $decision->acted_at?->format('d/m/Y') }}<br>
+                        <span class="text-[11px]">{{ $decision->acted_at?->format('H:i') }}</span>
+                    </div>
+                    {{-- Hanya atasan yang ditunjuk bisa membuka halaman portal; HRD/GA HSE memutuskan dari admin panel. --}}
+                    @if((int) $decision->approver_id === (int) $employee->id)
+                        <a href="{{ route('employee.assignment-approvals.show', $historyLetter->id) }}"
+                           class="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 text-[11.5px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100">
+                            <span class="material-symbols-outlined text-[15px]">visibility</span>
+                            Lihat
+                        </a>
+                    @endif
+                </div>
+            </div>
+        @endforeach
+    </section>
+    @endif
+
     {{-- Riwayat: padat, satu baris per keputusan. Kartu terlalu boros untuk data historis. --}}
     <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         @forelse($history as $log)
@@ -126,6 +176,7 @@
                 </div>
             </div>
         @empty
+            @if($assignmentHistory->isEmpty())
             <div class="p-10 text-center">
                 <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400">
                     <span class="material-symbols-outlined text-[24px]">history</span>
@@ -133,6 +184,7 @@
                 <h2 class="mt-3 text-[15px] font-black text-gray-900">Belum ada riwayat</h2>
                 <p class="mt-1 text-[13px] text-gray-500">Keputusan yang Anda ambil akan muncul di sini.</p>
             </div>
+            @endif
         @endforelse
     </section>
 
@@ -142,6 +194,29 @@
 
     @else
     <section class="space-y-3">
+        @foreach($assignmentApprovals ?? [] as $approval)
+            @php $letterForApproval = $approval->letter; @endphp
+            <article class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10.5px] font-bold text-indigo-700">Surat Tugas</span>
+                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[10.5px] font-bold text-gray-500">Paraf {{ $approval->label }}</span>
+                </div>
+                <h2 class="mt-2 text-[14px] font-black text-gray-900">{{ $letterForApproval->employees->pluck('name')->implode(', ') }}</h2>
+                <p class="mt-0.5 text-[12.5px] text-gray-500">
+                    {{ \Illuminate\Support\Str::limit((string) $letterForApproval->destinations->first()?->activity, 110) }}
+                </p>
+                <p class="mt-1 text-[11.5px] text-gray-400">
+                    {{ $letterForApproval->departure_date->format('d/m/Y') }} – {{ $letterForApproval->return_date->format('d/m/Y') }}
+                    · menunggu sejak {{ $letterForApproval->submitted_at?->format('d/m/Y H:i') }}
+                </p>
+                <a href="{{ route('employee.assignment-approvals.show', $letterForApproval->id) }}"
+                   class="mt-3 inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-[12px] font-bold text-white transition-colors hover:bg-indigo-700">
+                    <span class="material-symbols-outlined text-[17px]">fact_check</span>
+                    Tinjau &amp; Putuskan
+                </a>
+            </article>
+        @endforeach
+
         @forelse($items as $row)
             @php
                 $request = $row['model'];
@@ -429,6 +504,7 @@
                 </div>
             </article>
         @empty
+            @if(empty($assignmentApprovals) || $assignmentApprovals->isEmpty())
             <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-10 text-center">
                 <div class="w-12 h-12 mx-auto rounded-full bg-gray-100 text-gray-400 flex items-center justify-center">
                     <span class="material-symbols-outlined text-[24px]">task_alt</span>
@@ -436,6 +512,7 @@
                 <h2 class="mt-3 text-[15px] font-black text-gray-900">Belum ada approval</h2>
                 <p class="text-[13px] text-gray-500 mt-1">Belum ada approval yang perlu diproses.</p>
             </section>
+            @endif
         @endforelse
     </section>
     @endif

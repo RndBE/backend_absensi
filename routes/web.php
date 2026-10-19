@@ -58,6 +58,7 @@ use App\Http\Controllers\Admin\TravelZoneController;
 use App\Http\Controllers\Api\TravelZoneController as ApiTravelZoneController;
 use App\Http\Controllers\Api\AssignmentLetterController as ApiAssignmentLetterController;
 use App\Http\Controllers\Employee\AnnouncementFileController as EmployeeAnnouncementFileController;
+use App\Http\Controllers\Employee\AssignmentLetterApprovalController as EmployeeAssignmentLetterApprovalController;
 use App\Http\Controllers\Employee\AssignmentLetterController as EmployeeAssignmentLetterController;
 use App\Http\Controllers\Employee\AttendanceController as EmployeeAttendanceController;
 use App\Http\Controllers\Employee\AttendanceRequestController as EmployeeAttendanceRequestController;
@@ -129,6 +130,8 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/violation-report/open', [EmployeeViolationReportController::class, 'open'])->name('violation-report.open');
     Route::post('/profile/photo', [EmployeeProfileController::class, 'updatePhoto'])->name('profile.photo.update');
     Route::delete('/profile/photo', [EmployeeProfileController::class, 'destroyPhoto'])->name('profile.photo.destroy');
+    Route::post('/profile/signature', [EmployeeProfileController::class, 'updateSignature'])->name('profile.signature.update');
+    Route::delete('/profile/signature', [EmployeeProfileController::class, 'destroySignature'])->name('profile.signature.destroy');
     Route::get('/profile/personal', [EmployeeProfileController::class, 'personal'])->name('profile.personal');
     Route::get('/profile/employment', [EmployeeProfileController::class, 'employment'])->name('profile.employment');
     Route::get('/profile/password', [EmployeeProfileController::class, 'editPassword'])->name('profile.password');
@@ -163,6 +166,10 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/budget-requests/{id}', [EmployeeBudgetRequestController::class, 'show'])->name('budget-requests.show');
     Route::get('/assignment-letters/{id}/print', [EmployeeAssignmentLetterController::class, 'print'])->name('assignment-letters.print');
     Route::get('/assignment-letters/{id}/signed', [EmployeeAssignmentLetterController::class, 'signed'])->name('assignment-letters.signed');
+    Route::get('/assignment-approvals/{id}', [EmployeeAssignmentLetterApprovalController::class, 'show'])->whereNumber('id')->name('assignment-approvals.show');
+    Route::get('/assignment-approvals/{id}/print', [EmployeeAssignmentLetterApprovalController::class, 'print'])->whereNumber('id')->name('assignment-approvals.print');
+    Route::post('/assignment-approvals/{id}/approve', [EmployeeAssignmentLetterApprovalController::class, 'approve'])->whereNumber('id')->name('assignment-approvals.approve');
+    Route::post('/assignment-approvals/{id}/reject', [EmployeeAssignmentLetterApprovalController::class, 'reject'])->whereNumber('id')->name('assignment-approvals.reject');
     Route::get('/travel/estimate-zone', [ApiTravelZoneController::class, 'estimateZone'])->name('travel.estimate-zone');
     Route::get('/travel-reports', [EmployeeTravelReportController::class, 'index'])->name('travel-reports.index');
     Route::get('/travel-reports/create', [EmployeeTravelReportController::class, 'create'])->name('travel-reports.create');
@@ -349,6 +356,10 @@ Route::prefix('admin')->name('admin.')->middleware([
     Route::get('/assignment-letters/{id}/edit', [AssignmentLetterController::class, 'edit'])->name('assignment-letters.edit');
     Route::put('/assignment-letters/{id}', [AssignmentLetterController::class, 'update'])->name('assignment-letters.update');
     Route::delete('/assignment-letters/{id}', [AssignmentLetterController::class, 'destroy'])->name('assignment-letters.destroy');
+    Route::post('/assignment-letters/{id}/resubmit', [AssignmentLetterController::class, 'resubmit'])->name('assignment-letters.resubmit');
+    Route::post('/assignment-letters/{id}/approvals/{approvalId}/approve', [AssignmentLetterController::class, 'approve'])->name('assignment-letters.approve');
+    Route::post('/assignment-letters/{id}/approvals/{approvalId}/reject', [AssignmentLetterController::class, 'reject'])->name('assignment-letters.reject');
+    Route::post('/assignment-letters/{id}/approvals/{approvalId}/skip', [AssignmentLetterController::class, 'skip'])->name('assignment-letters.skip');
     Route::post('/assignment-letters/{id}/issue', [AssignmentLetterController::class, 'issue'])->name('assignment-letters.issue');
     Route::post('/assignment-letters/{id}/cancel', [AssignmentLetterController::class, 'cancel'])->name('assignment-letters.cancel');
     Route::post('/assignment-letters/{id}/duplicate', [AssignmentLetterController::class, 'duplicate'])->name('assignment-letters.duplicate');

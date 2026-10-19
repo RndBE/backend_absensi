@@ -31,6 +31,11 @@
             {{ $message }}
         </div>
     @enderror
+    @error('signature')
+        <div class="rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[13px] font-semibold px-4 py-3">
+            {{ $message }}
+        </div>
+    @enderror
 
     {{-- Header --}}
     <section class="rounded-xl bg-white border border-gray-200 shadow-sm p-5 flex items-center gap-4 mb-2">
@@ -68,6 +73,44 @@
                 </button>
             </form>
         @endif
+    </section>
+
+    {{-- Tanda tangan digital: mengisi kotak paraf surat tugas saat Anda menyetujuinya. --}}
+    <section id="tanda-tangan" class="rounded-xl bg-white border border-gray-200 shadow-sm p-5 mb-2">
+        <h2 class="text-[12px] font-bold text-gray-400 uppercase tracking-wider mb-1">Tanda Tangan Digital</h2>
+        <p class="text-[12.5px] text-gray-500 mb-3">
+            Dipakai sebagai paraf di surat tugas saat Anda menyetujuinya. Gunakan gambar tanda tangan di latar putih atau transparan (PNG/JPG/WEBP, maks. 2 MB).
+            Surat yang sudah Anda setujui tidak ikut berubah bila Anda mengganti gambarnya.
+        </p>
+        <div class="flex items-center gap-4">
+            <div class="flex h-16 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed border-gray-300 bg-gray-50">
+                @if($employee->signature)
+                    <img src="{{ \App\Support\SignatureImage::url($employee->signature) ?? asset('storage/'.$employee->signature) }}" alt="Tanda tangan {{ $employee->full_name }}" class="max-h-full max-w-full object-contain">
+                @else
+                    <span class="text-[11px] text-gray-400">Belum ada</span>
+                @endif
+            </div>
+            <form id="signature-form" action="{{ route('employee.profile.signature.update') }}" method="POST" enctype="multipart/form-data" class="min-w-0 flex-1">
+                @csrf
+                <input type="file" name="signature" id="signature-input" accept="image/png,image/jpeg,image/webp" class="hidden"
+                       onchange="if(this.files.length) document.getElementById('signature-form').submit()">
+                <button type="button" onclick="document.getElementById('signature-input').click()"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-[12px] font-bold text-indigo-700 hover:bg-indigo-100">
+                    <span class="material-symbols-outlined text-[16px]">upload</span>
+                    {{ $employee->signature ? 'Ganti tanda tangan' : 'Unggah tanda tangan' }}
+                </button>
+            </form>
+            @if($employee->signature)
+                <form action="{{ route('employee.profile.signature.destroy') }}" method="POST" class="shrink-0"
+                      onsubmit="return confirm('Hapus tanda tangan digital?')">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-rose-50 hover:text-rose-600" title="Hapus tanda tangan">
+                        <span class="material-symbols-outlined text-[18px]">delete</span>
+                    </button>
+                </form>
+            @endif
+        </div>
     </section>
 
     {{-- Info Saya --}}

@@ -75,6 +75,47 @@ class ProfileController extends Controller
         return back()->with('success', 'Foto profil berhasil dihapus.');
     }
 
+    /**
+     * Tanda tangan digital milik karyawan sendiri. Dipakai mengisi kotak paraf surat tugas begitu
+     * ia menyetujui. Surat yang sudah disetujui menyimpan salinan tanda tangan saat itu, jadi
+     * mengganti atau menghapusnya tidak mengubah surat lama.
+     */
+    public function updateSignature(Request $request)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+
+        $request->validate([
+            'signature' => ['required', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+        ], [
+            'signature.required' => 'Pilih file gambar tanda tangan.',
+            'signature.image' => 'File harus berupa gambar.',
+            'signature.mimes' => 'Gambar harus berformat PNG, JPG, atau WEBP.',
+            'signature.max' => 'Ukuran gambar maksimal 2 MB.',
+        ]);
+
+        if ($employee->signature) {
+            Storage::disk('public')->delete($employee->signature);
+        }
+
+        $employee->update(['signature' => $request->file('signature')->store('employees/signatures', 'public')]);
+
+        return back()->with('success', 'Tanda tangan digital berhasil disimpan.');
+    }
+
+    public function destroySignature(Request $request)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+
+        if ($employee->signature) {
+            Storage::disk('public')->delete($employee->signature);
+            $employee->update(['signature' => null]);
+        }
+
+        return back()->with('success', 'Tanda tangan digital dihapus.');
+    }
+
     public function personal(Request $request)
     {
         /** @var Employee $employee */

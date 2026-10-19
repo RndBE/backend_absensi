@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AssignmentLetter;
+use App\Models\AssignmentLetterApproval;
 use App\Models\AssignmentLetterFacility;
 use App\Models\CommunicationDevice;
 use App\Models\DocumentSequence;
@@ -11,19 +12,25 @@ use App\Models\Employee;
 use App\Models\TravelReport;
 use App\Models\Vehicle;
 use App\Support\AdminPermission;
+use App\Support\AssignmentLetterApprovalFlow;
 use App\Support\AssignmentLetterConflicts;
 use App\Support\AssignmentLetterInitialBoxes;
 use App\Support\AssignmentLetterNotifier;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Surat Tugas: dibuat HRD atau GA&HSE sebagai draft, diterbitkan (nomor keluar), lalu dicetak.
+ * Surat Tugas: dibuat HRD atau GA&HSE sebagai draft, diterbitkan (nomor keluar, peserta diberi tahu),
+ * lalu kotak parafnya diisi tanda tangan digital lewat persetujuan atasan L3/L2 peserta, HRD, dan
+ * GA HSE (lihat AssignmentLetterApprovalFlow). Setelah paraf lengkap surat dicetak untuk tanda
+ * tangan basah Direktur dan pindaiannya diunggah.
  *
- * Surat yang sudah terbit dikunci. Salah ketik diperbaiki dengan "Batalkan" lalu "Salin ke
+ * Surat terbit masih bisa diubah selama belum ada pindaian bertanda tangan (nomor tetap). Setelah
+ * itu surat final: koreksi lewat surat perbaikan bernomor baru. Salah ketik diperbaiki dengan "Batalkan" lalu "Salin ke
  * draft baru", supaya surat yang sudah dibagikan tidak pernah berubah isinya diam-diam.
  */
 class AssignmentLetterController extends Controller
@@ -32,10 +39,15 @@ class AssignmentLetterController extends Controller
     {
         $admin = $this->admin();
 
-        $query = AssignmentLetter::with(['employees', 'destinations'])
+        $query = AssignmentLetter::with(['employees', 'destinations', 'approvals'])
             ->where('company_id', $admin->company_id);
 
-        if ($request->filled('status') && array_key_exists($request->status, AssignmentLetter::STATUSES)) {
+        // Surat yang menunggu keputusan admin ini (sebagai HRD/GA HSE/atasan): banner, tab, dan tombol "Putuskan".
+        $awaiting = AssignmentLetterApprovalFlow::awaitingLetters($admin);
+
+        if ($request->status === 'awaiting') {
+            $query->whereIn('id', $awaiting->pluck('id'));
+        } elseif ($request->filled('status') && array_key_exists($request->status, AssignmentLetter::STATUSES)) {
             $query->where('status', $request->status);
         }
 
@@ -57,7 +69,7 @@ class AssignmentLetterController extends Controller
 
         // Perkiraan nomor draft: nomor terakhir per tahun dimuat sekali, bukan per baris.
         $draftLastNumbers = $letters->getCollection()
-            ->filter(fn (AssignmentLetter $letter) => $letter->isDraft())
+            ->filter(fn (AssignmentLetter $letter) => $letter->number === null)
             ->map(fn (AssignmentLetter $letter) => $letter->letter_date->year)
             ->unique()
             ->mapWithKeys(fn ($year) => [$year => DocumentSequence::lastNumber($admin->company_id, DocumentSequence::TYPE_ASSIGNMENT_LETTER, $year)])
@@ -69,6 +81,7 @@ class AssignmentLetterController extends Controller
         return view('admin.assignment-letters.index', [
             'letters' => $letters,
             'draftLastNumbers' => $draftLastNumbers,
+            'awaitingIds' => $awaiting->pluck('id'),
             'canManage' => $permissions->can($admin, 'assignment_letters.manage'),
             'canIssue' => $permissions->can($admin, 'assignment_letters.issue'),
             'numbering' => [
@@ -79,26 +92,96 @@ class AssignmentLetterController extends Controller
         ]);
     }
 
-    public function create()
+    public function create(Request $request)
     {
         $admin = $this->admin();
-        $letter = new AssignmentLetter([
-            'letter_date' => now()->toDateString(),
-            'city' => config('assignment_letters.default_city'),
-            'departure_date' => now()->toDateString(),
-            'work_start_date' => now()->toDateString(),
-            'return_date' => now()->toDateString(),
+        $tab = $request->query('tab') === 'revision' ? 'revision' : 'new';
+        $source = null;
+
+        if ($tab === 'revision' && $request->filled('source')) {
+            $source = AssignmentLetter::where('company_id', $admin->company_id)
+                ->where('status', AssignmentLetter::STATUS_ISSUED)
+                ->with(['employees', 'destinations', 'facilities'])
+                ->find((int) $request->query('source'));
+
+            if (! $source) {
+                return redirect()->route('admin.assignment-letters.create', ['tab' => 'revision'])
+                    ->with('error', 'Surat tugas yang dipilih tidak ditemukan atau belum terbit.');
+            }
+
+            $open = AssignmentLetter::where('revises_letter_id', $source->id)->where('status', AssignmentLetter::STATUS_DRAFT)->first();
+
+            if ($open) {
+                return redirect()->route('admin.assignment-letters.show', $open->id)
+                    ->with('error', "Surat perbaikan untuk {$source->number} sudah dibuat dan belum terbit. Lanjutkan yang ini.");
+            }
+        }
+
+        if ($source) {
+            // Formulir terisi data surat lama (belum disimpan); tanggal surat hari ini, nomor baru saat terbit.
+            $letter = new AssignmentLetter($source->only([
+                'city', 'signer_id', 'signer_name', 'signer_position', 'purpose',
+                'departure_date', 'work_start_date', 'return_date', 'notes',
+            ]) + ['letter_date' => now()->toDateString()]);
+            $letter->setRelation('employees', $source->employees);
+            $letter->setRelation('destinations', $source->destinations);
+            $letter->setRelation('facilities', $source->facilities);
+        } else {
+            $letter = new AssignmentLetter([
+                'letter_date' => now()->toDateString(),
+                'city' => config('assignment_letters.default_city'),
+                'departure_date' => now()->toDateString(),
+                'work_start_date' => now()->toDateString(),
+                'return_date' => now()->toDateString(),
+            ]);
+
+            $this->applyDefaultSigner($letter, $admin);
+        }
+
+        // Daftar surat terbit untuk pemilih di tab "Perbaikan Surat Tugas" (terbaru dulu).
+        $issuedLetters = $tab === 'revision'
+            ? AssignmentLetter::where('company_id', $admin->company_id)
+                ->where('status', AssignmentLetter::STATUS_ISSUED)
+                ->with(['employees', 'destinations', 'revisions:id,revises_letter_id,status'])
+                ->orderByDesc('letter_date')
+                ->orderByDesc('id')
+                ->limit(300)
+                ->get()
+            : collect();
+
+        return view('admin.assignment-letters.create', $this->formData($letter, $admin) + [
+            'tab' => $tab,
+            'issuedLetters' => $issuedLetters,
+            'revisesLetter' => $source,
         ]);
-
-        $this->applyDefaultSigner($letter, $admin);
-
-        return view('admin.assignment-letters.create', $this->formData($letter, $admin));
     }
 
     public function store(Request $request)
     {
         $admin = $this->admin();
         $data = $this->validatedData($request, $admin);
+
+        // Surat perbaikan: formulir tab "Perbaikan Surat Tugas" mengirim surat yang diperbaiki.
+        $source = null;
+        if ($request->filled('revises_letter_id')) {
+            $source = AssignmentLetter::where('company_id', $admin->company_id)
+                ->where('status', AssignmentLetter::STATUS_ISSUED)
+                ->find((int) $request->input('revises_letter_id'));
+
+            if (! $source) {
+                return back()->withInput()->with('error', 'Surat tugas yang diperbaiki tidak ditemukan atau belum terbit.');
+            }
+
+            $open = AssignmentLetter::where('revises_letter_id', $source->id)->where('status', AssignmentLetter::STATUS_DRAFT)->first();
+
+            if ($open) {
+                return redirect()->route('admin.assignment-letters.show', $open->id)
+                    ->with('error', "Surat perbaikan untuk {$source->number} sudah dibuat dan belum terbit. Lanjutkan yang ini.");
+            }
+
+            $data['letter']['revises_letter_id'] = $source->id;
+            $data['letter']['revision_reason'] = filled($request->input('revision_reason')) ? trim($request->input('revision_reason')) : null;
+        }
 
         $letter = DB::transaction(function () use ($data, $admin) {
             $letter = AssignmentLetter::create($data['letter'] + [
@@ -113,8 +196,9 @@ class AssignmentLetterController extends Controller
             return $letter;
         });
 
-        return redirect()->route('admin.assignment-letters.show', $letter->id)
-            ->with('success', 'Draft surat tugas disimpan. Terbitkan untuk mendapatkan nomor surat.');
+        return redirect()->route('admin.assignment-letters.show', $letter->id)->with('success', $source
+            ? "Draft perbaikan atas {$source->number} disimpan. Terbitkan untuk mendapatkan nomor baru; paraf diminta lagi setelah terbit."
+            : 'Draft surat tugas disimpan. Terbitkan untuk mendapatkan nomor surat.');
     }
 
     public function show($id, AdminPermission $permissions)
@@ -123,6 +207,9 @@ class AssignmentLetterController extends Controller
         $letter = $this->findLetter($id, $admin)->load([
             'employees', 'destinations', 'facilities.inspector:id,full_name',
             'creator:id,full_name', 'updater:id,full_name', 'issuer:id,full_name', 'canceller:id,full_name',
+            'rejecter:id,full_name', 'submitter:id,full_name',
+            'revises:id,number', 'revisions:id,number,status,revises_letter_id',
+            'approvals.approver:id,full_name,position', 'approvals.actor:id,full_name',
         ]);
 
         // Kolom budget_requests.assignment_letter_id datang dari migrasi tahap 2; server yang belum
@@ -147,6 +234,10 @@ class AssignmentLetterController extends Controller
             'canManage' => $permissions->can($admin, 'assignment_letters.manage'),
             'canIssue' => $permissions->can($admin, 'assignment_letters.issue'),
             'canViewBudgets' => $permissions->can($admin, 'budget.view'),
+            'approvalRequired' => AssignmentLetterApprovalFlow::required(),
+            'approvalPlan' => $letter->isDraft() ? AssignmentLetterApprovalFlow::plan($letter) : null,
+            'approvalState' => $letter->approvalState(),
+            'actionableApprovals' => AssignmentLetterApprovalFlow::actionableFor($letter, $admin),
             'budgets' => $budgets,
             'travelReports' => $travelReports,
         ]);
@@ -157,9 +248,9 @@ class AssignmentLetterController extends Controller
         $admin = $this->admin();
         $letter = $this->findLetter($id, $admin)->load(['employees', 'destinations', 'facilities']);
 
-        if (! $letter->isDraft()) {
+        if (! $letter->isEditable()) {
             return redirect()->route('admin.assignment-letters.show', $letter->id)
-                ->with('error', 'Surat yang sudah terbit tidak bisa diubah. Batalkan lalu salin ke draft baru.');
+                ->with('error', $this->lockedMessage($letter));
         }
 
         return view('admin.assignment-letters.edit', $this->formData($letter, $admin));
@@ -170,17 +261,29 @@ class AssignmentLetterController extends Controller
         $admin = $this->admin();
         $letter = $this->findLetter($id, $admin);
 
-        if (! $letter->isDraft()) {
+        if (! $letter->isEditable()) {
             return redirect()->route('admin.assignment-letters.show', $letter->id)
-                ->with('error', 'Surat yang sudah terbit tidak bisa diubah. Batalkan lalu salin ke draft baru.');
+                ->with('error', $this->lockedMessage($letter));
         }
 
         $data = $this->validatedData($request, $admin);
+
+        if ($letter->isIssued() && ($problem = $this->issuedEditProblem($letter, $data))) {
+            return back()->withInput()->with('error', $problem);
+        }
 
         DB::transaction(function () use ($letter, $data, $admin) {
             $letter->update($data['letter'] + ['updated_by' => $admin->id]);
             $this->syncChildren($letter, $data, $admin);
         });
+
+        if ($letter->isIssued()) {
+            AssignmentLetterApprovalFlow::resync($letter->fresh());
+            AssignmentLetterNotifier::updated($letter->fresh());
+
+            return redirect()->route('admin.assignment-letters.show', $letter->id)
+                ->with('success', "Surat tugas {$letter->number} diperbarui (nomor tetap; paraf yang sudah masuk tidak diulang). Peserta sudah diberi notifikasi. Cetak ulang sebelum ditandatangani Direktur.");
+        }
 
         return redirect()->route('admin.assignment-letters.show', $letter->id)
             ->with('success', 'Draft surat tugas diperbarui.');
@@ -220,6 +323,14 @@ class AssignmentLetterController extends Controller
                 return ['error' => 'Surat belum bisa diterbitkan: isi minimal satu karyawan dan satu tujuan.', 'letter' => $letter];
             }
 
+            // Kotak paraf diminta ke atasan peserta begitu surat terbit, jadi atasannya harus bisa dicari dulu.
+            $requiresApproval = AssignmentLetterApprovalFlow::required();
+            $problem = $requiresApproval ? AssignmentLetterApprovalFlow::problemMessage(AssignmentLetterApprovalFlow::plan($letter)) : null;
+
+            if ($problem) {
+                return ['error' => 'Surat belum bisa diterbitkan. '.$problem, 'letter' => $letter];
+            }
+
             // Status karyawan bisa berubah sejak draft dibuat (resign, jadi outsourcing).
             $eligible = $this->eligibleEmployeeQuery($admin->company_id)
                 ->with('department:id,name')
@@ -254,14 +365,20 @@ class AssignmentLetterController extends Controller
                 'number' => AssignmentLetter::formatNumber($sequence, $letter->letter_date),
                 'sequence' => $sequence,
                 'sequence_year' => $year,
-                'initial_boxes' => $letter->initialBoxes(),
+                // Surat dengan approval mencetak kolom parafnya dari baris approval; initial_boxes
+                // hanya berisi kolom tambahan ketikan HRD, jadi tidak ditimpa label beku.
+                'initial_boxes' => $requiresApproval ? $letter->initial_boxes : $letter->initialBoxes(),
                 'status' => AssignmentLetter::STATUS_ISSUED,
                 'issued_at' => now(),
                 'issued_by' => $admin->id,
                 'updated_by' => $admin->id,
             ]);
 
-            return ['letter' => $letter];
+            if ($requiresApproval) {
+                AssignmentLetterApprovalFlow::createRows($letter, $admin);
+            }
+
+            return ['letter' => $letter, 'requiresApproval' => $requiresApproval];
         });
 
         $letter = $result['letter'];
@@ -272,8 +389,80 @@ class AssignmentLetterController extends Controller
 
         AssignmentLetterNotifier::issued($letter);
 
-        return redirect()->route('admin.assignment-letters.show', $letter->id)
-            ->with('success', "Surat tugas terbit dengan nomor {$letter->number}. Peserta sudah diberi notifikasi.");
+        if ($result['requiresApproval']) {
+            AssignmentLetterApprovalFlow::start($letter);
+        }
+
+        return redirect()->route('admin.assignment-letters.show', $letter->id)->with('success', "Surat tugas terbit dengan nomor {$letter->number}. Peserta sudah diberi notifikasi"
+            .($result['requiresApproval'] ? '; paraf diminta ke atasan peserta, HRD, dan GA HSE.' : '.'));
+    }
+
+    /** Setelah surat diperbaiki: kotak yang ditolak diminta memutuskan lagi (yang sudah setuju tidak diulang). */
+    public function resubmit($id)
+    {
+        $admin = $this->admin();
+        $letter = $this->findLetter($id, $admin);
+
+        $result = AssignmentLetterApprovalFlow::resubmit($letter, $admin);
+
+        return redirect()->route('admin.assignment-letters.show', $letter->id)->with(
+            isset($result['error']) ? 'error' : 'success',
+            $result['error'] ?? 'Diajukan ulang. Pemberi persetujuan yang menolak sudah diberi notifikasi.'
+        );
+    }
+
+    /** HRD / GA HSE menyetujui dari admin panel. Atasan L3/L2 menyetujui dari portal karyawan. */
+    public function approve(Request $request, $id, $approvalId)
+    {
+        $admin = $this->admin();
+        $letter = $this->findLetter($id, $admin);
+        $approval = $letter->approvals()->findOrFail($approvalId);
+
+        $request->validate(['notes' => 'nullable|string|max:1000']);
+
+        $result = AssignmentLetterApprovalFlow::approve($approval, $admin, $request->input('notes'));
+
+        return redirect()->route('admin.assignment-letters.show', $letter->id)->with(
+            isset($result['error']) ? 'error' : 'success',
+            $result['error'] ?? "Persetujuan {$approval->label} dicatat."
+        );
+    }
+
+    public function reject(Request $request, $id, $approvalId)
+    {
+        $admin = $this->admin();
+        $letter = $this->findLetter($id, $admin);
+        $approval = $letter->approvals()->findOrFail($approvalId);
+
+        $validated = $request->validate(['notes' => 'required|string|max:1000'], [
+            'notes.required' => 'Alasan penolakan wajib diisi supaya pembuat surat tahu apa yang harus diperbaiki.',
+        ]);
+
+        $result = AssignmentLetterApprovalFlow::reject($approval, $admin, $validated['notes']);
+
+        return redirect()->route('admin.assignment-letters.show', $letter->id)->with(
+            isset($result['error']) ? 'error' : 'success',
+            $result['error'] ?? 'Surat ditolak dan dikembalikan ke draft.'
+        );
+    }
+
+    /** Lewati langkah yang macet (atasan berhalangan); kotak parafnya dibiarkan kosong untuk paraf basah. */
+    public function skip(Request $request, $id, $approvalId)
+    {
+        $admin = $this->admin();
+        $letter = $this->findLetter($id, $admin);
+        $approval = $letter->approvals()->findOrFail($approvalId);
+
+        $validated = $request->validate(['notes' => 'required|string|max:1000'], [
+            'notes.required' => 'Alasan melewati persetujuan wajib diisi.',
+        ]);
+
+        $result = AssignmentLetterApprovalFlow::skip($approval, $admin, $validated['notes']);
+
+        return redirect()->route('admin.assignment-letters.show', $letter->id)->with(
+            isset($result['error']) ? 'error' : 'success',
+            $result['error'] ?? "Langkah {$approval->label} dilewati; kotak parafnya kosong untuk paraf basah."
+        );
     }
 
     public function cancel(Request $request, $id)
@@ -310,7 +499,15 @@ class AssignmentLetterController extends Controller
         $admin = $this->admin();
         $source = $this->findLetter($id, $admin)->load(['employees', 'destinations', 'facilities']);
 
-        $copy = DB::transaction(function () use ($source, $admin) {
+        $copy = $this->copyAsDraft($source, $admin);
+
+        return redirect()->route('admin.assignment-letters.edit', $copy->id)
+            ->with('success', 'Salinan dibuat sebagai draft baru. Periksa isinya sebelum diterbitkan.');
+    }
+
+    private function copyAsDraft(AssignmentLetter $source, Employee $admin): AssignmentLetter
+    {
+        return DB::transaction(function () use ($source, $admin) {
             $copy = AssignmentLetter::create($source->only([
                 'company_id', 'city', 'signer_id', 'signer_name', 'signer_position', 'purpose',
                 'departure_date', 'work_start_date', 'return_date', 'notes',
@@ -333,15 +530,12 @@ class AssignmentLetterController extends Controller
 
             return $copy;
         });
-
-        return redirect()->route('admin.assignment-letters.edit', $copy->id)
-            ->with('success', 'Salinan dibuat sebagai draft baru. Periksa isinya sebelum diterbitkan.');
     }
 
     public function print($id)
     {
         $admin = $this->admin();
-        $letter = $this->findLetter($id, $admin)->load(['employees', 'destinations', 'facilities']);
+        $letter = $this->findLetter($id, $admin)->load(['employees', 'destinations', 'facilities', 'approvals.approver:id,full_name', 'approvals.actor:id,full_name']);
 
         return view('assignment-letters.print', [
             'letter' => $letter,
@@ -361,6 +555,10 @@ class AssignmentLetterController extends Controller
 
         if (! $letter->isIssued()) {
             return back()->with('error', 'Surat bertanda tangan hanya bisa diunggah untuk surat yang sudah terbit.');
+        }
+
+        if ($letter->hasOutstandingApprovals()) {
+            return back()->with('error', 'Paraf belum lengkap: masih ada kotak yang menunggu atau ditolak. Selesaikan dulu, atau lewati langkah yang macet, lalu cetak untuk tanda tangan Direktur.');
         }
 
         $request->validate([
@@ -387,7 +585,7 @@ class AssignmentLetterController extends Controller
             AssignmentLetterNotifier::signedUploaded($letter);
         }
 
-        // Kembali ke halaman asal: bisa dari daftar surat (tombol "Unggah TTD") atau dari Detail.
+        // Kembali ke halaman asal: bisa dari daftar surat (tombol "Upload Surat Tugas") atau dari Detail.
         return back()->with('success', $oldPath
             ? "Surat bertanda tangan {$letter->number} diganti."
             : "Surat bertanda tangan {$letter->number} diunggah.");
@@ -443,7 +641,9 @@ class AssignmentLetterController extends Controller
                 $employeeIds,
                 $validated['from'],
                 $validated['to'],
-                isset($validated['exclude']) ? (int) $validated['exclude'] : null
+                isset($validated['exclude'])
+                    ? array_filter([(int) $validated['exclude'], AssignmentLetter::whereKey($validated['exclude'])->value('revises_letter_id')])
+                    : null
             ),
         ]);
     }
@@ -480,6 +680,60 @@ class AssignmentLetterController extends Controller
         $next = AssignmentLetter::formatNumber($lastNumber + 1, now()->startOfMonth()->setYear($year));
 
         return back()->with('success', "Nomor terakhir {$year} diset ke {$lastNumber}. Surat berikutnya akan bernomor {$next}.");
+    }
+
+    /**
+     * Batasan edit surat terbit: nomor memuat bulan dan tahun surat, dan anggaran yang sudah
+     * memakai surat ini menyalin peserta, jadwal, dan jarak darinya.
+     */
+    private function issuedEditProblem(AssignmentLetter $letter, array $data): ?string
+    {
+        $newDate = Carbon::parse($data['letter']['letter_date']);
+
+        if ($newDate->month !== $letter->letter_date->month || $newDate->year !== $letter->letter_date->year) {
+            return 'Bulan dan tahun tanggal surat harus tetap ('.$letter->letter_date->locale('id')->translatedFormat('F Y')
+                .') karena nomor '.$letter->number.' sudah terbit.';
+        }
+
+        // Peserta baru yang atasan L3/L2-nya tak bisa dicari tidak bisa dimintai paraf.
+        if ($letter->approvals()->exists()) {
+            $draftForPlan = new AssignmentLetter(['company_id' => $letter->company_id]);
+            $draftForPlan->setRelation('employees', collect($data['employees'])->map(fn ($row) => new \App\Models\AssignmentLetterEmployee(['employee_id' => $row['employee_id']])));
+
+            if ($message = AssignmentLetterApprovalFlow::problemMessage(AssignmentLetterApprovalFlow::plan($draftForPlan))) {
+                return $message;
+            }
+        }
+
+        $hasBudget = Schema::hasColumn('budget_requests', 'assignment_letter_id')
+            && $letter->budgetRequests()->where('status', '!=', 'rejected')->exists();
+
+        if (! $hasBudget) {
+            return null;
+        }
+
+        $letter->loadMissing(['employees', 'destinations']);
+        $oldIds = $letter->employees->pluck('employee_id')->map(fn ($v) => (int) $v)->sort()->values()->all();
+        $newIds = collect($data['employees'])->pluck('employee_id')->map(fn ($v) => (int) $v)->sort()->values()->all();
+        $datesChanged = collect(['departure_date', 'work_start_date', 'return_date'])
+            ->contains(fn ($field) => $letter->{$field}->toDateString() !== Carbon::parse($data['letter'][$field])->toDateString());
+        $oldKm = (float) $letter->destinations->max('distance_km');
+        $newKm = (float) collect($data['destinations'])->max('distance_km');
+
+        if ($oldIds !== $newIds || $datesChanged || $oldKm !== $newKm) {
+            return 'Peserta, tanggal, dan jarak tidak bisa diubah: sudah ada pengajuan anggaran yang memakai surat ini. '
+                .'Tolak atau lepas anggarannya dulu, atau gunakan "Buat Perbaikan" setelah surat ditandatangani.';
+        }
+
+        return null;
+    }
+
+    private function lockedMessage(AssignmentLetter $letter): string
+    {
+        return match (true) {
+            $letter->isIssued() => 'Surat sudah ada hasil pindai bertanda tangan sehingga final. Untuk koreksi, gunakan "Buat Perbaikan" (nomor baru).',
+            default => 'Surat yang dibatalkan tidak bisa diubah. Salin ke draft baru bila perlu.',
+        };
     }
 
     private function admin(): Employee
@@ -650,6 +904,8 @@ class AssignmentLetterController extends Controller
             'return_date' => 'required|date|after_or_equal:work_start_date',
             'initial_boxes' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:2000',
+            'revises_letter_id' => 'nullable|integer',
+            'revision_reason' => 'nullable|string|max:500',
             'employees' => 'required|array|min:1|max:50',
             'employees.*.employee_id' => 'required|integer|distinct',
             'employees.*.position' => 'nullable|string|max:255',

@@ -17,6 +17,7 @@ use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Services\FcmService;
 use App\Services\LpjExcelExporter;
+use App\Support\AssignmentLetterApprovalFlow;
 use App\Support\LeaveQuota;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -52,14 +53,17 @@ class ApprovalController extends Controller
 
         $tab = $request->query('tab') === 'history' ? 'history' : 'pending';
         $items = $this->pendingFor($employee);
+        $assignmentApprovals = AssignmentLetterApprovalFlow::pendingFor($employee);
 
         return view('employee.approvals.index', [
             'employee' => $employee,
             'tab' => $tab,
             'items' => $items,
-            'pendingCount' => $items->count(),
+            'assignmentApprovals' => $assignmentApprovals,
+            'pendingCount' => $items->count() + $assignmentApprovals->count(),
             'history' => $tab === 'history' ? $this->historyFor($employee) : null,
-            'historyCount' => $this->historyCountFor($employee),
+            'assignmentHistory' => $tab === 'history' ? AssignmentLetterApprovalFlow::historyFor($employee) : collect(),
+            'historyCount' => $this->historyCountFor($employee) + AssignmentLetterApprovalFlow::historyCount($employee),
             'typeLabels' => $this->typeLabels,
         ]);
     }

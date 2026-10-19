@@ -49,6 +49,7 @@
 .ss-option.ss-selected:hover { background: #4f46e5; }
 .ss-option.ss-hidden { display: none; }
 .ss-empty { padding: 16px; text-align: center; font-size: 12px; color: #9ca3af; }
+.ss-empty.ss-hidden { display: none; }
 </style>
 <script>
 function initSearchableSelect(sel) {

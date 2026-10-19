@@ -56,6 +56,10 @@
         table.paraf td { border: 1px solid #000; min-width: 1.5cm; padding: 1px 5px; text-align: center; font-size: 8pt; line-height: 1.15; }
         table.paraf tr.head td { background: #d9d9d9; font-weight: 700; white-space: nowrap; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         table.paraf tr.box td { height: 0.6cm; }
+        /* Kotak berisi tanda tangan digital hasil approval: lebih tinggi supaya ttd terbaca. */
+        table.paraf.digital tr.box td { height: 0.95cm; padding: 1px 3px; vertical-align: middle; }
+        table.paraf img.paraf-img { max-height: 0.85cm; max-width: 2.2cm; display: block; margin: 0 auto; }
+        table.paraf .paraf-name { font-size: 6.5pt; line-height: 1.1; }
         @media screen and (max-width: 840px) {
             .sheet { width: 100%; min-height: 0; margin: 0; padding: 64px 16px 24px; box-shadow: none; }
             .letter-body { padding: 0; font-size: 10.5pt; }
@@ -100,7 +104,7 @@
     @endphp
 
     <main class="sheet">
-        @if($letter->isDraft())
+        @if(! $letter->isIssued() && ! $letter->isCancelled())
             <div class="watermark">DRAFT</div>
         @elseif($letter->isCancelled())
             <div class="watermark">DIBATALKAN</div>
@@ -133,7 +137,7 @@
             <tr><td class="col-label">Alamat</td><td class="col-sep">:</td><td>{{ config('assignment_letters.company_address') }}</td></tr>
         </table>
 
-        <p>Dengan ini memberikan surat tugas kepada karyawan kami :</p>
+        <p>Dengan ini memberikan {{ $letter->revises_letter_id ? 'perbaikan surat tugas '.$letter->revises?->number.' ' : 'surat tugas ' }}kepada karyawan kami :</p>
         <table class="fields">
             @foreach($letter->employees as $i => $row)
                 <tr><td class="col-no">{{ $i + 1 }}.</td><td class="col-label">Nama</td><td class="col-sep">:</td><td>{{ $row->name }}</td></tr>
@@ -182,17 +186,30 @@
             <div>{{ $letter->signer_position }}</div>
         </div>
 
-        @php $boxes = $letter->initialBoxes(); @endphp
+        @php
+            $boxes = $letter->initialBoxCells();
+            $hasDigital = collect($boxes)->contains(fn ($cell) => $cell['approval']?->isApproved());
+        @endphp
         @if($boxes)
-            <table class="paraf">
+            <table class="paraf {{ $hasDigital ? 'digital' : '' }}">
                 <tr class="head">
                     @foreach($boxes as $box)
-                        <td>{{ $box }}</td>
+                        <td>{{ $box['label'] }}</td>
                     @endforeach
                 </tr>
                 <tr class="box">
                     @foreach($boxes as $box)
-                        <td></td>
+                        @php $approval = $box['approval']; @endphp
+                        <td>
+                            {{-- Disetujui: ttd digital pemberi persetujuan (atau namanya bila belum punya ttd). Dilewati atau belum: kosong untuk paraf basah. --}}
+                            @if($approval && $approval->isApproved())
+                                @if($signature = $approval->signatureUrl())
+                                    <img class="paraf-img" src="{{ $signature }}" alt="Paraf {{ $box['label'] }}">
+                                @else
+                                    <span class="paraf-name">{{ $approval->actor?->full_name ?? $approval->approver?->full_name }}</span>
+                                @endif
+                            @endif
+                        </td>
                     @endforeach
                 </tr>
             </table>

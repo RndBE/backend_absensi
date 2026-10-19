@@ -145,24 +145,193 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
             ->assertSessionHasErrors('last_number');
     }
 
-    public function test_issued_letter_is_locked_and_keeps_its_snapshot(): void
+    public function test_issued_letter_without_signed_scan_can_still_be_edited_and_keeps_its_number(): void
+    {
+        $letter = $this->storeDraft();
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.issue', $letter->id));
+        $number = $letter->fresh()->number;
+
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.edit', $letter->id))->assertOk();
+        $this->asRole('hr_admin')
+            ->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['city' => 'Jakarta']))
+            ->assertSessionHas('success');
+
+        $letter->refresh();
+        $this->assertSame('Jakarta', $letter->city);
+        $this->assertSame($number, $letter->number);
+        $this->assertTrue($letter->isIssued());
+        $this->assertSame(1, DB::table('notifications')->where('employee_id', self::PERMANENT)->where('title', 'Surat Tugas Diperbarui')->count());
+
+        // Terbit dua kali tetap tidak mengambil nomor baru; surat terbit tidak bisa dihapus.
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.issue', $letter->id))->assertSessionHas('error');
+        $this->asRole('hr_admin')->delete(route('admin.assignment-letters.destroy', $letter->id))->assertSessionHas('error');
+        $this->assertSame($number, $letter->fresh()->number);
+    }
+
+    public function test_issued_edit_refreshes_the_employee_snapshot_but_signed_scan_locks_the_letter(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $letter = $this->storeDraft();
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.issue', $letter->id));
+
+        DB::table('employees')->where('id', self::PERMANENT)->update(['full_name' => 'Nama Baru']);
+        $this->asRole('hr_admin')->put(route('admin.assignment-letters.update', $letter->id), $this->payload())->assertSessionHas('success');
+        $this->assertSame('Nama Baru', $letter->fresh()->employees->first()->name);
+
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.signed.store', $letter->id), [
+            'signed_file' => \Illuminate\Http\UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
+        ])->assertSessionHas('success');
+
+        // Sudah ditandatangani Direktur: final.
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.edit', $letter->id))->assertSessionHas('error');
+        $this->asRole('hr_admin')
+            ->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['city' => 'Surabaya']))
+            ->assertSessionHas('error');
+        $this->assertSame('Yogyakarta', $letter->fresh()->city);
+
+        // Pindaian dihapus: boleh diubah lagi.
+        $this->asRole('hr_admin')->delete(route('admin.assignment-letters.signed.destroy', $letter->id));
+        $this->asRole('hr_admin')->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['city' => 'Surabaya']))->assertSessionHas('success');
+    }
+
+    public function test_revision_tab_offers_issued_letters_and_prefills_the_form_from_the_chosen_one(): void
+    {
+        $draft = $this->storeDraft();
+        $issued = $this->issue($this->storeDraft(['destinations' => [
+            ['activity' => 'Riset dan update firmware di Bendungan Ciawi', 'address' => 'Jl. Panatraco, Megamendung', 'distance_km' => '590'],
+            ['activity' => 'Tujuan kedua yang akan dibuang', 'address' => 'Bogor', 'distance_km' => '10'],
+        ]]));
+
+        // Tanpa surat dipilih: hanya pemilih, belum ada formulir. Draft tidak ikut di daftar.
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.create', ['tab' => 'revision']))
+            ->assertOk()
+            ->assertSee('Perbaikan Surat Tugas')
+            ->assertSee('Surat Baru')
+            ->assertSee('value="'.$issued->id.'"', false)
+            ->assertDontSee('value="'.$draft->id.'"', false)
+            ->assertDontSee('id="assignmentLetterForm"', false);
+
+        // Surat dipilih: formulir terisi data surat itu, siap diubah sebelum disimpan.
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.create', ['tab' => 'revision', 'source' => $issued->id]))
+            ->assertOk()
+            ->assertSee('id="assignmentLetterForm"', false)
+            ->assertSee('name="revises_letter_id" value="'.$issued->id.'"', false)
+            ->assertSee('Tujuan kedua yang akan dibuang')
+            ->assertSee('Fadel Irsyad')
+            ->assertSee('belum ada hasil pindai')
+            ->assertSee('Perbaikan atas surat tugas '.$issued->number);
+
+        // Surat yang tak ada / bukan surat terbit dialihkan kembali ke pemilih.
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.create', ['tab' => 'revision', 'source' => $draft->id]))
+            ->assertRedirect(route('admin.assignment-letters.create', ['tab' => 'revision']));
+
+        // Hanya yang boleh membuat surat (manage) yang bisa membuka halamannya.
+        $this->asRole('finance_admin')->get(route('admin.assignment-letters.create'))->assertForbidden();
+    }
+
+    public function test_issued_edit_keeps_letter_month_and_blocks_budget_relevant_changes(): void
     {
         $letter = $this->storeDraft();
         $this->asRole('hr_admin')->post(route('admin.assignment-letters.issue', $letter->id));
 
-        DB::table('employees')->where('id', self::PERMANENT)->update(['full_name' => 'Nama Baru', 'employee_code' => '999/X/I/2027']);
+        // Nomor memuat bulan/tahun: tanggal surat tidak boleh pindah bulan.
+        $this->asRole('hr_admin')
+            ->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['letter_date' => '2026-02-05']))
+            ->assertSessionHas('error');
+        $this->asRole('hr_admin')
+            ->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['letter_date' => '2026-01-20']))
+            ->assertSessionHas('success');
+
+        // Anggaran aktif memakai surat ini: peserta, tanggal, dan jarak terkunci; tujuan/fasilitas bebas.
+        DB::table('budget_requests')->insert(['employee_id' => self::PERMANENT, 'title' => 'Dinas', 'status' => 'pending', 'assignment_letter_id' => $letter->id]);
 
         $this->asRole('hr_admin')
-            ->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['city' => 'Jakarta']))
+            ->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['return_date' => '2026-01-12']))
             ->assertSessionHas('error');
-        $this->asRole('hr_admin')->delete(route('admin.assignment-letters.destroy', $letter->id))->assertSessionHas('error');
-        // Terbit dua kali tidak mengambil nomor baru.
-        $this->asRole('hr_admin')->post(route('admin.assignment-letters.issue', $letter->id))->assertSessionHas('error');
+        $this->asRole('hr_admin')
+            ->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['employees' => [['employee_id' => self::PERMANENT, 'position' => '']]]))
+            ->assertSessionHas('error');
+        $this->assertCount(2, $letter->fresh()->employees);
 
-        $letter->refresh();
-        $this->assertSame('Yogyakarta', $letter->city);
-        $this->assertSame('Fadel Irsyad', $letter->employees->first()->name);
-        $this->assertSame('001/ST-ATC/I/2026', $letter->number);
+        $changed = $this->payload();
+        $changed['destinations'][0]['activity'] = 'Riset ulang firmware';
+        $this->asRole('hr_admin')->put(route('admin.assignment-letters.update', $letter->id), $changed)->assertSessionHas('success');
+        $this->assertSame('Riset ulang firmware', $letter->fresh()->destinations->first()->activity);
+    }
+
+    public function test_revision_of_a_signed_letter_gets_the_next_number_and_refers_to_the_old_one(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $old = $this->storeDraft(['destinations' => [
+            ['activity' => 'Riset dan update firmware di Bendungan Ciawi', 'address' => '', 'distance_km' => '590'],
+            ['activity' => 'Tujuan yang akan dibuang', 'address' => '', 'distance_km' => '10'],
+        ]]);
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.issue', $old->id));
+        $second = $this->issue($this->storeDraft()); // nomor 002: "surat terakhir"
+
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.signed.store', $old->id), [
+            'signed_file' => \Illuminate\Http\UploadedFile::fake()->create('scan.pdf', 100, 'application/pdf'),
+        ]);
+
+        // Seperti draft Word: salah satu tujuan dibuang langsung di formulir perbaikan, lalu disimpan.
+        $payload = $this->payload([
+            'destinations' => [['activity' => 'Riset dan update firmware di Bendungan Ciawi', 'address' => '', 'distance_km' => '590']],
+            'revises_letter_id' => $old->id,
+            'revision_reason' => 'Salah tujuan',
+        ]);
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.store'), $payload)->assertSessionHasNoErrors()->assertRedirect();
+        $revision = AssignmentLetter::latest('id')->first();
+
+        $this->assertTrue($revision->isDraft());
+        $this->assertSame($old->id, $revision->revises_letter_id);
+        $this->assertSame('Salah tujuan', $revision->revision_reason);
+        $this->assertCount(2, $revision->employees);
+        $this->assertCount(1, $revision->destinations, 'perubahan isi tersimpan di surat perbaikan');
+        $this->assertCount(2, $old->fresh()->destinations, 'surat lama tidak berubah');
+
+        // Satu perbaikan terbuka per surat.
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.store'), $payload)->assertSessionHas('error');
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.create', ['tab' => 'revision', 'source' => $old->id]))
+            ->assertRedirect(route('admin.assignment-letters.show', $revision->id));
+        $this->assertSame(1, AssignmentLetter::where('revises_letter_id', $old->id)->count());
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.show', $revision->id))->assertSee('Alasan perbaikan:')->assertSee('Salah tujuan');
+
+        // Surat yang diperbaiki harus surat terbit; draft ditolak dan tidak membuat draft baru.
+        $draft = $this->storeDraft();
+        $before = AssignmentLetter::count();
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.store'), $this->payload(['revises_letter_id' => $draft->id]))->assertSessionHas('error');
+        $this->assertSame($before, AssignmentLetter::count());
+
+        // Surat lama dan perbaikannya tumpang tindih tanggal, itu bukan bentrok.
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.show', $revision->id))
+            ->assertOk()
+            ->assertSee($old->fresh()->number)
+            ->assertDontSee('juga tercantum di surat tugas '.$old->fresh()->number);
+
+        $issued = $this->issue($revision);
+        $this->assertSame('003/ST-ATC/I/2026', $issued->number);
+        $this->assertSame($second->number, '002/ST-ATC/I/2026');
+
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.print', $revision->id))
+            ->assertSee('memberikan perbaikan surat tugas 001/ST-ATC/I/2026 kepada karyawan kami');
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.show', $old->id))->assertSee('Diperbaiki oleh surat tugas');
+        $this->assertSame(1, DB::table('notifications')->where('employee_id', self::PERMANENT)->where('title', 'Surat Tugas Perbaikan')->count());
+
+        // Surat lama tidak disentuh.
+        $this->assertTrue($old->fresh()->isIssued());
+        $this->assertTrue($old->fresh()->hasSignedFile());
+    }
+
+    public function test_revision_reason_is_optional(): void
+    {
+        $issued = $this->issue($this->storeDraft());
+
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.store'), $this->payload(['revises_letter_id' => $issued->id]))
+            ->assertSessionHasNoErrors();
+
+        $revision = AssignmentLetter::latest('id')->first();
+        $this->assertSame($issued->id, $revision->revises_letter_id);
+        $this->assertNull($revision->revision_reason);
     }
 
     public function test_issue_refuses_employee_who_became_ineligible(): void
@@ -232,11 +401,11 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
         $upload(UploadedFile::fake()->create('scan.docx', 20))->assertSessionHasErrors('signed_file');
         $upload(UploadedFile::fake()->create('scan.pdf', 200, 'application/pdf'), 'finance_admin')->assertForbidden();
 
-        // Tombol "Unggah TTD" di kolom Aksi daftar surat; setelah unggah kembali ke daftar.
+        // Tombol "Upload Surat Tugas" di kolom Aksi daftar surat; setelah unggah kembali ke daftar.
         $index = route('admin.assignment-letters.index');
         $this->asRole('hr_admin')->get($index)
             ->assertSee(route('admin.assignment-letters.signed.store', $letter->id))
-            ->assertSee('Unggah TTD');
+            ->assertSee('Upload Surat Tugas');
         $this->asRole('finance_admin')->get($index)->assertDontSee(route('admin.assignment-letters.signed.store', $letter->id));
         $this->asRole('hr_admin')->from($index)
             ->post(route('admin.assignment-letters.signed.store', $letter->id), ['signed_file' => UploadedFile::fake()->create('scan.pdf', 200, 'application/pdf')])
@@ -249,9 +418,9 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
         Storage::disk('local')->assertExists($letter->signed_file_path);
 
         $this->asRole('hr_admin')->get($index)
-            ->assertSee('Sudah TTD')
-            ->assertSee('Lihat TTD')
-            ->assertDontSee('Unggah TTD');
+            ->assertSee('Surat sudah diunggah')
+            ->assertSee('Lihat Surat Tugas')
+            ->assertDontSee('Upload Surat Tugas');
         $this->asRole('hr_admin')->get(route('admin.assignment-letters.show', $letter->id))
             ->assertSee($letter->signed_file_name)
             ->assertSee(route('admin.assignment-letters.signed.show', $letter->id));
@@ -274,7 +443,7 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
 
         $this->asRole('hr_admin')->delete(route('admin.assignment-letters.signed.destroy', $letter->id))->assertSessionHas('success');
         $this->assertFalse($letter->fresh()->hasSignedFile());
-        $this->asRole('hr_admin')->get(route('admin.assignment-letters.index'))->assertSee('Belum unggah TTD');
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.index'))->assertSee('Belum diunggah');
     }
 
     public function test_print_numbers_destinations_when_there_are_several(): void
@@ -386,9 +555,9 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
             ['id' => 11, 'company_id' => 1, 'department_id' => 1, 'full_name' => 'Manager Software', 'job_level' => 2, 'employment_status' => 'permanent', 'role' => 'employee', 'is_active' => true],
             ['id' => 12, 'company_id' => 1, 'department_id' => 2, 'full_name' => 'Manager Hardware', 'job_level' => 2, 'employment_status' => 'permanent', 'role' => 'employee', 'is_active' => true],
         ]);
-        // Fadel (L4 Software): rantai approval anggaran lengkap L3 → L2 → Direktur.
+        // Fadel (L4 Software): rantai approval cuti lengkap L3 → L2 → Direktur.
         foreach ([10, 11, self::DIRECTOR] as $step => $approverId) {
-            DB::table('employee_approvers')->insert(['employee_id' => self::PERMANENT, 'request_type' => 'budget', 'step_order' => $step + 1, 'approver_id' => $approverId]);
+            DB::table('employee_approvers')->insert(['employee_id' => self::PERMANENT, 'request_type' => 'leave', 'step_order' => $step + 1, 'approver_id' => $approverId]);
         }
         // Prastowo (L4 Hardware): tanpa rantai, pakai atasan langsung (manager_id) sebagai cadangan.
         DB::table('employees')->where('id', self::CONTRACT)->update(['manager_id' => 12]);
@@ -399,8 +568,8 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
 
         // Peserta level 3 hanya butuh level 2; peserta level 2 tidak butuh atasan.
         DB::table('employee_approvers')->insert([
-            ['employee_id' => 10, 'request_type' => 'budget', 'step_order' => 1, 'approver_id' => 11],
-            ['employee_id' => 11, 'request_type' => 'budget', 'step_order' => 1, 'approver_id' => self::DIRECTOR],
+            ['employee_id' => 10, 'request_type' => 'leave', 'step_order' => 1, 'approver_id' => 11],
+            ['employee_id' => 11, 'request_type' => 'leave', 'step_order' => 1, 'approver_id' => self::DIRECTOR],
         ]);
         DB::table('employees')->whereIn('id', [10, 11])->update(['employment_status' => 'permanent']);
         $leaders = $this->storeDraft(['employees' => [['employee_id' => 10, 'position' => ''], ['employee_id' => 11, 'position' => '']]]);

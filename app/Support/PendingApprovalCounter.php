@@ -36,7 +36,7 @@ class PendingApprovalCounter
             return 0;
         }
 
-        $total = 0;
+        $total = AssignmentLetterApprovalFlow::pendingFor($approver)->count();
 
         foreach (self::REQUEST_TABLES as $requestType => $tableName) {
             if (! Schema::hasTable($tableName)) {

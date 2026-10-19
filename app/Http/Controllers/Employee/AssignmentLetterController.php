@@ -40,7 +40,7 @@ class AssignmentLetterController extends Controller
         $employee = $request->attributes->get('employee');
 
         return AssignmentLetter::where('company_id', $employee->company_id)
-            ->where('status', '!=', AssignmentLetter::STATUS_DRAFT)
+            ->whereIn('status', AssignmentLetter::PUBLISHED_STATUSES)
             ->whereHas('employees', fn ($q) => $q->where('employee_id', $employee->id))
             ->findOrFail($id);
     }

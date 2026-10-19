@@ -43,6 +43,8 @@ return [
             'assignment_letters.view' => 'Lihat dan cetak surat tugas',
             'assignment_letters.manage' => 'Buat dan ubah draft surat tugas, unggah surat bertanda tangan',
             'assignment_letters.issue' => 'Terbitkan dan batalkan surat tugas, atur nomor terakhir',
+            'assignment_letters.approve_hrd' => 'Setujui surat tugas sebagai HRD (tanda tangan digital di kolom paraf HRD)',
+            'assignment_letters.approve_hse' => 'Setujui surat tugas sebagai GA HSE (tanda tangan digital di kolom paraf GA HSE)',
             'assignment_facilities.manage' => 'Kelola kendaraan & HT',
         ],
         'Anggaran & LHP' => [
@@ -111,6 +113,7 @@ return [
             'kpi.cross.master.manage', 'kpi.cross.fill', 'kpi.processing.manage',
             'kpi.calibration.manage', 'kpi.followup.manage',
             'assignment_letters.view', 'assignment_letters.manage', 'assignment_letters.issue', 'assignment_facilities.manage',
+            'assignment_letters.approve_hrd',
         ],
         'payroll_admin' => [
             'dashboard.view',
@@ -141,6 +144,7 @@ return [
             'leaves.view', 'leaves.create', 'leaves.delete', 'leave.settings.manage',
             'approvals.view', 'approvals.action', 'approvals.rules.manage',
             'assignment_letters.view', 'assignment_letters.manage', 'assignment_letters.issue', 'assignment_facilities.manage',
+            'assignment_letters.approve_hrd', 'assignment_letters.approve_hse',
             'budget.view', 'budget.manage',
             'travel.reports.view', 'travel.reports.manage', 'travel.settings.manage',
             'payroll.master.view', 'payroll.master.manage',
@@ -229,6 +233,10 @@ return [
         'admin.assignment-letters.show' => 'assignment_letters.view',
         'admin.assignment-letters.print' => 'assignment_letters.view',
         'admin.assignment-letters.signed.show' => 'assignment_letters.view',
+        // Approve/tolak dicek per langkah (HRD/GA HSE) di controller; di sini cukup bisa membuka surat.
+        'admin.assignment-letters.approve' => 'assignment_letters.view',
+        'admin.assignment-letters.reject' => 'assignment_letters.view',
+        'admin.assignment-letters.skip' => 'assignment_letters.issue',
         'admin.assignment-letters.issue' => 'assignment_letters.issue',
         'admin.assignment-letters.cancel' => 'assignment_letters.issue',
         'admin.assignment-letters.numbering' => 'assignment_letters.issue',

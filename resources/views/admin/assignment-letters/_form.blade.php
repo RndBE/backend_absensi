@@ -7,11 +7,28 @@
     $vehicleOptions = $vehicles->map(fn ($v) => ['id' => $v->id, 'label' => $v->letterLabel()])->values();
     $deviceOptions = $devices->map(fn ($d) => ['id' => $d->id, 'label' => $d->letterLabel()])->values();
     $fixedBoxes = config('assignment_letters.fixed_initial_boxes', []);
+    $approvalRequired = \App\Support\AssignmentLetterApprovalFlow::required();
 @endphp
 
 <form method="POST" action="{{ $action }}" id="assignmentLetterForm">
     @csrf
     @if($method !== 'POST') @method($method) @endif
+
+    {{-- Surat perbaikan: formulir ini berisi data surat lama; yang disimpan menjadi draft baru yang menaut ke surat itu. --}}
+    @if(! empty($revisesLetter))
+        <input type="hidden" name="revises_letter_id" value="{{ $revisesLetter->id }}">
+        <div class="{{ $card }} !border-indigo-200 !bg-indigo-50/40">
+            <h3 class="{{ $heading }}"><span class="material-symbols-outlined text-[16px] text-indigo-500">edit_note</span> Perbaikan atas surat tugas {{ $revisesLetter->number }}</h3>
+            <p class="text-[12.5px] text-gray-600 mb-3">
+                Data di bawah disalin dari surat {{ $revisesLetter->number }}. Ubah yang perlu diperbaiki, lalu simpan sebagai draft;
+                nomor baru keluar saat diterbitkan dan cetakannya berbunyi "memberikan perbaikan surat tugas {{ $revisesLetter->number }}".
+            </p>
+            <label class="{{ $label }}">Alasan perbaikan <span class="text-gray-400 font-normal">(opsional)</span></label>
+            <input type="text" name="revision_reason" maxlength="500" value="{{ old('revision_reason') }}" class="{{ $input }}"
+                   placeholder="Mis. salah tujuan, tambah peserta, jadwal berubah">
+            <p class="text-[11px] text-gray-400 mt-1">Catatan internal di halaman detail surat perbaikan, supaya kelak jelas kenapa surat diganti. Tidak tercetak di surat.</p>
+        </div>
+    @endif
 
     {{-- 1. Informasi surat --}}
     <div class="{{ $card }}">
@@ -155,11 +172,16 @@
         <h3 class="{{ $heading }}"><span class="material-symbols-outlined text-[16px] text-indigo-500">draw</span> Kolom Paraf & Catatan</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label class="{{ $label }}">Kolom Paraf (pisahkan dengan koma)</label>
+                <label class="{{ $label }}">{{ $approvalRequired ? 'Kolom Paraf Tambahan (pisahkan dengan koma)' : 'Kolom Paraf (pisahkan dengan koma)' }}</label>
                 <input type="text" name="initial_boxes" id="initial_boxes" maxlength="500" class="{{ $input }}"
                        value="{{ old('initial_boxes', $letter->initial_boxes ? implode(', ', $letter->initial_boxes) : '') }}">
-                <p class="text-[11px] text-gray-400 mt-1">Kosongkan untuk otomatis: <span id="initialBoxesAuto" class="font-semibold text-gray-600"></span></p>
-                <p class="text-[11px] text-gray-400">Otomatis = atasan level 3 lalu level 2 dari tiap peserta (menurut rantai approval anggaran), kemudian HRD dan GA HSE.</p>
+                @if($approvalRequired)
+                    <p class="text-[11px] text-gray-400 mt-1">Kolom otomatis, diisi tanda tangan digital lewat persetujuan: <span id="initialBoxesAuto" class="font-semibold text-gray-600"></span></p>
+                    <p class="text-[11px] text-gray-400">Otomatis = atasan level 3 lalu level 2 tiap peserta (rantai approval cuti), kemudian HRD dan GA HSE. Isi kolom ini hanya untuk kolom paraf basah tambahan; biasanya kosong.</p>
+                @else
+                    <p class="text-[11px] text-gray-400 mt-1">Kosongkan untuk otomatis: <span id="initialBoxesAuto" class="font-semibold text-gray-600"></span></p>
+                    <p class="text-[11px] text-gray-400">Otomatis = atasan level 3 lalu level 2 dari tiap peserta (menurut rantai approval cuti), kemudian HRD dan GA HSE.</p>
+                @endif
             </div>
             <div>
                 <label class="{{ $label }}">Catatan Internal</label>
@@ -638,7 +660,7 @@
         }));
         const boxes = labels.concat(FIXED_BOXES).join(', ');
         document.getElementById('initialBoxesAuto').textContent = boxes;
-        document.getElementById('initial_boxes').placeholder = boxes;
+        if (!{{ $approvalRequired ? 'true' : 'false' }}) document.getElementById('initial_boxes').placeholder = boxes;
     }
 
     // ---------- Isi awal ----------

@@ -22,7 +22,7 @@
     </a>
     <div class="flex flex-wrap items-center gap-2">
         <a href="{{ route('admin.assignment-letters.print', $letter->id) }}" target="_blank" class="{{ $btn }} text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100">
-            <span class="material-symbols-outlined text-[16px]">print</span> {{ $letter->isDraft() ? 'Pratinjau Cetak' : 'Cetak' }}
+            <span class="material-symbols-outlined text-[16px]">print</span> {{ $letter->number === null ? 'Pratinjau Cetak' : 'Cetak' }}
         </a>
         @if($letter->isDraft())
             @if($canManage)
@@ -38,7 +38,7 @@
             @endif
             @if($canIssue)
                 <form method="POST" action="{{ route('admin.assignment-letters.issue', $letter->id) }}"
-                      data-confirm="Surat akan terbit dengan nomor {{ $estimatedNumber }} dan tidak bisa diubah lagi. Terbitkan sekarang?" data-confirm-variant="primary" data-confirm-text="Terbitkan">
+                      data-confirm="Surat akan terbit dengan nomor {{ $estimatedNumber }} dan peserta diberi tahu{{ $approvalRequired ? '; paraf diminta ke atasan peserta, HRD, dan GA HSE' : '' }}. Isi surat masih bisa diubah sampai pindaian bertanda tangan Direktur diunggah. Terbitkan sekarang?" data-confirm-variant="primary" data-confirm-text="Terbitkan">
                     @csrf
                     <button type="submit" class="{{ $btn }} text-white bg-gradient-to-br from-indigo-600 to-indigo-400 shadow-sm hover:-translate-y-0.5">
                         <span class="material-symbols-outlined text-[16px]">verified</span> Terbitkan
@@ -46,6 +46,26 @@
                 </form>
             @endif
         @else
+            @if($canManage && $letter->isIssued() && $approvalState === 'rejected' && ! $letter->hasSignedFile())
+                <form method="POST" action="{{ route('admin.assignment-letters.resubmit', $letter->id) }}"
+                      data-confirm="Ajukan ulang? Yang menolak diminta memutuskan lagi; paraf lain yang sudah masuk tidak diulang." data-confirm-variant="primary" data-confirm-text="Ajukan Ulang">
+                    @csrf
+                    <button type="submit" class="{{ $btn }} text-white bg-gradient-to-br from-indigo-600 to-indigo-400 shadow-sm hover:-translate-y-0.5">
+                        <span class="material-symbols-outlined text-[16px]">send</span> Ajukan Ulang
+                    </button>
+                </form>
+            @endif
+            @if($canManage && $letter->isIssued() && ! $letter->hasSignedFile())
+                <a href="{{ route('admin.assignment-letters.edit', $letter->id) }}" class="{{ $btn }} text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100">
+                    <span class="material-symbols-outlined text-[16px]">edit</span> Ubah
+                </a>
+            @endif
+            @if($canManage && $letter->isIssued())
+                <a href="{{ route('admin.assignment-letters.create', ['tab' => 'revision', 'source' => $letter->id]) }}"
+                   class="{{ $btn }} {{ $letter->hasSignedFile() ? 'text-white bg-gradient-to-br from-indigo-600 to-indigo-400 shadow-sm hover:-translate-y-0.5' : 'text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100' }}">
+                    <span class="material-symbols-outlined text-[16px]">edit_note</span> Buat Perbaikan
+                </a>
+            @endif
             @if($canManage)
                 <form method="POST" action="{{ route('admin.assignment-letters.duplicate', $letter->id) }}"
                       data-confirm="Buat draft baru berisi salinan surat ini?" data-confirm-variant="primary">
@@ -81,13 +101,43 @@
             @endif
             <div class="text-[13px] text-gray-500 mt-0.5">{{ $letter->city }}, {{ \App\Models\AssignmentLetter::formatDate($letter->letter_date) }}</div>
         </div>
-        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border {{ $statusColors[$letter->status] ?? '' }}">{{ $letter->statusLabel() }}</span>
+        <div class="flex flex-col items-end gap-1">
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border {{ $statusColors[$letter->status] ?? '' }}">{{ $letter->statusLabel() }}</span>
+            @if($letter->isIssued() && $approvalState !== 'none')
+                @php
+                    $done = $letter->approvals->filter->isDone()->count();
+                    $paraf = match($approvalState) {
+                        'complete' => ['Paraf lengkap', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+                        'rejected' => ['Paraf ditolak', 'bg-red-50 text-red-700 border-red-200'],
+                        default => ["Menunggu paraf {$done}/".$letter->approvals->count(), 'bg-sky-50 text-sky-700 border-sky-200'],
+                    };
+                @endphp
+                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border {{ $paraf[1] }}">{{ $paraf[0] }}</span>
+            @endif
+        </div>
     </div>
     <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">
         <div><span class="text-gray-400">Penanda tangan:</span> <strong>{{ $letter->signer_name }}</strong> ({{ $letter->signer_position }})</div>
         <div><span class="text-gray-400">Jadwal:</span> {{ $letter->departure_date->format('d M Y') }} – {{ $letter->return_date->format('d M Y') }} ({{ $letter->workingDays() }} hari kerja)</div>
         <div><span class="text-gray-400">Peserta:</span> {{ $letter->employees->count() }} orang</div>
     </div>
+    @if($letter->revises)
+        <div class="mt-4 px-4 py-3 rounded-lg bg-indigo-50 border border-indigo-200 text-[13px] text-indigo-800">
+            Surat perbaikan atas surat tugas
+            <a href="{{ route('admin.assignment-letters.show', $letter->revises->id) }}" class="font-semibold underline">{{ $letter->revises->number }}</a>.
+            Cetakannya memuat kalimat "memberikan perbaikan surat tugas {{ $letter->revises->number }}".
+            @if($letter->revision_reason)
+                <div class="mt-1"><span class="text-indigo-500">Alasan perbaikan:</span> {{ $letter->revision_reason }}</div>
+            @endif
+        </div>
+    @endif
+    @foreach($letter->revisions as $revision)
+        <div class="mt-4 px-4 py-3 rounded-lg bg-indigo-50 border border-indigo-200 text-[13px] text-indigo-800">
+            Diperbaiki oleh surat tugas
+            <a href="{{ route('admin.assignment-letters.show', $revision->id) }}" class="font-semibold underline">{{ $revision->number ?? 'draft perbaikan' }}</a>
+            ({{ $revision->statusLabel() }}).
+        </div>
+    @endforeach
     @if($letter->isCancelled())
         <div class="mt-4 px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 text-[13px] text-gray-700">
             Dibatalkan {{ $letter->cancelled_at?->format('d M Y H:i') }} oleh {{ $letter->canceller?->full_name ?? '-' }}.
@@ -96,8 +146,112 @@
     @endif
 </div>
 
+{{-- Persetujuan: pratinjau susunan pemberi paraf saat draft, lalu status tiap kotak paraf setelah surat terbit. --}}
+@if($letter->approvals->isNotEmpty() || ($approvalRequired && $approvalPlan))
+<div class="{{ $card }}" id="paraf-digital">
+    <h3 class="{{ $heading }}"><span class="material-symbols-outlined text-[16px] text-indigo-500">approval</span> Paraf Digital</h3>
+
+    @if($approvalState === 'rejected')
+        <div class="mb-3 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-[13px] text-red-700">
+            Ada paraf yang ditolak {{ $letter->rejected_at?->format('d M Y H:i') }} oleh {{ $letter->rejecter?->full_name ?? '-' }}.
+            <div class="mt-1"><span class="font-semibold">Alasan:</span> {{ $letter->rejection_reason }}</div>
+            <div class="mt-1 text-[12px] text-red-600">Ubah suratnya, lalu klik Ajukan Ulang. Yang sudah menyetujui tidak diulang.</div>
+        </div>
+    @elseif($approvalState === 'complete' && ! $letter->hasSignedFile())
+        <div class="mb-3 px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-200 text-[13px] text-emerald-700">
+            Semua paraf sudah terisi. Cetak surat untuk tanda tangan basah Direktur, lalu unggah hasil pindainya.
+        </div>
+    @endif
+
+    @if($letter->isDraft() && $approvalPlan)
+        <p class="text-[12.5px] text-gray-500 mb-2">Begitu surat diterbitkan, paraf diminta ke (atasan paralel dulu, lalu HRD, lalu GA HSE; Direktur tanda tangan basah di kertas):</p>
+        <div class="flex flex-wrap gap-2">
+            @foreach($approvalPlan['rows'] as $row)
+                <span class="px-2.5 py-1 rounded-md border border-gray-300 text-[12px] font-semibold text-gray-700">
+                    {{ $row['label'] }}@if($row['approver_id']) <span class="font-normal text-gray-400">· {{ \App\Models\Employee::find($row['approver_id'])?->full_name }}</span>@endif
+                </span>
+            @endforeach
+        </div>
+        @if($approvalPlan['problems'])
+            <div class="mt-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-[12.5px] text-amber-800">
+                Belum bisa diterbitkan: atasan level 3/2 belum terdaftar di rantai approval cuti untuk
+                <strong>{{ implode(', ', $approvalPlan['problems']) }}</strong>. Lengkapi di menu Karyawan → Approver, atau keluarkan dari surat.
+            </div>
+        @endif
+    @else
+        <div class="overflow-x-auto">
+            <table class="w-full text-[13px]">
+                <thead>
+                    <tr class="text-left text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
+                        <th class="py-2 pr-3">Kotak paraf</th><th class="py-2 pr-3">Pemberi persetujuan</th><th class="py-2 pr-3">Status</th><th class="py-2">Catatan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach($letter->approvals as $approval)
+                    @php
+                        $tone = match($approval->status) {
+                            'approved' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                            'rejected' => 'bg-red-50 text-red-700 border-red-200',
+                            'skipped' => 'bg-amber-50 text-amber-700 border-amber-200',
+                            default => 'bg-gray-100 text-gray-600 border-gray-200',
+                        };
+                        $mine = $actionableApprovals->firstWhere('id', $approval->id);
+                    @endphp
+                    <tr class="border-b border-gray-50 align-top">
+                        <td class="py-2 pr-3 font-semibold text-gray-800">{{ $approval->label }}</td>
+                        <td class="py-2 pr-3 text-gray-600">
+                            {{ $approval->actor?->full_name ?? $approval->approver?->full_name ?? 'Pemegang izin '.$approval->label }}
+                            @if($approval->acted_at)<div class="text-[11px] text-gray-400">{{ $approval->acted_at->format('d M Y H:i') }}</div>@endif
+                        </td>
+                        <td class="py-2 pr-3"><span class="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border {{ $tone }}">{{ $approval->statusLabel() }}</span></td>
+                        <td class="py-2 text-gray-500">{{ $approval->notes }}</td>
+                    </tr>
+                    @if($mine)
+                        <tr class="border-b border-gray-50">
+                            <td colspan="4" class="py-3">
+                                <form method="POST" action="{{ route('admin.assignment-letters.approve', [$letter->id, $approval->id]) }}" class="flex flex-col sm:flex-row gap-2 sm:items-start">
+                                    @csrf
+                                    <input type="text" name="notes" maxlength="1000" placeholder="Catatan (opsional saat menyetujui, wajib saat menolak)"
+                                           class="flex-1 px-3 py-2 text-[13px] border border-gray-200 rounded-lg outline-none focus:border-indigo-300">
+                                    <button type="submit" formaction="{{ route('admin.assignment-letters.reject', [$letter->id, $approval->id]) }}" class="{{ $btn }} text-red-600 bg-red-50 border border-red-200 hover:bg-red-100">
+                                        <span class="material-symbols-outlined text-[16px]">close</span> Tolak
+                                    </button>
+                                    <button type="submit" class="{{ $btn }} text-white bg-emerald-600 hover:bg-emerald-700">
+                                        <span class="material-symbols-outlined text-[16px]">check</span> Setujui sebagai {{ $approval->label }}
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    @endif
+                    @if($canIssue && $letter->isIssued() && ! $letter->hasSignedFile() && $approval->isPending())
+                        <tr class="border-b border-gray-50">
+                            <td colspan="4" class="pb-3">
+                                <details class="text-[12px]">
+                                    <summary class="cursor-pointer text-gray-400 hover:text-gray-600">Langkah ini macet? Lewati {{ $approval->label }}</summary>
+                                    <form method="POST" action="{{ route('admin.assignment-letters.skip', [$letter->id, $approval->id]) }}" class="mt-2 flex flex-col sm:flex-row gap-2"
+                                          data-confirm="Lewati persetujuan {{ $approval->label }}? Kotak parafnya dicetak kosong untuk paraf basah.">
+                                        @csrf
+                                        <input type="text" name="notes" required maxlength="1000" placeholder="Alasan melewati (wajib, tercatat)"
+                                               class="flex-1 px-3 py-2 text-[13px] border border-gray-200 rounded-lg outline-none focus:border-indigo-300">
+                                        <button type="submit" class="{{ $btn }} text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100">Lewati</button>
+                                    </form>
+                                </details>
+                            </td>
+                        </tr>
+                    @endif
+                @endforeach
+                </tbody>
+            </table>
+        </div>
+        @if($letter->hasOutstandingApprovals())
+            <p class="mt-2 text-[11.5px] text-gray-400">Paraf diminta sejak {{ $letter->submitted_at?->format('d M Y H:i') }} (diterbitkan oleh {{ $letter->submitter?->full_name ?? '-' }}). Atasan memutuskan lewat portal karyawan (menu Persetujuan Tim); HRD dan GA HSE dari halaman ini.</p>
+        @endif
+    @endif
+</div>
+@endif
+
 {{-- Hasil pindai surat yang sudah ditandatangani & diparaf basah; peserta melihatnya dari halaman cetak. --}}
-@if(! $letter->isDraft())
+@if($letter->isIssued() || $letter->isCancelled())
 <div class="{{ $card }}">
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
@@ -109,7 +263,7 @@
                 </div>
                 <div class="text-[11.5px] text-gray-400 mt-0.5">Diunggah {{ $letter->signed_uploaded_at?->format('d M Y H:i') }} oleh {{ $letter->signedUploader?->full_name ?? '-' }}</div>
             @elseif($letter->isIssued())
-                <p class="text-[12.5px] text-gray-500">Belum diunggah. Cetak surat, minta tanda tangan dan paraf basah, lalu unggah hasil pindainya di sini. Peserta bisa melihatnya dari halaman cetak surat.</p>
+                <p class="text-[12.5px] text-gray-500">Belum diunggah. Cetak surat, minta tanda tangan dan paraf basah, lalu unggah hasil pindainya di sini. Peserta bisa melihatnya dari halaman cetak surat. Pindaian baru bisa diunggah setelah semua paraf digital terisi. Selama belum diunggah, isi surat masih bisa diubah (nomor tetap, paraf yang sudah masuk tidak diulang); setelah diunggah surat final dan koreksinya lewat "Buat Perbaikan".</p>
             @else
                 <p class="text-[12.5px] text-gray-500">Tidak ada surat bertanda tangan yang diunggah.</p>
             @endif
@@ -117,7 +271,7 @@
         @if($letter->hasSignedFile())
             <div class="flex flex-wrap items-center gap-2">
                 <a href="{{ route('admin.assignment-letters.signed.show', $letter->id) }}" target="_blank" class="{{ $btn }} text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100">
-                    <span class="material-symbols-outlined text-[16px]">visibility</span> Lihat
+                    <span class="material-symbols-outlined text-[16px]">visibility</span> Lihat Surat Tugas
                 </a>
                 @if($canManage && $letter->isIssued())
                     <form method="POST" action="{{ route('admin.assignment-letters.signed.destroy', $letter->id) }}" data-confirm="Hapus file surat bertanda tangan ini?">
@@ -138,7 +292,7 @@
             <input type="file" name="signed_file" accept=".pdf,.jpg,.jpeg,.png" required
                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-[13px]">
             <button type="submit" class="{{ $btn }} text-white bg-indigo-600 hover:bg-indigo-700 shrink-0 justify-center">
-                <span class="material-symbols-outlined text-[16px]">upload</span> {{ $letter->hasSignedFile() ? 'Ganti File' : 'Unggah' }}
+                <span class="material-symbols-outlined text-[16px]">upload</span> {{ $letter->hasSignedFile() ? 'Ganti File' : 'Upload Surat Tugas' }}
             </button>
         </form>
         <p class="text-[11px] text-gray-400 mt-2">PDF, JPG, atau PNG, maksimal 10 MB.</p>
@@ -292,8 +446,8 @@
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
         <h3 class="text-[14px] font-bold text-gray-800 flex items-center gap-1.5 mb-3"><span class="material-symbols-outlined text-[16px] text-indigo-500">draw</span> Kolom Paraf</h3>
         <div class="flex flex-wrap gap-2">
-            @foreach($letter->initialBoxes() as $box)
-                <span class="px-2.5 py-1 rounded-md border border-gray-300 text-[12px] font-semibold text-gray-700">{{ $box }}</span>
+            @foreach($letter->initialBoxCells() as $box)
+                <span class="px-2.5 py-1 rounded-md border border-gray-300 text-[12px] font-semibold text-gray-700">{{ $box['label'] }}</span>
             @endforeach
         </div>
         @if($letter->notes)
@@ -328,7 +482,7 @@
             </div>
             <form method="POST" action="{{ route('admin.assignment-letters.cancel', $letter->id) }}" class="p-5 space-y-4">
                 @csrf
-                <p class="text-[12.5px] text-gray-600">Nomor surat ini tidak akan dipakai ulang. Untuk memperbaiki isi surat, batalkan lalu gunakan "Salin ke Draft Baru".</p>
+                <p class="text-[12.5px] text-gray-600">Nomor surat ini tidak akan dipakai ulang. Untuk memperbaiki isi surat yang sudah ditandatangani, gunakan "Buat Perbaikan" (nomor baru) tanpa membatalkan; batalkan hanya bila surat memang tidak berlaku.</p>
                 @php $activeBudgets = $budgets->where('status', '!=', 'rejected'); @endphp
                 @if($activeBudgets->isNotEmpty())
                     <div class="px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-800">

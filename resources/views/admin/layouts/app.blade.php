@@ -78,7 +78,7 @@
                         ['route' => 'admin.leave-balances.index', 'icon' => 'account_balance_wallet', 'label' => 'Saldo Cuti', 'match' => 'admin.leave-balances.*'],
                     ]],
                     ['label' => 'Surat Tugas', 'icon' => 'assignment', 'key' => 'assignment', 'items' => [
-                        ['route' => 'admin.assignment-letters.index', 'icon' => 'assignment', 'label' => 'Surat Tugas', 'match' => 'admin.assignment-letters.*'],
+                        ['route' => 'admin.assignment-letters.index', 'icon' => 'assignment', 'label' => 'Surat Tugas', 'match' => 'admin.assignment-letters.*', 'badge' => 'assignment'],
                         ['route' => 'admin.assignment-facilities.index', 'icon' => 'directions_car', 'label' => 'Kendaraan & HT', 'match' => 'admin.assignment-facilities.*'],
                     ]],
                     ['label' => 'Anggaran', 'icon' => 'request_quote', 'key' => 'budget', 'items' => [
@@ -143,6 +143,8 @@
                     ]],
                 ];
                 $pendingCount = app(\App\Support\PendingApprovalCounter::class)->countForApprover($currentAdmin);
+                // Surat tugas yang menunggu paraf admin ini (HRD/GA HSE/atasan); 0 bila tak ada.
+                $assignmentAwaiting = $currentAdmin ? \App\Support\AssignmentLetterApprovalFlow::awaitingLetters($currentAdmin)->count() : 0;
             @endphp
 
             @foreach($navGroups as $group)
@@ -169,6 +171,9 @@
                         @if($group['key'] === 'approval' && $pendingCount > 0)
                             <span class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ $pendingCount }}</span>
                         @endif
+                        @if($group['key'] === 'assignment' && $assignmentAwaiting > 0)
+                            <span class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ $assignmentAwaiting }}</span>
+                        @endif
                         <span class="acc-arrow material-symbols-outlined text-[14px]">expand_more</span>
                     </button>
                     <div class="nav-group-items {{ $isGroupActive ? 'open' : '' }}" id="nav-{{ $group['key'] }}">
@@ -178,8 +183,9 @@
                                       {{ request()->routeIs($item['match']) ? 'bg-white/12 text-white before:nav-active-bar' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/90' }}">
                                 <span class="material-symbols-outlined w-5 h-5 flex items-center justify-center shrink-0 text-[18px]">{{ $item['icon'] }}</span>
                                 {{ $item['label'] }}
-                                @if(!empty($item['badge']) && $pendingCount > 0)
-                                    <span class="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ $pendingCount }}</span>
+                                @php $itemBadge = ($item['badge'] ?? null) === 'assignment' ? $assignmentAwaiting : (! empty($item['badge']) ? $pendingCount : 0); @endphp
+                                @if($itemBadge > 0)
+                                    <span class="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{{ $itemBadge }}</span>
                                 @endif
                             </a>
                         @endforeach

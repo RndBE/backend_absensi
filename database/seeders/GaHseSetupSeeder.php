@@ -34,6 +34,7 @@ class GaHseSetupSeeder extends Seeder
         'assignment_letters.view',
         'assignment_letters.manage',
         'assignment_letters.issue',
+        'assignment_letters.approve_hse',
         'assignment_facilities.manage',
     ];
 

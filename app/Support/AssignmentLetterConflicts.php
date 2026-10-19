@@ -31,7 +31,8 @@ class AssignmentLetterConflicts
         $to = $letter->return_date->toDateString();
         $employeeIds = $letter->employees->pluck('employee_id')->all();
         $names = $letter->employees->pluck('name', 'employee_id');
-        $excludeId = $letter->exists ? $letter->id : null;
+        // Surat yang sedang diperbaiki tumpang tindih dengan surat perbaikannya; itu bukan bentrok.
+        $excludeId = array_filter([$letter->exists ? $letter->id : null, $letter->revises_letter_id]) ?: null;
 
         $leaves = self::leaveRows($employeeIds, $from, $to)
             ->map(fn ($leave) => ($names[$leave->employee_id] ?? 'Karyawan')
@@ -51,7 +52,7 @@ class AssignmentLetterConflicts
      * @param  array<int, int>  $employeeIds
      * @return array<int, array<int, string>> employee_id => daftar peringatan
      */
-    public static function byEmployee(int $companyId, array $employeeIds, string $from, string $to, ?int $excludeLetterId = null): array
+    public static function byEmployee(int $companyId, array $employeeIds, string $from, string $to, int|array|null $excludeLetterId = null): array
     {
         $result = [];
 
@@ -83,7 +84,7 @@ class AssignmentLetterConflicts
             ->get(['employee_id', 'start_date', 'end_date', 'status']);
     }
 
-    private static function letterRows(int $companyId, array $employeeIds, string $from, string $to, ?int $excludeLetterId): Collection
+    private static function letterRows(int $companyId, array $employeeIds, string $from, string $to, int|array|null $excludeLetterId): Collection
     {
         if (! $employeeIds) {
             return collect();
@@ -92,7 +93,7 @@ class AssignmentLetterConflicts
         return DB::table('assignment_letter_employees as ale')
             ->join('assignment_letters as al', 'al.id', '=', 'ale.assignment_letter_id')
             ->where('al.company_id', $companyId)
-            ->when($excludeLetterId, fn ($q) => $q->where('al.id', '!=', $excludeLetterId))
+            ->when($excludeLetterId, fn ($q) => $q->whereNotIn('al.id', (array) $excludeLetterId))
             ->where('al.status', '!=', AssignmentLetter::STATUS_CANCELLED)
             ->whereIn('ale.employee_id', $employeeIds)
             ->whereDate('al.departure_date', '<=', $to)
@@ -101,7 +102,7 @@ class AssignmentLetterConflicts
             ->get(['ale.employee_id', 'al.id', 'al.number', 'al.departure_date', 'al.return_date']);
     }
 
-    private static function vehicleConflicts(AssignmentLetter $letter, string $from, string $to, ?int $excludeLetterId): array
+    private static function vehicleConflicts(AssignmentLetter $letter, string $from, string $to, int|array|null $excludeLetterId): array
     {
         $vehicles = $letter->facilities->whereNotNull('vehicle_id')->keyBy('vehicle_id');
         if ($vehicles->isEmpty()) {
@@ -111,7 +112,7 @@ class AssignmentLetterConflicts
         return DB::table('assignment_letter_facilities as alf')
             ->join('assignment_letters as al', 'al.id', '=', 'alf.assignment_letter_id')
             ->where('al.company_id', $letter->company_id)
-            ->when($excludeLetterId, fn ($q) => $q->where('al.id', '!=', $excludeLetterId))
+            ->when($excludeLetterId, fn ($q) => $q->whereNotIn('al.id', (array) $excludeLetterId))
             ->where('al.status', '!=', AssignmentLetter::STATUS_CANCELLED)
             ->whereIn('alf.vehicle_id', $vehicles->keys()->all())
             ->whereDate('al.departure_date', '<=', $to)

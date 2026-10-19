@@ -12,9 +12,11 @@ use Illuminate\Support\Facades\Schema;
  * menandatangani surat.
  *
  * Sumber atasan:
- * 1. Rantai approval anggaran (employee_approvers, request_type 'budget'). Di data PT Arta
- *    rantai inilah yang memuat jenjang lengkap, mis. staf → Leader Production (L3) →
- *    Hardware Manager (L2).
+ * 1. Rantai approval karyawan (employee_approvers, request_type dari config
+ *    assignment_letters.approval_chain_type, bawaan 'leave'). Di data PT Arta rantai inilah yang
+ *    memuat jenjang lengkap, mis. staf → Leader Production (L3) → Hardware Manager (L2).
+ *    Rantai cuti dipilih, bukan rantai anggaran, karena anggaran menambah Finance di ujungnya
+ *    sementara surat tugas tidak diparaf Finance.
  * 2. Bila karyawan belum punya rantai: telusuri manager_id ke atas. Kolom ini sering langsung
  *    menunjuk level 2 dan melewati level 3, makanya hanya jadi cadangan.
  *
@@ -46,7 +48,7 @@ final class AssignmentLetterInitialBoxes
 
         $chains = Schema::hasTable('employee_approvers')
             ? EmployeeApprover::whereIn('employee_id', $employeeIds)
-                ->where('request_type', 'budget')
+                ->where('request_type', config('assignment_letters.approval_chain_type', 'leave'))
                 ->orderBy('step_order')
                 ->get(['employee_id', 'approver_id'])
                 ->groupBy('employee_id')
@@ -86,29 +88,44 @@ final class AssignmentLetterInitialBoxes
     }
 
     /**
-     * Label kolom paraf: semua atasan level 3, lalu level 2 (satu kolom per orang, walau jadi
-     * atasan beberapa peserta), lalu kolom tetap HRD dan GA HSE.
+     * Kolom paraf atasan: semua level 3, lalu level 2 (satu kolom per orang, walau jadi atasan
+     * beberapa peserta). Dua orang di unit yang sama dibedakan dengan namanya.
+     *
+     * @param  array<int, array<int, array{id: int, level: int, label: string, name: string}>>  $superiorsByEmployee
+     * @return array<int, array{id: int, level: int, label: string, name: string}>
+     */
+    public static function slots(array $superiorsByEmployee): array
+    {
+        $superiors = collect($superiorsByEmployee)->flatten(1)->unique('id');
+        $labels = [];
+        $slots = [];
+
+        foreach (self::LEVELS as $level) {
+            foreach ($superiors->where('level', $level) as $superior) {
+                $label = $superior['label'];
+                if (in_array($label, $labels, true)) {
+                    $label .= ' ('.$superior['name'].')';
+                }
+                $labels[] = $label;
+                $slots[] = ['label' => $label] + $superior;
+            }
+        }
+
+        return $slots;
+    }
+
+    /**
+     * Label kolom paraf: kolom atasan dari slots(), lalu kolom tetap HRD dan GA HSE.
      *
      * @param  array<int, array<int, array{id: int, level: int, label: string, name: string}>>  $superiorsByEmployee
      * @return array<int, string>
      */
     public static function boxes(array $superiorsByEmployee): array
     {
-        $superiors = collect($superiorsByEmployee)->flatten(1)->unique('id');
-        $labels = [];
-
-        foreach (self::LEVELS as $level) {
-            foreach ($superiors->where('level', $level) as $superior) {
-                $label = $superior['label'];
-                // Dua orang berbeda di unit yang sama: bedakan dengan namanya.
-                if (in_array($label, $labels, true)) {
-                    $label .= ' ('.$superior['name'].')';
-                }
-                $labels[] = $label;
-            }
-        }
-
-        return array_merge($labels, config('assignment_letters.fixed_initial_boxes', ['HRD', 'GA HSE']));
+        return array_merge(
+            array_column(self::slots($superiorsByEmployee), 'label'),
+            config('assignment_letters.fixed_initial_boxes', ['HRD', 'GA HSE'])
+        );
     }
 
     /** "LV 3 PRODUCTION": jenjang + unit kerja atasan, seperti di surat Word. */
