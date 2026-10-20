@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Services\WorkAnniversaryService;
+use App\Support\HrContact;
 use Illuminate\Http\Request;
 
 class AttendanceSettingController extends Controller
@@ -34,6 +35,9 @@ class AttendanceSettingController extends Controller
         'anniversary_greeting_enabled' => '1',
         'anniversary_milestones' => WorkAnniversaryService::DEFAULT_MILESTONES,
         'anniversary_greeting_time' => '08:00',
+        // Kontak bantuan di halaman login mobile; kosong = memakai cadangan (lihat HrContact).
+        HrContact::KEY_WHATSAPP => '',
+        HrContact::KEY_EMAIL => '',
     ];
 
     public function index()
@@ -48,6 +52,11 @@ class AttendanceSettingController extends Controller
 
     public function update(Request $request)
     {
+        // Dipangkas dulu supaya spasi di tepi (mis. hasil tempel) tidak membuat validasi email gagal.
+        if ($request->has(HrContact::KEY_EMAIL)) {
+            $request->merge([HrContact::KEY_EMAIL => trim((string) $request->input(HrContact::KEY_EMAIL))]);
+        }
+
         $request->validate([
             'office_latitude' => 'required|numeric',
             'office_longitude' => 'required|numeric',
@@ -63,6 +72,13 @@ class AttendanceSettingController extends Controller
             // Daftar kelipatan tahun: angka dipisah koma, atau "*" untuk setiap tahun.
             'anniversary_milestones' => ['nullable', 'string', 'max:100', 'regex:/^(\*|\d{1,2}(\s*,\s*\d{1,2})*)$/'],
             'anniversary_greeting_time' => 'nullable|date_format:H:i',
+            // WhatsApp boleh ditulis 08…, +62…, atau dengan spasi/strip; disimpan sebagai 62….
+            HrContact::KEY_WHATSAPP => ['nullable', 'string', 'max:30', function ($attribute, $value, $fail) {
+                if (filled($value) && HrContact::normalizeWhatsapp($value) === null) {
+                    $fail('Nomor WhatsApp belum benar. Contoh: 0812 3456 7890 atau +62 812 3456 7890.');
+                }
+            }],
+            HrContact::KEY_EMAIL => 'nullable|email|max:255',
         ], [
             'anniversary_milestones.regex' => 'Kelipatan tahun harus berupa angka dipisah koma (contoh: 1,3,5,10) atau * untuk setiap tahun.',
         ]);
@@ -91,6 +107,17 @@ class AttendanceSettingController extends Controller
             if ($request->has($key)) {
                 Setting::setValue($key, $request->input($key) ?? '');
             }
+        }
+
+        // Kontak bantuan login: nomor disimpan dalam format WhatsApp (62…) supaya konsisten.
+        if ($request->has(HrContact::KEY_WHATSAPP)) {
+            Setting::setValue(
+                HrContact::KEY_WHATSAPP,
+                HrContact::normalizeWhatsapp($request->input(HrContact::KEY_WHATSAPP)) ?? ''
+            );
+        }
+        if ($request->has(HrContact::KEY_EMAIL)) {
+            Setting::setValue(HrContact::KEY_EMAIL, trim((string) $request->input(HrContact::KEY_EMAIL)));
         }
 
         // Migrate old key

@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\DailyReportPrefillController;
 use App\Http\Controllers\Api\DailyTokenController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\HrContactController;
 use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OvertimeController;
@@ -26,6 +27,9 @@ use Illuminate\Support\Facades\Route;
 
 // Public routes
 Route::post('/auth/login', [AuthController::class, 'login']);
+
+// Kontak bantuan HRD untuk halaman login (belum ada token): hanya nomor WhatsApp & email, dibatasi laju.
+Route::get('/hr-contact', [HrContactController::class, 'show'])->middleware('throttle:30,1');
 
 /*
 |--------------------------------------------------------------------------

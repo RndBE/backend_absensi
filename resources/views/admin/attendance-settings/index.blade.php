@@ -274,6 +274,35 @@
                             </div>
                         </div>
                     </div>
+
+                    {{-- Kontak Bantuan Login (HRD) --}}
+                    <div class="p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition-all">
+                        <div class="flex items-center gap-3 mb-3">
+                            <span class="material-symbols-outlined text-[20px] text-gray-400">support_agent</span>
+                            <div>
+                                <div class="text-[13px] font-semibold text-gray-800">Kontak Bantuan Login (HRD)</div>
+                                <div class="text-[11px] text-gray-400">Tampil di halaman login aplikasi mobile pada tulisan "Lupa password? Hubungi HRD". Karena tampil sebelum login, sebaiknya isi nomor kantor atau nomor bersama, bukan nomor pribadi.</div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Nomor WhatsApp</label>
+                                <input type="text" name="hr_contact_whatsapp" value="{{ old('hr_contact_whatsapp', $settings['hr_contact_whatsapp']) }}" placeholder="0812 3456 7890" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                                <div class="text-[10px] text-gray-400 mt-1">Kosongkan untuk memakai nomor HP karyawan aktif ber-role HR Admin (yang punya nomor).</div>
+                                @error('hr_contact_whatsapp')
+                                    <div class="text-[11px] text-red-500 mt-1">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Email (opsional)</label>
+                                <input type="email" name="hr_contact_email" value="{{ old('hr_contact_email', $settings['hr_contact_email']) }}" placeholder="hrd@perusahaan.com" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                                <div class="text-[10px] text-gray-400 mt-1">Bila WhatsApp dan email sama-sama terisi, pengguna memilih salah satu.</div>
+                                @error('hr_contact_email')
+                                    <div class="text-[11px] text-red-500 mt-1">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
