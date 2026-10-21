@@ -18,6 +18,7 @@ use App\Models\PayrollLog;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunDetail;
 use App\Models\ScheduleAssignment;
+use App\Models\TravelReport;
 use App\Services\BpjsCalculator;
 use App\Services\Pph21Calculator;
 use App\Support\LeaveDayCategory;
@@ -1022,6 +1023,31 @@ class PayrollRunController extends Controller
                     );
                     $components[] = $disciplineComponent;
                     $totalDeduction += $disciplineComponent['amount'];
+                }
+
+                // LHP dikumpulkan lewat batas: tarif sama dengan terlambat clock in (per level).
+                $lhpData = $clockInPenalty > 0
+                    ? $this->calculateLhpLatePenalty($empId, $periodStart, $periodEnd, $clockInPenalty)
+                    : ['days' => 0];
+                if ($lhpData['days'] > 0) {
+                    $components[] = [
+                        'id' => null,
+                        'name' => 'Denda Keterlambatan LHP',
+                        'type' => 'deduction',
+                        'category' => 'recurring',
+                        'amount' => $lhpData['amount'],
+                        'is_taxable' => false,
+                        'is_auto' => true,
+                        'detail' => $lhpData['days'].' LHP × Rp '.number_format($clockInPenalty, 0, ',', '.'),
+                        'penalty' => [
+                            'source' => 'Data LHP (batas pengumpulan)',
+                            'count' => $lhpData['days'],
+                            'unit_label' => 'LHP terlambat',
+                            'unit_amount' => $clockInPenalty,
+                        ],
+                        'lines' => $lhpData['lines'],
+                    ];
+                    $totalDeduction += $lhpData['amount'];
                 }
 
                 // Alpha
@@ -2139,6 +2165,49 @@ class PayrollRunController extends Controller
             'days' => $lateDays,
             'amount' => $lateDays * $penaltyPerDay,
             'per_day' => $penaltyPerDay,
+            'lines' => $lines,
+        ];
+    }
+
+    /**
+     * Denda LHP yang DIKUMPULKAN lewat batas, dihitung di periode tanggal pengumpulannya.
+     * Nominalnya tetap per LHP, berapa pun lamanya telat. LHP pengajuan ulang tidak dihitung
+     * lagi karena status telatnya diwarisi dari LHP pertama yang sudah kena denda.
+     */
+    private function calculateLhpLatePenalty(int $empId, $periodStart, $periodEnd, float $penaltyPerReport): array
+    {
+        if (! Schema::hasTable('travel_reports') || ! Schema::hasColumn('travel_reports', 'is_late')) {
+            return ['days' => 0, 'amount' => 0.0, 'lines' => []];
+        }
+
+        $reports = TravelReport::where('employee_id', $empId)
+            ->where('is_late', true)
+            ->when(Schema::hasColumn('travel_reports', 'resubmission_of_id'), fn ($query) => $query->whereNull('resubmission_of_id'))
+            ->whereBetween('created_at', [
+                Carbon::parse($periodStart)->startOfDay(),
+                Carbon::parse($periodEnd)->endOfDay(),
+            ])
+            ->orderBy('created_at')
+            ->get(['id', 'destination_city', 'submission_deadline', 'created_at']);
+
+        $lines = $reports->map(function (TravelReport $report) use ($penaltyPerReport) {
+            $submitted = Carbon::parse($report->created_at);
+
+            return [
+                'date' => $submitted->toDateString(),
+                'date_label' => $submitted->translatedFormat('d M Y'),
+                'day_label' => $submitted->translatedFormat('l'),
+                'description' => 'LHP ke '.$report->destination_city.' dikumpulkan setelah batas',
+                'evidence' => $report->submission_deadline
+                    ? 'Batas '.$report->submission_deadline->translatedFormat('d M Y').', dikumpulkan '.$submitted->translatedFormat('d M Y')
+                    : 'Ditandai terlambat pada LHP',
+                'amount' => $penaltyPerReport,
+            ];
+        })->values()->all();
+
+        return [
+            'days' => count($lines),
+            'amount' => count($lines) * $penaltyPerReport,
             'lines' => $lines,
         ];
     }

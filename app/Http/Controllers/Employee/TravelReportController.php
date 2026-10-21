@@ -356,18 +356,7 @@ class TravelReportController extends Controller
      */
     private function resolveSubmissionDeadline(?int $budgetRequestId): array
     {
-        if (! $budgetRequestId) {
-            return [null, false];
-        }
-
-        $budgetRequest = BudgetRequest::with('employee:id,company_id')->find($budgetRequestId);
-        $deadline = $budgetRequest?->lhpDeadlineDate();
-
-        if (! $deadline) {
-            return [null, false];
-        }
-
-        return [$deadline, now()->startOfDay()->gt($deadline)];
+        return TravelReport::submissionDeadlineFor($budgetRequestId);
     }
 
     private function ownedReport(Employee $employee, int $id): TravelReport

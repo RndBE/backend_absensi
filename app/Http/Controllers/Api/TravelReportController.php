@@ -145,7 +145,17 @@ class TravelReportController extends Controller
                 $payload['travel_zone_id'] = $travelZone?->id;
             }
 
-            $report = TravelReport::create($payload + TravelReportResubmission::attributes($resubmissionOf));
+            // Batas & status telat di-snapshot saat submit pertama, sama seperti di portal; atribut
+            // pengajuan ulang ditaruh lebih dulu supaya warisan dari LHP yang ditolak menang.
+            $deadlineAttributes = [];
+            if (Schema::hasColumn('travel_reports', 'is_late')) {
+                [$deadline, $isLate] = TravelReport::submissionDeadlineFor(
+                    $request->budget_request_id ? (int) $request->budget_request_id : null
+                );
+                $deadlineAttributes = ['submission_deadline' => $deadline, 'is_late' => $isLate];
+            }
+
+            $report = TravelReport::create($payload + TravelReportResubmission::attributes($resubmissionOf) + $deadlineAttributes);
 
             if ($resubmissionOf) {
                 TravelReportResubmission::relinkLpj($resubmissionOf, $report);

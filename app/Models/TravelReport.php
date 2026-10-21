@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 class TravelReport extends Model
 {
@@ -20,6 +21,28 @@ class TravelReport extends Model
     public function employee()
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    /**
+     * Batas pengumpulan LHP untuk anggaran ini dan apakah LHP yang disubmit SEKARANG sudah telat.
+     * Dipakai semua kanal pembuat LHP (portal & API mobile) supaya penandaan telat konsisten.
+     *
+     * @return array{0: ?Carbon, 1: bool}
+     */
+    public static function submissionDeadlineFor(?int $budgetRequestId): array
+    {
+        if (! $budgetRequestId) {
+            return [null, false];
+        }
+
+        $budgetRequest = BudgetRequest::with('employee:id,company_id')->find($budgetRequestId);
+        $deadline = $budgetRequest?->lhpDeadlineDate();
+
+        if (! $deadline) {
+            return [null, false];
+        }
+
+        return [$deadline, now()->startOfDay()->gt($deadline)];
     }
 
     public function budgetRequest()
