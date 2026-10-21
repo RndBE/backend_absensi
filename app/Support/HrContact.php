@@ -68,6 +68,56 @@ class HrContact
         return $length >= 9 && $length <= 15 ? $digits : null;
     }
 
+    /**
+     * Slug role karyawan dengan aturan yang sama seperti AdminPermission::roleSlugs: role di
+     * employee_roles yang menentukan; kolom employees.role hanya bila belum ada barisnya.
+     *
+     * @return list<string>
+     */
+    public static function roleSlugsOf(Employee $employee): array
+    {
+        $slugs = [];
+
+        if (Schema::hasTable('roles') && Schema::hasTable('employee_roles')) {
+            $slugs = $employee->roles()->pluck('roles.slug')->filter()->values()->all();
+        }
+
+        if (! $slugs && $employee->role) {
+            $slugs[] = $employee->role;
+        }
+
+        return array_values(array_unique($slugs));
+    }
+
+    /**
+     * Apakah karyawan ini bisa menjadi kontak cadangan, dan bila tidak, mengapa. Dipakai perintah
+     * `hr-contact:check` supaya "kenapa kosong?" bisa dijawab dari data server, bukan ditebak.
+     *
+     * @return array{holds: bool, number: ?string, problem: ?string}
+     */
+    public static function diagnose(Employee $employee): array
+    {
+        if (! in_array('hr_admin', self::roleSlugsOf($employee), true)) {
+            return ['holds' => false, 'number' => null, 'problem' => 'tidak memegang role hr_admin'];
+        }
+
+        if (! $employee->is_active) {
+            return ['holds' => true, 'number' => null, 'problem' => 'karyawan tidak aktif'];
+        }
+
+        $phone = trim((string) $employee->phone);
+        if ($phone === '') {
+            return ['holds' => true, 'number' => null, 'problem' => 'nomor HP kosong'];
+        }
+
+        $number = self::normalizeWhatsapp($phone);
+        if ($number === null) {
+            return ['holds' => true, 'number' => null, 'problem' => 'nomor HP tidak valid ("'.$phone.'")'];
+        }
+
+        return ['holds' => true, 'number' => $number, 'problem' => null];
+    }
+
     private static function cleanEmail(string $email): ?string
     {
         $email = trim($email);
