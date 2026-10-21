@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Employee;
 use App\Models\Setting;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Kontak bantuan HRD yang tampil di halaman login aplikasi mobile ("Lupa password? Hubungi HRD").
@@ -14,8 +15,11 @@ use App\Models\Setting;
  * Sumber, urut prioritas:
  * 1. Pengaturan "Kontak Bantuan Login (HRD)" di admin. Pilihan yang disengaja, bisa nomor kantor
  *    atau nomor bersama, bukan nomor pribadi siapa pun.
- * 2. Cadangan khusus WhatsApp: nomor HP karyawan aktif ber-role hr_admin (id terkecil yang punya
- *    nomor valid). Teks jabatan tidak dipakai karena bebas ("Hrd", "Staff HR", "HR Intern").
+ * 2. Cadangan khusus WhatsApp: nomor HP karyawan aktif pemegang role hr_admin (id terkecil yang
+ *    punya nomor valid). Teks jabatan tidak dipakai karena bebas ("Hrd", "Staff HR", "HR Intern").
+ *    Role dibaca seperti AdminPermission::roleSlugs: hr_admin sering MENEMPEL pada karyawan yang
+ *    role utamanya lain (mis. admin) lewat tabel employee_roles, jadi kolom employees.role saja
+ *    tidak cukup.
  */
 class HrContact
 {
@@ -73,13 +77,25 @@ class HrContact
 
     private static function fallbackWhatsapp(): ?string
     {
-        $phones = Employee::query()
-            ->where('role', 'hr_admin')
+        $query = Employee::query()
             ->where('is_active', true)
             ->whereNotNull('phone')
             ->where('phone', '!=', '')
-            ->orderBy('id')
-            ->pluck('phone');
+            ->orderBy('id');
+
+        if (Schema::hasTable('roles') && Schema::hasTable('employee_roles')) {
+            // Aturan yang sama dengan roleSlugs(): role di employee_roles yang menentukan; kolom
+            // employees.role hanya dipakai bila karyawan belum punya baris di sana.
+            $query->where(fn ($who) => $who
+                ->whereHas('roles', fn ($role) => $role->where('roles.slug', 'hr_admin'))
+                ->orWhere(fn ($legacy) => $legacy
+                    ->where('role', 'hr_admin')
+                    ->whereDoesntHave('roles')));
+        } else {
+            $query->where('role', 'hr_admin');
+        }
+
+        $phones = $query->pluck('phone');
 
         foreach ($phones as $phone) {
             if ($number = self::normalizeWhatsapp($phone)) {
