@@ -12,6 +12,7 @@ use App\Models\Notification;
 use App\Services\FcmService;
 use App\Support\LeaveQuota;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 
 class LeaveController extends Controller
@@ -253,9 +254,23 @@ class LeaveController extends Controller
 
     public function show(Request $request, $id)
     {
-        $leaveRequest = LeaveRequest::where('employee_id', $request->user()->id)
-            ->with(['leaveType', 'attachments', 'approvalLogs.approver', 'delegate', 'employee'])
+        $viewer = $request->user();
+
+        // Pemilik melihat seluruh pengajuannya. Karyawan yang ditunjuk sebagai delegasi hanya
+        // boleh melihat pengajuan yang SUDAH DISETUJUI (saat itulah ia diberi tahu lewat
+        // notifikasi "Anda Ditunjuk Sebagai Delegasi") dan hanya info dasarnya.
+        $leaveRequest = LeaveRequest::with(['leaveType', 'attachments', 'approvalLogs.approver', 'delegate', 'employee'])
+            ->where(function ($query) use ($viewer) {
+                $query->where('employee_id', $viewer->id)
+                    ->orWhere(fn ($delegate) => $delegate
+                        ->where('delegate_to', $viewer->id)
+                        ->where('status', 'approved'));
+            })
             ->findOrFail($id);
+
+        if ($leaveRequest->employee_id !== $viewer->id) {
+            return response()->json(['success' => true, 'data' => $this->delegateView($leaveRequest)]);
+        }
 
         // Build approval chain from employee_approvers table
         $approvalSteps = [];
@@ -289,7 +304,37 @@ class LeaveController extends Controller
 
         $data = $leaveRequest->toArray();
         $data['approval_steps'] = $approvalSteps;
+        $data['viewer_role'] = 'owner';
 
         return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    /**
+     * Yang boleh dilihat delegasi persis isi email "Delegasi Tugas" yang ia terima: perusahaan,
+     * siapa yang mendelegasikan, jenis cuti, dan tanggalnya. Alasan, lampiran (bisa berupa surat
+     * dokter), dan catatan persetujuan adalah urusan pemilik dan atasannya, jadi tidak dikirim.
+     */
+    private function delegateView(LeaveRequest $leaveRequest): array
+    {
+        $leaveRequest->loadMissing('employee.company');
+        $data = $leaveRequest->toArray();
+        $company = $data['employee']['company'] ?? null;
+
+        return [
+            'id' => $data['id'],
+            'status' => $data['status'],
+            'start_date' => $data['start_date'],
+            'end_date' => $data['end_date'],
+            'total_days' => $data['total_days'],
+            'created_at' => $data['created_at'] ?? null,
+            'leave_type' => Arr::only($data['leave_type'] ?? [], ['id', 'name']),
+            'employee' => Arr::only($data['employee'] ?? [], ['id', 'full_name', 'position']),
+            'delegate' => Arr::only($data['delegate'] ?? [], ['id', 'full_name']),
+            'company' => $company ? [
+                'name' => $company['name'] ?? null,
+                'logo' => ! empty($company['logo']) ? asset('storage/'.$company['logo']) : null,
+            ] : null,
+            'viewer_role' => 'delegate',
+        ];
     }
 }

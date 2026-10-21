@@ -8,6 +8,7 @@ use App\Support\HrContact;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionProperty;
 use Tests\TestCase;
 
@@ -162,7 +163,7 @@ class ApiHrContactTest extends TestCase
         $this->getJson('/api/hr-contact')->assertStatus(429);
     }
 
-    /** @dataProvider whatsappNumbers */
+    #[DataProvider('whatsappNumbers')]
     public function test_whatsapp_numbers_are_normalized(?string $input, ?string $expected): void
     {
         $this->assertSame($expected, HrContact::normalizeWhatsapp($input));
