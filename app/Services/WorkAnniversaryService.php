@@ -25,8 +25,8 @@ use Illuminate\Support\Facades\Mail;
  */
 class WorkAnniversaryService
 {
-    /** Kelipatan tahun yang dirayakan bila admin belum mengubah pengaturan. */
-    public const DEFAULT_MILESTONES = '1,3,5,10,15,20,25';
+    /** Yang dirayakan bila admin belum mengubah pengaturan: setiap tahun. */
+    public const DEFAULT_MILESTONES = self::EVERY_YEAR;
 
     /** Nilai pengaturan yang berarti "rayakan setiap tahun, tanpa kelipatan". */
     public const EVERY_YEAR = '*';

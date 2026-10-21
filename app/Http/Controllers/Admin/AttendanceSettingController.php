@@ -69,8 +69,10 @@ class AttendanceSettingController extends Controller
             'lhp_reminder_after_days' => 'nullable|integer|min:1|max:30',
             'lhp_reminder_before_days' => 'nullable|integer|min:1|max:30',
             'lhp_reminder_time' => 'nullable|date_format:H:i',
-            // Daftar kelipatan tahun: angka dipisah koma, atau "*" untuk setiap tahun.
-            'anniversary_milestones' => ['nullable', 'string', 'max:100', 'regex:/^(\*|\d{1,2}(\s*,\s*\d{1,2})*)$/'],
+            // "every" = setiap tahun, "milestones" = hanya kelipatan di bawah. Daftar kelipatan wajib
+            // diisi pada mode kedua, karena daftar kosong akan dibaca sebagai setiap tahun.
+            'anniversary_mode' => 'nullable|in:every,milestones',
+            'anniversary_milestones' => ['nullable', 'required_if:anniversary_mode,milestones', 'string', 'max:100', 'regex:/^(\*|\d{1,2}(\s*,\s*\d{1,2})*)$/'],
             'anniversary_greeting_time' => 'nullable|date_format:H:i',
             // WhatsApp boleh ditulis 08…, +62…, atau dengan spasi/strip; disimpan sebagai 62….
             HrContact::KEY_WHATSAPP => ['nullable', 'string', 'max:30', function ($attribute, $value, $fail) {
@@ -80,7 +82,8 @@ class AttendanceSettingController extends Controller
             }],
             HrContact::KEY_EMAIL => 'nullable|email|max:255',
         ], [
-            'anniversary_milestones.regex' => 'Kelipatan tahun harus berupa angka dipisah koma (contoh: 1,3,5,10) atau * untuk setiap tahun.',
+            'anniversary_milestones.regex' => 'Kelipatan tahun harus berupa angka dipisah koma, contoh: 1,3,5,10.',
+            'anniversary_milestones.required_if' => 'Isi tahun yang dirayakan, contoh: 1,3,5,10. Atau pilih "Setiap tahun".',
         ]);
 
         $booleanKeys = [
@@ -96,7 +99,7 @@ class AttendanceSettingController extends Controller
             'office_address', 'clockin_reminder_before', 'auto_clockout_time',
             'lpj_reminder_days', 'lpj_reminder_time',
             'lhp_reminder_after_days', 'lhp_reminder_before_days', 'lhp_reminder_time',
-            'anniversary_milestones', 'anniversary_greeting_time',
+            'anniversary_greeting_time',
         ];
 
         foreach ($booleanKeys as $key) {
@@ -107,6 +110,14 @@ class AttendanceSettingController extends Controller
             if ($request->has($key)) {
                 Setting::setValue($key, $request->input($key) ?? '');
             }
+        }
+
+        // Mode "setiap tahun" disimpan sebagai "*"; tanpa anniversary_mode (form lama) isian diteruskan apa adanya.
+        $mode = $request->input('anniversary_mode');
+        if ($mode === 'every') {
+            Setting::setValue('anniversary_milestones', WorkAnniversaryService::EVERY_YEAR);
+        } elseif ($mode === 'milestones' || $request->has('anniversary_milestones')) {
+            Setting::setValue('anniversary_milestones', trim((string) $request->input('anniversary_milestones')));
         }
 
         // Kontak bantuan login: nomor disimpan dalam format WhatsApp (62…) supaya konsisten.

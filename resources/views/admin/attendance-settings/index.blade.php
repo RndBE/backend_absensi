@@ -263,10 +263,26 @@
                                 class="w-5 h-5 accent-indigo-500 rounded cursor-pointer" id="anniversaryCheck" onchange="toggleAnniversary()">
                         </label>
                         <div id="anniversaryWrap" class="grid grid-cols-1 sm:grid-cols-2 gap-3 {{ $settings['anniversary_greeting_enabled'] == '1' ? '' : 'opacity-40 pointer-events-none' }}">
+                            @php
+                                $anniversaryRaw = trim((string) old('anniversary_milestones', $settings['anniversary_milestones']));
+                                $anniversaryEvery = old('anniversary_mode', ($anniversaryRaw === '' || $anniversaryRaw === '*') ? 'every' : 'milestones') === 'every';
+                            @endphp
                             <div>
-                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Kelipatan Tahun</label>
-                                <input type="text" name="anniversary_milestones" value="{{ $settings['anniversary_milestones'] }}" placeholder="1,3,5,10,15,20,25" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
-                                <div class="text-[10px] text-gray-400 mt-1">Angka dipisah koma. Isi <b>*</b> untuk merayakan setiap tahun.</div>
+                                <label class="block text-[11px] font-semibold text-gray-500 mb-1">Tahun yang Dirayakan</label>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer">
+                                        <input type="radio" name="anniversary_mode" value="every" class="accent-indigo-500" {{ $anniversaryEvery ? 'checked' : '' }} onchange="toggleAnniversaryMode()">
+                                        Setiap tahun
+                                    </label>
+                                    <label class="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer">
+                                        <input type="radio" name="anniversary_mode" value="milestones" class="accent-indigo-500" {{ $anniversaryEvery ? '' : 'checked' }} onchange="toggleAnniversaryMode()">
+                                        Tahun tertentu saja
+                                    </label>
+                                </div>
+                                <div id="anniversaryMilestonesWrap" class="mt-2 {{ $anniversaryEvery ? 'hidden' : '' }}">
+                                    <input type="text" name="anniversary_milestones" value="{{ $anniversaryRaw === '*' ? '' : $anniversaryRaw }}" placeholder="1,3,5,10,15,20,25" class="px-3 py-2 text-[13px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 w-full">
+                                    <div class="text-[10px] text-gray-400 mt-1">Angka dipisah koma, mis. <b>1,3,5,10</b>.</div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-[11px] font-semibold text-gray-500 mb-1">Jam Kirim</label>
@@ -346,6 +362,11 @@ function toggleAnniversary() {
     const c = document.getElementById('anniversaryCheck').checked;
     w.classList.toggle('opacity-40', !c);
     w.classList.toggle('pointer-events-none', !c);
+}
+
+function toggleAnniversaryMode() {
+    const every = document.querySelector('input[name="anniversary_mode"]:checked').value === 'every';
+    document.getElementById('anniversaryMilestonesWrap').classList.toggle('hidden', every);
 }
 
 // ═══════════ LEAFLET MAP ═══════════
