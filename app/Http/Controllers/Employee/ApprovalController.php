@@ -18,6 +18,7 @@ use App\Models\TravelReport;
 use App\Services\FcmService;
 use App\Services\LpjExcelExporter;
 use App\Support\AssignmentLetterApprovalFlow;
+use App\Support\BudgetSignatureSlots;
 use App\Support\LeaveQuota;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -354,6 +355,7 @@ class ApprovalController extends Controller
             'notes' => 'nullable|string|max:1000',
             'adjusted_duration' => 'nullable|integer|min:0',
             'adjusted_break' => 'nullable|integer|min:0',
+            'transfer_date' => 'nullable|date',
         ]);
 
         /** @var Employee $employee */
@@ -367,6 +369,11 @@ class ApprovalController extends Controller
         }
 
         $currentStep = (int) ($item->current_step ?? 1);
+
+        // Finance mengisi tanggal transfer dana LPJ; tampil di header Excel LPJ.
+        if ($modelClass === Lpj::class && $request->filled('transfer_date') && BudgetSignatureSlots::isFinance($employee)) {
+            $item->update(['transfer_date' => $validated['transfer_date']]);
+        }
 
         ApprovalLog::create([
             'approvable_type' => $modelClass,

@@ -62,14 +62,20 @@ final class BudgetSignatureSlots
      * Jabatan spesifik diperiksa lebih dulu, baru jenjang (job_level), karena
      * Finance dan Admin bisa berada di jenjang mana pun.
      */
+    public static function isFinance(Employee $approver): bool
+    {
+        $position = strtoupper((string) $approver->position);
+
+        return str_contains($position, 'FINANCE') || str_contains($position, 'ACCOUNTING');
+    }
+
     private static function slotFor(Employee $approver): ?string
     {
         $position = strtoupper((string) $approver->position);
         $level = (int) $approver->job_level;
 
         return match (true) {
-            str_contains($position, 'FINANCE'),
-            str_contains($position, 'ACCOUNTING') => 'finance',
+            self::isFinance($approver)            => 'finance',
 
             str_contains($position, 'ADMIN')      => 'manager_admin',
 

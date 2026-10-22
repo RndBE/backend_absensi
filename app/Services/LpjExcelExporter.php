@@ -75,6 +75,7 @@ class LpjExcelExporter
             ['Nomor Surat Tugas',   $br?->surat_tugas_no ?? '-'],
             ['PIC',                 $lpj->employee->full_name ?? '-'],
             ['Jumlah Orang',        (string) $jumlahOrang],
+            ['Tanggal Transfer',    $lpj->transfer_date?->format('d F Y') ?? '-'],
         ];
         foreach ($infoFields as [$label, $value]) {
             $sheet->mergeCells("A{$row}:B{$row}");

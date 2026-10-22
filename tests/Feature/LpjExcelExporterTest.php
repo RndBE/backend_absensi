@@ -8,6 +8,8 @@ use App\Models\BudgetRequestItem;
 use App\Models\Lpj;
 use App\Models\LpjItem;
 use App\Services\LpjExcelExporter;
+use App\Support\BudgetSignatureSlots;
+use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -108,6 +110,34 @@ class LpjExcelExporterTest extends TestCase
         $this->assertSame('SALDO', $sheet->getCell('C' . ($summaryRow + 1))->getValue());
         // Saldo = pemasukan 200k - pengeluaran 380k + over 180k = 0 (over di-reimburse terpisah).
         $this->assertSame(0.0, (float) $sheet->getCell('E' . ($summaryRow + 1))->getValue());
+    }
+
+    public function test_header_shows_transfer_date_filled_by_finance(): void
+    {
+        $build = function (?string $transferDate) {
+            $lpj = new Lpj(['total_anggaran' => 0, 'total_realisasi' => 0, 'transfer_date' => $transferDate]);
+            $lpj->setRelation('employee', new Employee(['full_name' => 'Afif']));
+            $lpj->setRelation('budgetRequest', null);
+            $lpj->setRelation('travelReport', null);
+            $lpj->setRelation('approvalLogs', new Collection());
+            $lpj->setRelation('items', new Collection());
+
+            $sheet = LpjExcelExporter::build($lpj)->getActiveSheet();
+            $row = $this->findRowByColumnPrefix($sheet, 'A', 'Tanggal Transfer');
+            $this->assertNotNull($row);
+
+            return $sheet->getCell("C{$row}")->getValue();
+        };
+
+        $this->assertSame(': '.Carbon::parse('2026-10-21')->format('d F Y'), $build('2026-10-21'));
+        $this->assertSame(': -', $build(null));
+    }
+
+    public function test_only_finance_or_accounting_position_counts_as_finance(): void
+    {
+        $this->assertTrue(BudgetSignatureSlots::isFinance(new Employee(['position' => 'Finance Staff'])));
+        $this->assertTrue(BudgetSignatureSlots::isFinance(new Employee(['position' => 'Accounting & Finance Manager'])));
+        $this->assertFalse(BudgetSignatureSlots::isFinance(new Employee(['position' => 'Hardware Manager'])));
     }
 
     public function test_export_shows_summary_box_and_expense_detail(): void

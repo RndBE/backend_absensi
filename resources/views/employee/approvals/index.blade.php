@@ -473,6 +473,20 @@
                     <form method="POST" action="{{ route('employee.approvals.approve', [$type, $request->id]) }}" class="space-y-3">
                         @csrf
 
+                        {{-- Finance mengisi tanggal transfer dana; muncul di header Excel LPJ. --}}
+                        @if($type === 'lpj' && \App\Support\BudgetSignatureSlots::isFinance($employee))
+                        <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                            <label for="transfer_date_{{ $request->id }}" class="flex items-center gap-1.5 text-[12px] font-bold text-emerald-800">
+                                <span class="material-symbols-outlined text-[16px]">payments</span>
+                                Tanggal transfer
+                                <span class="font-normal text-emerald-700/70">(diisi saat menyetujui, tampil di Excel LPJ)</span>
+                            </label>
+                            <input type="date" id="transfer_date_{{ $request->id }}" name="transfer_date"
+                                value="{{ $request->transfer_date?->format('Y-m-d') }}"
+                                class="mt-2 w-full sm:w-56 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100">
+                        </div>
+                        @endif
+
                         <details class="group rounded-lg border border-gray-200 bg-white px-3 py-2" @if($type === 'travel_report') open @endif>
                             <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-[12px] font-bold text-gray-600">
                                 <span class="inline-flex items-center gap-1.5">
