@@ -140,24 +140,20 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
             ->assertSee('Belum bisa diterbitkan');
     }
 
-    public function test_groups_run_in_order(): void
+    public function test_hrd_and_ga_hse_do_not_wait_for_the_superiors_or_each_other(): void
     {
         $letter = $this->publish();
 
-        // HRD belum boleh sebelum semua atasan selesai.
-        $this->approveAsHrd($letter)->assertSessionHas('error');
-        $this->assertTrue($this->approvalFor($letter, 'hrd')->fresh()->isPending());
+        // GA HSE dan HRD boleh memparaf sejak surat terbit, dalam urutan apa pun.
+        $this->approveAsGaHse($letter)->assertSessionHas('success');
+        $this->approveAsHrd($letter)->assertSessionHas('success');
+        $this->assertSame('pending', $letter->fresh()->approvalState(), 'atasan belum selesai');
 
         $this->approveAsSuperior($letter, self::LEADER_SOFTWARE);
         $this->approveAsSuperior($letter, self::MANAGER_SOFTWARE);
-        $this->approveAsHrd($letter)->assertSessionHas('error');
+        $this->assertSame('pending', $letter->fresh()->approvalState());
 
         $this->approveAsSuperior($letter, self::MANAGER_HARDWARE);
-
-        // GA HSE belum boleh sebelum HRD.
-        $this->approveAsGaHse($letter)->assertSessionHas('error');
-        $this->approveAsHrd($letter)->assertSessionHas('success');
-        $this->approveAsGaHse($letter)->assertSessionHas('success');
 
         $letter = $letter->fresh();
         $this->assertSame('complete', $letter->approvalState());
@@ -205,9 +201,7 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
         $this->assertSame('Kendaraan belum diisi', $letter->rejection_reason);
         $this->assertSame(1, DB::table('notifications')->where('employee_id', self::ADMIN)->where('title', 'Paraf Surat Tugas Ditolak')->count());
 
-        // Grup berikutnya menunggu sampai yang ditolak diputuskan ulang.
         $this->approveAsSuperior($letter, self::MANAGER_SOFTWARE);
-        $this->approveAsHrd($letter)->assertSessionHas('error');
 
         // HRD memperbaiki surat (boleh, belum ada pindaian) lalu mengajukan ulang.
         $this->asRole('hr_admin')->put(route('admin.assignment-letters.update', $letter->id), $this->payload(['city' => 'Jakarta']))->assertSessionHas('success');
@@ -364,7 +358,7 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
             ->assertSee(route('employee.assignment-approvals.show', $pending->id));
     }
 
-    public function test_approvers_are_notified_when_their_turn_opens(): void
+    public function test_every_approver_is_notified_once_when_the_letter_is_issued(): void
     {
         $letter = $this->publish();
 
@@ -378,22 +372,50 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
         foreach ([self::LEADER_SOFTWARE => 'LV 3 SOFTWARE', self::MANAGER_SOFTWARE => 'LV 2 SOFTWARE', self::MANAGER_HARDWARE => 'LV 2 HARDWARE'] as $id => $label) {
             $this->assertSame(1, $notified($id, $label));
         }
-        $this->assertSame(0, $notified(self::ADMIN, 'HRD'), 'HRD baru dikabari setelah semua atasan selesai');
+        $this->assertSame(1, $notified(self::ADMIN, 'HRD'), 'HRD dikabari sejak surat terbit');
+        $this->assertSame(1, $notified(self::GA_HSE, 'GA HSE'), 'GA HSE dikabari sejak surat terbit');
 
-        $this->approveAsSuperior($letter, self::LEADER_SOFTWARE);
-        $this->approveAsSuperior($letter, self::MANAGER_SOFTWARE);
-        $this->assertSame(0, $notified(self::ADMIN, 'HRD'));
-
-        $this->approveAsSuperior($letter, self::MANAGER_HARDWARE);
-        $this->assertSame(1, $notified(self::ADMIN, 'HRD'));
-        $this->assertSame(0, $notified(self::GA_HSE, 'GA HSE'));
-
+        foreach ([self::LEADER_SOFTWARE, self::MANAGER_SOFTWARE, self::MANAGER_HARDWARE] as $id) {
+            $this->approveAsSuperior($letter, $id);
+        }
         $this->approveAsHrd($letter);
-        $this->assertSame(1, $notified(self::GA_HSE, 'GA HSE'));
         $this->assertSame(1, $notified(self::ADMIN, 'HRD'), 'tidak dikabari dua kali');
+        $this->assertSame(1, $notified(self::GA_HSE, 'GA HSE'), 'tidak dikabari dua kali');
 
         $this->approveAsGaHse($letter);
         $this->assertSame(1, DB::table('notifications')->where('employee_id', self::ADMIN)->where('title', 'Paraf Surat Tugas Lengkap')->count());
+    }
+
+    public function test_hrd_and_ga_hse_see_the_letter_in_the_portal_approval_list_and_can_decide_there(): void
+    {
+        $letter = $this->publish();
+        $this->asRole('hr_admin', self::ADMIN);
+        $this->asRole('admin', self::GA_HSE);
+        $waitingFor = fn (int $id) => AssignmentLetterApprovalFlow::pendingFor(Employee::find($id))
+            ->contains(fn ($a) => (int) $a->assignment_letter_id === (int) $letter->id);
+
+        $this->assertTrue($waitingFor(self::ADMIN), 'HRD melihat surat di Persetujuan Tim');
+        $this->assertTrue($waitingFor(self::GA_HSE), 'GA HSE melihat surat di Persetujuan Tim');
+
+        $this->withSession(['employee_id' => self::GA_HSE])
+            ->get(route('employee.approvals.index'))
+            ->assertOk()
+            ->assertSee(route('employee.assignment-approvals.show', $letter->id));
+
+        $this->withSession(['employee_id' => self::GA_HSE])
+            ->get(route('employee.assignment-approvals.show', $letter->id))
+            ->assertOk();
+
+        $this->withSession(['employee_id' => self::GA_HSE])
+            ->post(route('employee.assignment-approvals.approve', $letter->id))
+            ->assertSessionHas('success');
+
+        // Peran 'admin' di test memegang izin HRD juga, jadi yang diputuskan bisa kotak HRD atau GA HSE.
+        $this->assertTrue($letter->approvals()->where('acted_by', self::GA_HSE)->where('status', 'approved')->exists());
+
+        // Yang bukan atasan dan tak memegang izin tetap tidak bisa membukanya.
+        $this->withSession(['employee_id' => self::PERMANENT])
+            ->get(route('employee.assignment-approvals.show', $letter->id))->assertNotFound();
     }
 
     public function test_approver_uploads_their_own_signature_and_it_fills_their_box(): void
@@ -454,29 +476,25 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
         $second = $this->publish($this->storeDraft());
         $index = fn (array $query = []) => $this->asRole('hr_admin')->get(route('admin.assignment-letters.index', $query))->assertOk();
 
-        // Atasan belum selesai: giliran HRD belum terbuka, jadi tidak ada yang menunggu HRD.
-        $index()->assertDontSee('menunggu paraf Anda')->assertDontSee('Menunggu paraf saya');
-
-        // Satu surat selesai di grup atasan: hanya surat itu yang menunggu HRD.
-        foreach ([self::LEADER_SOFTWARE, self::MANAGER_SOFTWARE, self::MANAGER_HARDWARE] as $id) {
-            $this->approveAsSuperior($first, $id);
-        }
-
-        $index()->assertSee('1 surat')->assertSee('menunggu paraf Anda')->assertSee('Menunggu paraf saya')
+        // HRD tidak menunggu atasan: kedua surat langsung menunggu paraf HRD.
+        $index()->assertSee('2 surat')->assertSee('menunggu paraf Anda')->assertSee('Menunggu paraf saya')
             ->assertSee(route('admin.assignment-letters.show', $first->id).'#paraf-digital', false)
-            ->assertDontSee(route('admin.assignment-letters.show', $second->id).'#paraf-digital', false);
-
-        // Filter hanya memuat surat yang menunggu admin ini.
-        $filtered = $index(['status' => 'awaiting']);
-        $filtered->assertSee($first->fresh()->number)->assertDontSee($second->fresh()->number);
+            ->assertSee(route('admin.assignment-letters.show', $second->id).'#paraf-digital', false);
 
         // Angka muncul di menu admin mana pun (sidebar).
-        $this->asRole('hr_admin')->get(route('admin.assignment-letters.show', $second->id))->assertSee('rounded-full min-w-[18px] text-center">1<', false);
+        $this->asRole('hr_admin')->get(route('admin.assignment-letters.show', $second->id))->assertSee('rounded-full min-w-[18px] text-center">2<', false);
 
-        // Setelah HRD memutuskan, surat itu pindah ke GA HSE dan keluar dari daftar HRD.
+        // Setelah HRD memutuskan satu surat, surat itu keluar dari daftar HRD dan filter hanya memuat yang lain.
         $this->approveAsHrd($first);
         $this->assertTrue(AssignmentLetterApprovalFlow::awaitingLetters(Employee::find(self::GA_HSE))->contains('id', $first->id));
         $this->assertFalse(AssignmentLetterApprovalFlow::awaitingLetters(Employee::find(self::ADMIN))->contains('id', $first->id), 'HRD sudah memutuskan');
+
+        $filtered = $index(['status' => 'awaiting']);
+        $filtered->assertSee($second->fresh()->number)->assertDontSee($first->fresh()->number);
+
+        foreach ([self::LEADER_SOFTWARE, self::MANAGER_SOFTWARE, self::MANAGER_HARDWARE] as $id) {
+            $this->approveAsSuperior($first, $id);
+        }
 
         // Selesai semua: tidak ada lagi yang menunggu.
         $this->approveAsGaHse($first);

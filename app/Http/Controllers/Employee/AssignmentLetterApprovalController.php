@@ -9,9 +9,9 @@ use App\Support\AssignmentLetterApprovalFlow;
 use Illuminate\Http\Request;
 
 /**
- * Atasan L3/L2 peserta memutuskan surat tugas dari portal karyawan. HRD dan GA HSE memutuskan
- * dari admin panel (Admin\AssignmentLetterController). Alur dan aturannya ada di
- * AssignmentLetterApprovalFlow.
+ * Atasan L3/L2 peserta, HRD, dan GA HSE memutuskan surat tugas dari portal karyawan (HRD dan
+ * GA HSE juga bisa dari admin panel, Admin\AssignmentLetterController). Alur dan aturannya ada
+ * di AssignmentLetterApprovalFlow.
  */
 class AssignmentLetterApprovalController extends Controller
 {
@@ -94,11 +94,21 @@ class AssignmentLetterApprovalController extends Controller
         return $request->attributes->get('employee');
     }
 
-    /** Hanya atasan yang ditunjuk di surat itu yang bisa membukanya. */
+    /**
+     * Yang boleh membuka: atasan yang ditunjuk di surat itu, pemegang izin HRD/GA HSE yang
+     * langkahnya masih menunggu, atau siapa pun yang pernah memutuskan langkah surat itu.
+     */
     private function letterFor(Employee $employee, $id): AssignmentLetter
     {
-        return AssignmentLetter::where('company_id', $employee->company_id)
-            ->whereHas('approvals', fn ($q) => $q->where('approver_id', $employee->id))
+        $letter = AssignmentLetter::where('company_id', $employee->company_id)
+            ->with('approvals')
             ->findOrFail($id);
+
+        $involved = $letter->approvals->contains(fn ($a) => (int) $a->approver_id === (int) $employee->id
+            || (int) $a->acted_by === (int) $employee->id);
+
+        abort_unless($involved || AssignmentLetterApprovalFlow::actionableFor($letter, $employee)->isNotEmpty(), 404);
+
+        return $letter;
     }
 }

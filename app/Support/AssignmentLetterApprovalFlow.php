@@ -15,18 +15,19 @@ use Illuminate\Support\Facades\Storage;
  *
  *   draft ──terbitkan──▶ terbit (nomor keluar, peserta diberi tahu)
  *                          └─ saat itu juga kotak paraf diminta ke pemberi persetujuan:
- *                             atasan L3/L2 ─▶ HRD ─▶ GA HSE; tiap yang setuju mengisi parafnya
- *                             dengan tanda tangan digital. Surat dicetak untuk tanda tangan
- *                             basah Direktur, lalu hasil pindainya diunggah.
+ *                             atasan L3/L2, HRD, dan GA HSE sekaligus; tiap yang setuju mengisi
+ *                             parafnya dengan tanda tangan digital. Surat dicetak untuk tanda
+ *                             tangan basah Direktur, lalu hasil pindainya diunggah.
  *
  * Terbit lebih dulu, persetujuan menyusul: nomor surat tidak bergantung pada kecepatan atasan
  * memutuskan, dan isi surat boleh diperbaiki selama belum ada pindaian bertanda tangan.
  *
- * Tiga grup, berjalan berurutan; di dalam grup 1 semua atasan boleh memutuskan bersamaan:
+ * Tiga grup yang semuanya terbuka sejak surat terbit (tidak saling menunggu):
  *   1. atasan L3 dan L2 tiap peserta (rantai approval cuti), tanpa duplikat;
  *   2. HRD (pemegang izin assignment_letters.approve_hrd);
  *   3. GA HSE (pemegang izin assignment_letters.approve_hse).
- * Direktur tidak ikut: ia menandatangani surat secara basah.
+ * Surat baru boleh dipindai setelah ketiganya selesai. Direktur tidak ikut: ia menandatangani
+ * surat secara basah.
  *
  * Penolakan tidak membatalkan surat: kotak itu ditandai ditolak beserta alasannya, HRD
  * memperbaiki surat lalu "Ajukan ulang" (hanya yang menolak memutuskan lagi). Persetujuan
@@ -174,11 +175,11 @@ final class AssignmentLetterApprovalFlow
                 'updated_by' => $actor->id,
             ]);
 
-            return ['letter' => $letter];
+            return ['letter' => $letter, 'reopened' => $rejected->pluck('id')->all()];
         });
 
         if (isset($result['letter'])) {
-            self::advance($result['letter']);
+            self::advance($result['letter'], null, $result['reopened']);
         }
 
         return $result;
@@ -226,7 +227,7 @@ final class AssignmentLetterApprovalFlow
     }
 
     /**
-     * Langkah yang boleh diputuskan $actor sekarang: pending, grupnya sudah terbuka, dan ia
+     * Langkah yang boleh diputuskan $actor sekarang: pending, dan ia
      * atasan yang ditunjuk atau pemegang izin HRD/GA HSE untuk langkah itu.
      *
      * @return Collection<int, AssignmentLetterApproval>
@@ -241,13 +242,12 @@ final class AssignmentLetterApprovalFlow
         $permissions = app(AdminPermission::class);
 
         return $approvals->filter(fn (AssignmentLetterApproval $a) => $a->isPending()
-            && self::groupOpen($approvals, $a->step_group)
             && self::mayAct($a, $actor, $permissions))->values();
     }
 
     /**
-     * Surat terbit yang sekarang menunggu keputusan $actor: ada kotak pending yang grupnya sudah
-     * terbuka dan ia boleh memutuskannya (atasan yang ditunjuk, atau pemegang izin HRD/GA HSE).
+     * Surat terbit yang sekarang menunggu keputusan $actor: ada kotak pending
+     * yang boleh ia putuskan (atasan yang ditunjuk, atau pemegang izin HRD/GA HSE).
      * Dipakai banner, filter, dan angka di menu Surat Tugas admin supaya HRD/GA HSE tahu surat mana
      * yang menunggu mereka tanpa membuka satu per satu.
      *
@@ -270,22 +270,17 @@ final class AssignmentLetterApprovalFlow
     }
 
     /**
-     * Persetujuan atasan (grup 1, selalu terbuka) yang menunggu $approver, untuk daftar Persetujuan
-     * Tim di portal dan lencana jumlahnya.
+     * Langkah paraf yang menunggu $approver untuk daftar Persetujuan Tim di portal dan lencana
+     * jumlahnya: atasan yang ditunjuk, atau pemegang izin HRD/GA HSE. Satu surat bisa muncul
+     * lebih dari sekali bila $approver memegang beberapa langkah (mis. superadmin).
      *
      * @return Collection<int, AssignmentLetterApproval>
      */
     public static function pendingFor(Employee $approver): Collection
     {
-        if (! Schema::hasTable('assignment_letter_approvals')) {
-            return collect();
-        }
-
-        return AssignmentLetterApproval::where('approver_id', $approver->id)
-            ->where('status', AssignmentLetterApproval::STATUS_PENDING)
-            ->whereHas('letter', fn ($q) => $q->where('status', AssignmentLetter::STATUS_ISSUED)->whereNull('signed_file_path'))
-            ->with(['letter.employees', 'letter.destinations'])
-            ->get()
+        return self::awaitingLetters($approver)
+            ->flatMap(fn (AssignmentLetter $letter) => self::actionableFor($letter, $approver)
+                ->each(fn (AssignmentLetterApproval $a) => $a->setRelation('letter', $letter)))
             ->sortByDesc(fn (AssignmentLetterApproval $a) => $a->letter->submitted_at)
             ->values();
     }
@@ -354,7 +349,7 @@ final class AssignmentLetterApprovalFlow
 
     /**
      * Tolak: alasan wajib. Surat tetap terbit; kotak itu ditandai ditolak dan HRD memperbaiki
-     * surat lalu mengajukan ulang. Grup berikutnya menunggu sampai kotak ini disetujui.
+     * surat lalu mengajukan ulang.
      */
     public static function reject(AssignmentLetterApproval $approval, Employee $actor, string $reason): array
     {
@@ -426,9 +421,10 @@ final class AssignmentLetterApprovalFlow
 
     /**
      * Setelah satu langkah beres: kalau semua kotak selesai, tandai paraf lengkap dan kabari HRD.
-     * Kalau belum, beri tahu pemberi persetujuan di grup terbuka terendah, tapi hanya bila grup itu
-     * baru terbuka: saat surat terbit ($actedGroup null), begitu grup yang baru diputuskan selesai
-     * semua, atau untuk kotak baru hasil resync ($onlyIds).
+     * Kalau belum, beri tahu pemberi persetujuan yang baru diminta: semua kotak saat surat terbit
+     * ($actedGroup null), atau hanya $onlyIds (kotak baru hasil resync, atau kotak yang dibuka
+     * lagi lewat Ajukan Ulang). Memutuskan satu langkah tidak membuka langkah lain, jadi tidak
+     * ada yang dikabari lagi.
      *
      * @param  array<int, int>|null  $onlyIds  batasi pemberitahuan pada kotak-kotak ini
      */
@@ -449,25 +445,18 @@ final class AssignmentLetterApprovalFlow
             return;
         }
 
-        if ($actedGroup !== null && ! $letter->approvals->where('step_group', $actedGroup)->every(fn ($a) => $a->isDone())) {
-            return; // masih ada atasan lain di grup yang sama; mereka sudah dikabari saat surat terbit
+        if ($actedGroup !== null) {
+            return; // semua grup sudah terbuka sejak surat terbit; tak ada yang baru perlu dikabari
         }
 
         $open = $letter->approvals->filter(fn (AssignmentLetterApproval $a) => $a->isPending()
-            && self::groupOpen($letter->approvals, $a->step_group)
             && ($onlyIds === null || in_array($a->id, $onlyIds, true)));
 
         if ($open->isEmpty()) {
             return;
         }
 
-        AssignmentLetterNotifier::approvalRequested($letter, $open->where('step_group', $open->min('step_group'))->values());
-    }
-
-    /** Grup terbuka bila semua langkah di grup-grup sebelumnya sudah selesai (disetujui/dilewati). */
-    private static function groupOpen(Collection $approvals, int $group): bool
-    {
-        return $approvals->where('step_group', '<', $group)->every(fn (AssignmentLetterApproval $a) => $a->isDone());
+        AssignmentLetterNotifier::approvalRequested($letter, $open->values());
     }
 
     private static function mayAct(AssignmentLetterApproval $approval, Employee $actor, AdminPermission $permissions): bool
