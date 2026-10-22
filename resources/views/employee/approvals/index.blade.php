@@ -479,11 +479,19 @@
                             <label for="transfer_date_{{ $request->id }}" class="flex items-center gap-1.5 text-[12px] font-bold text-emerald-800">
                                 <span class="material-symbols-outlined text-[16px]">payments</span>
                                 Tanggal transfer
-                                <span class="font-normal text-emerald-700/70">(diisi saat menyetujui, tampil di Excel LPJ)</span>
+                                <span class="font-normal text-emerald-700/70">(tampil di Excel LPJ)</span>
                             </label>
-                            <input type="date" id="transfer_date_{{ $request->id }}" name="transfer_date"
-                                value="{{ $request->transfer_date?->format('Y-m-d') }}"
-                                class="mt-2 w-full sm:w-56 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100">
+                            <div class="mt-2 flex flex-wrap items-center gap-2">
+                                <input type="date" id="transfer_date_{{ $request->id }}" name="transfer_date"
+                                    value="{{ $request->transfer_date?->format('Y-m-d') }}"
+                                    class="w-full sm:w-56 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100">
+                                <button type="submit" formaction="{{ route('employee.approvals.lpj.transfer-date', $request->id) }}"
+                                    class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-[12px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100">
+                                    <span class="material-symbols-outlined text-[16px]">save</span>
+                                    Simpan tanggal
+                                </button>
+                            </div>
+                            <p class="mt-1.5 text-[11.5px] text-emerald-700/70">Simpan dulu untuk melihatnya di Excel, atau langsung Setujui — tanggal ikut tersimpan.</p>
                         </div>
                         @endif
 

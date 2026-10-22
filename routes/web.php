@@ -198,6 +198,7 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/approvals/travel-report/{id}/print', [EmployeeApprovalController::class, 'printTravelReport'])->name('approvals.travel_report.print');
     Route::get('/approvals/lpj/{id}/print', [EmployeeApprovalController::class, 'printLpj'])->name('approvals.lpj.print');
     Route::get('/approvals/lpj/{id}/export-excel', [EmployeeApprovalController::class, 'exportLpjExcel'])->name('approvals.lpj.export-excel');
+    Route::post('/approvals/lpj/{id}/transfer-date', [EmployeeApprovalController::class, 'saveLpjTransferDate'])->name('approvals.lpj.transfer-date');
     Route::get('/approvals/{type}/{id}/print', [EmployeeApprovalController::class, 'printDecision'])
         ->whereIn('type', ['leave', 'overtime', 'attendance'])
         ->name('approvals.decision.print');

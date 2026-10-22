@@ -324,6 +324,31 @@ class ApprovalController extends Controller
         return LpjExcelExporter::download($lpj);
     }
 
+    /**
+     * Finance menyimpan tanggal transfer tanpa menyetujui dulu, supaya Excel LPJ sudah
+     * memuatnya sebelum keputusan diambil.
+     */
+    public function saveLpjTransferDate(Request $request, int $id)
+    {
+        $validated = $request->validate(['transfer_date' => 'required|date'], [
+            'transfer_date.required' => 'Isi tanggal transfer dulu.',
+        ]);
+
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $lpj = Lpj::findOrFail($id);
+
+        if (! $this->canActOn($employee, 'lpj', $lpj) || ! BudgetSignatureSlots::isFinance($employee)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Hanya finance pada step aktif yang bisa mengisi tanggal transfer.');
+        }
+
+        $lpj->update(['transfer_date' => $validated['transfer_date']]);
+
+        return redirect()->route('employee.approvals.index')
+            ->with('success', 'Tanggal transfer disimpan. Excel LPJ sudah memuatnya.');
+    }
+
     public function printDecision(Request $request, string $type, int $id)
     {
         /** @var Employee $employee */
