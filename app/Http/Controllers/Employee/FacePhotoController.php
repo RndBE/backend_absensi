@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Employee;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\Setting;
+use App\Services\FaceVerificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -39,6 +40,16 @@ class FacePhotoController extends Controller
             ], 422);
         }
 
+        // Foto acuan harus jelas (satu wajah, cukup terang) dan, bila sudah ada foto terdaftar,
+        // cocok dengan foto itu. Diperiksa sebelum foto lama dihapus.
+        if ($problem = (new FaceVerificationService())->replacementProblem($imageData, $employee->face_photo)) {
+            return response()->json([
+                'success' => false,
+                'message' => $problem['message'],
+                'reason' => $problem['reason'],
+            ], 422);
+        }
+
         if ($employee->face_photo) {
             Storage::disk('public')->delete($employee->face_photo);
         }
@@ -58,6 +69,16 @@ class FacePhotoController extends Controller
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
+
+        // Menghapus lalu mendaftar ulang akan melewati syarat "foto baru harus cocok dengan foto
+        // lama". Selama verifikasi aktif, hanya HRD yang bisa menghapus (mereset).
+        if ($employee->face_photo && FaceVerificationService::enabled()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Foto wajah hanya bisa direset oleh HRD. Hubungi HRD bila foto wajah Anda perlu diganti.',
+                'reason' => 'locked',
+            ], 403);
+        }
 
         if ($employee->face_photo) {
             Storage::disk('public')->delete($employee->face_photo);

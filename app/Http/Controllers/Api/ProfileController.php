@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\DataChangeRequest;
 use App\Models\Notification;
+use App\Services\FaceVerificationService;
 use App\Support\SignatureImage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -24,6 +25,21 @@ class ProfileController extends Controller
             return response()->json(['success' => false, 'message' => 'Foto wajah harus diisi.'], 422);
         }
 
+        // Foto acuan harus jelas (satu wajah, cukup terang) dan, bila sudah ada foto terdaftar,
+        // cocok dengan foto itu. Diperiksa sebelum foto lama dihapus supaya foto yang ditolak tidak
+        // membuat akun kehilangan foto terdaftarnya.
+        $imageData = $request->hasFile('photo')
+            ? $request->file('photo')->get()
+            : (string) base64_decode((string) $request->photo_base64);
+
+        if ($problem = (new FaceVerificationService())->replacementProblem($imageData, $employee->face_photo)) {
+            return response()->json([
+                'success' => false,
+                'message' => $problem['message'],
+                'reason'  => $problem['reason'],
+            ], 422);
+        }
+
         // Hapus foto lama
         if ($employee->face_photo) {
             Storage::disk('public')->delete($employee->face_photo);
@@ -33,7 +49,6 @@ class ProfileController extends Controller
         if ($request->hasFile('photo')) {
             $path = $request->file('photo')->store('employees/face-photos', 'public');
         } elseif ($request->photo_base64) {
-            $imageData = base64_decode($request->photo_base64);
             $fileName  = 'employees/face-photos/' . uniqid() . '.jpg';
             Storage::disk('public')->put($fileName, $imageData);
             $path = $fileName;
@@ -51,6 +66,16 @@ class ProfileController extends Controller
     public function deleteFacePhoto(Request $request)
     {
         $employee = $request->user();
+
+        // Menghapus lalu mendaftar ulang akan melewati syarat "foto baru harus cocok dengan foto
+        // lama". Selama verifikasi aktif, hanya HRD yang bisa menghapus (mereset).
+        if ($employee->face_photo && FaceVerificationService::enabled()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Foto wajah hanya bisa direset oleh HRD. Hubungi HRD bila foto wajah Anda perlu diganti.',
+                'reason'  => 'locked',
+            ], 403);
+        }
 
         if ($employee->face_photo) {
             Storage::disk('public')->delete($employee->face_photo);

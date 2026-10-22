@@ -5,10 +5,17 @@ const tf    = require('@tensorflow/tfjs');
 const sharp = require('sharp');
 const path  = require('path');
 
+const { assessSelfie, mainFace, limits } = require('./quality');
+
 const app       = express();
 const PORT      = process.env.PORT || 5001;
-const THRESHOLD = 0.5;
+const THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD) || 0.5;
 const MODELS    = path.join(__dirname, 'node_modules/@vladmandic/face-api/model');
+
+// Naik setiap kali perilaku /verify berubah. Dibaca `php artisan face:check` untuk
+// mendeteksi layanan lama yang belum di-restart setelah deploy.
+const VERSION  = 2;
+const FEATURES = ['verify', 'analyze', 'brightness', 'multiple_faces', 'face_size'];
 
 app.use(express.json({ limit: '20mb' }));
 
@@ -32,33 +39,96 @@ async function loadModels() {
   console.log('[face-service] Models loaded.');
 }
 
-async function toTensor(base64) {
-  const buffer = Buffer.from(base64, 'base64');
-  const { data, info } = await sharp(buffer)
-    .resize(640, 640, { fit: 'inside', withoutEnlargement: true })
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+/** Foto -> piksel RGB (maks 640px). null bila foto tidak bisa dibaca. */
+async function toRgb(base64) {
+  try {
+    const { data, info } = await sharp(Buffer.from(base64, 'base64'))
+      .resize(640, 640, { fit: 'inside', withoutEnlargement: true })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
-  return tf.tensor3d(new Uint8Array(data), [info.height, info.width, 3]);
+    return { data, width: info.width, height: info.height };
+  } catch {
+    return null;
+  }
 }
 
-async function getDescriptor(base64) {
-  const tensor = await toTensor(base64);
+/** Semua wajah di foto beserta kotak, skor, dan descriptor-nya. null bila foto tidak terbaca. */
+async function inspect(base64) {
+  const rgb = await toRgb(base64);
+  if (!rgb) return null;
+
+  const tensor = tf.tensor3d(new Uint8Array(rgb.data), [rgb.height, rgb.width, 3]);
   try {
-    const result = await faceapi
-      .detectSingleFace(tensor, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+    const results = await faceapi
+      .detectAllFaces(tensor, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
       .withFaceLandmarks()
-      .withFaceDescriptor();
-    return result ?? null;
+      .withFaceDescriptors();
+
+    const faces = results.map((r) => ({
+      score: r.detection.score,
+      box: {
+        x: r.detection.box.x,
+        y: r.detection.box.y,
+        width: r.detection.box.width,
+        height: r.detection.box.height,
+      },
+      descriptor: r.descriptor,
+    }));
+
+    return { rgb, faces };
   } finally {
     tensor.dispose();
   }
 }
 
+const reject = (reason, message, quality = null) => ({
+  match: false,
+  similarity: 0,
+  distance: 1,
+  reason,
+  message,
+  quality,
+});
+
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', models_loaded: modelsLoaded });
+  res.json({
+    status:        'ok',
+    models_loaded: modelsLoaded,
+    version:       VERSION,
+    features:      FEATURES,
+    threshold:     THRESHOLD,
+    limits:        limits(),
+  });
+});
+
+// ── Analyze: cek kualitas satu foto (dipakai saat mendaftarkan foto wajah) ───
+app.post('/analyze', async (req, res) => {
+  if (!modelsLoaded) {
+    return res.status(503).json({ ok: false, message: 'Service belum siap, coba lagi.' });
+  }
+
+  const { photo_base64 } = req.body;
+  if (!photo_base64) {
+    return res.status(400).json({ error: 'photo_base64 wajib diisi.' });
+  }
+
+  try {
+    const photo = await inspect(photo_base64);
+    if (!photo) {
+      return res.json({ ok: false, reason: 'invalid_image', message: 'Foto tidak dapat dibaca. Ambil foto ulang.', quality: null });
+    }
+
+    const result = assessSelfie(photo.faces, photo.rgb);
+    console.log(`[face-service] analyze ok=${result.ok} reason=${result.reason} quality=${JSON.stringify(result.quality)}`);
+
+    return res.json(result);
+  } catch (err) {
+    console.error('[face-service] Error:', err.message);
+    return res.status(500).json({ ok: false, message: 'Terjadi kesalahan internal.' });
+  }
 });
 
 // ── Verify endpoint ──────────────────────────────────────────────────────────
@@ -74,42 +144,57 @@ app.post('/verify', async (req, res) => {
   }
 
   try {
-    const [selfie, reference] = await Promise.all([
-      getDescriptor(selfie_base64),
-      getDescriptor(reference_base64),
-    ]);
-
+    const selfie = await inspect(selfie_base64);
     if (!selfie) {
-      return res.json({
-        match:      false,
-        similarity: 0,
-        distance:   1,
-        message:    'Wajah tidak terdeteksi pada foto selfie. Pastikan wajah terlihat jelas dan pencahayaan cukup.',
-      });
+      return res.json(reject('invalid_image', 'Foto tidak dapat dibaca. Ambil foto ulang.'));
     }
 
-    if (!reference) {
-      return res.json({
-        match:      false,
-        similarity: 0,
-        distance:   1,
-        message:    'Wajah tidak terdeteksi pada foto referensi yang terdaftar.',
-      });
+    // Kualitas selfie diperiksa lebih dulu: foto gelap/jauh/ganda tidak dibandingkan sama sekali.
+    const assessment = assessSelfie(selfie.faces, selfie.rgb);
+    if (!assessment.ok) {
+      console.log(`[face-service] ditolak reason=${assessment.reason} quality=${JSON.stringify(assessment.quality)}`);
+      return res.json(reject(assessment.reason, assessment.message, assessment.quality));
     }
 
-    const distance   = faceapi.euclideanDistance(selfie.descriptor, reference.descriptor);
+    const reference = await inspect(reference_base64);
+    if (!reference || reference.faces.length === 0) {
+      return res.json(
+        reject(
+          'reference_invalid',
+          'Foto wajah yang terdaftar tidak bisa dipakai. Daftarkan ulang di menu Akun, lalu Verifikasi Wajah.',
+          assessment.quality,
+        ),
+      );
+    }
+
+    // Foto lama yang kualitasnya buruk tetap dibandingkan (agar tidak mengunci semua orang
+    // sekaligus), tetapi dilaporkan supaya bisa diminta mendaftar ulang.
+    const referenceCheck = assessSelfie(reference.faces, reference.rgb);
+
+    const distance   = faceapi.euclideanDistance(
+      mainFace(selfie.faces).descriptor,
+      mainFace(reference.faces).descriptor,
+    );
     const similarity = Math.round(Math.max(0, 1 - distance) * 10000) / 10000;
     const match      = distance < THRESHOLD;
 
-    console.log(`[face-service] distance=${distance.toFixed(4)} similarity=${similarity} match=${match}`);
+    console.log(
+      `[face-service] distance=${distance.toFixed(4)} similarity=${similarity} match=${match} ` +
+      `quality=${JSON.stringify(assessment.quality)} reference=${referenceCheck.reason}`,
+    );
 
     return res.json({
       match,
       similarity,
       distance:   Math.round(distance * 10000) / 10000,
+      reason:     match ? 'ok' : 'mismatch',
       message:    match
         ? 'Verifikasi wajah berhasil.'
         : 'Verifikasi wajah gagal. Wajah tidak sesuai dengan foto yang terdaftar.',
+      quality:    assessment.quality,
+      reference_quality: referenceCheck.ok
+        ? null
+        : { reason: referenceCheck.reason, ...referenceCheck.quality },
     });
 
   } catch (err) {
@@ -121,7 +206,7 @@ app.post('/verify', async (req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 loadModels().then(() => {
   app.listen(PORT, '127.0.0.1', () => {
-    console.log(`[face-service] Running on http://127.0.0.1:${PORT}`);
+    console.log(`[face-service] Running on http://127.0.0.1:${PORT} (v${VERSION})`);
   });
 }).catch(err => {
   console.error('[face-service] Gagal load models:', err);

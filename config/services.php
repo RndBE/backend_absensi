@@ -44,6 +44,10 @@ return [
     'face_verification' => [
         'url' => env('FACE_SERVICE_URL', 'http://127.0.0.1:5001'),
         'timeout' => env('FACE_SERVICE_TIMEOUT', 15),
+        // Bila layanan wajah tidak bisa dihubungi: block (bawaan, presensi ditolak, jadi tidak ada
+        // yang bisa clock in atas nama orang lain), review (presensi dicatat dan ditandai untuk HR),
+        // atau allow (diloloskan tanpa tanda, tidak aman).
+        'when_unavailable' => env('FACE_SERVICE_WHEN_UNAVAILABLE', 'block'),
     ],
 
     'tomtom' => [

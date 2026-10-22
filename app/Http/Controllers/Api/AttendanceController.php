@@ -223,28 +223,9 @@ class AttendanceController extends Controller
         }
 
         // Face Verification: compare selfie with registered face photo
-        $faceVerify = Setting::getValue('face_verification_enabled', '1') === '1';
-        if ($faceVerify) {
-            if (!$employee->face_photo) {
-                if ($photoPath) Storage::disk('public')->delete($photoPath);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Anda belum mendaftarkan foto verifikasi wajah. Silakan daftarkan di menu Akun → Verifikasi Wajah terlebih dahulu.',
-                ], 422);
-            }
-
-            if ($photoPath) {
-                $result = (new FaceVerificationService())->verify($photoPath, $employee->face_photo);
-
-                if (!$result['match']) {
-                    Storage::disk('public')->delete($photoPath);
-                    return response()->json([
-                        'success'    => false,
-                        'message'    => $result['message'],
-                        'similarity' => isset($result['similarity']) ? round($result['similarity'] * 100, 1) : null,
-                    ], 422);
-                }
-            }
+        $face = $this->verifyFace($employee, $photoPath, 'clock_in');
+        if ($face['response']) {
+            return $face['response'];
         }
 
         // Check if late
@@ -270,7 +251,7 @@ class AttendanceController extends Controller
                 'clock_in_lat' => $request->latitude,
                 'clock_in_lng' => $request->longitude,
                 ...$this->locationAuditAttributes($request, 'clock_in'),
-                ...$this->locationReviewAttributes($request, 'clock_in', $requireGps),
+                ...$this->locationReviewAttributes($request, 'clock_in', $requireGps, null, $face['issue'], $face['flags']),
                 'clock_in_photo' => $photoPath,
                 'status' => $clockInStatus,
                 'is_late' => $isLate,
@@ -363,10 +344,16 @@ class AttendanceController extends Controller
         Request $request,
         string $prefix,
         bool $requireGps,
-        ?Attendance $attendance = null
+        ?Attendance $attendance = null,
+        ?string $faceIssue = null,
+        ?array $faceFlags = null
     ): array {
         $securityFlags = is_array($attendance?->security_flags) ? $attendance->security_flags : [];
         $issue = $this->locationReviewIssue($request, $prefix, $requireGps);
+
+        if ($faceIssue) {
+            $issue = $issue ? $issue.'; '.$faceIssue : $faceIssue;
+        }
 
         $securityFlags[$prefix] = [
             'is_mocked' => $this->locationIsMocked($request),
@@ -375,6 +362,10 @@ class AttendanceController extends Controller
             'recorded_at' => $request->location_timestamp,
             'issue' => $issue,
         ];
+
+        if ($faceFlags !== null) {
+            $securityFlags[$prefix]['face'] = $faceFlags;
+        }
 
         $attributes = ['security_flags' => $securityFlags];
 
@@ -417,6 +408,76 @@ class AttendanceController extends Controller
         }
 
         return $issues ? implode('; ', $issues) : null;
+    }
+
+    /**
+     * Cocokkan selfie dengan foto wajah terdaftar. Selfie ditolak bila gelap, tanpa wajah,
+     * berisi lebih dari satu wajah, terlalu jauh, atau bukan pemilik akun. Bila layanan wajah
+     * mati, presensi tetap dicatat tetapi ditandai untuk diperiksa HR (lihat
+     * `services.face_verification.when_unavailable`).
+     *
+     * @return array{response: ?\Illuminate\Http\JsonResponse, issue: ?string, flags: ?array}
+     */
+    private function verifyFace(Employee $employee, ?string $photoPath, string $prefix): array
+    {
+        $accepted = ['response' => null, 'issue' => null, 'flags' => null];
+
+        if (!FaceVerificationService::enabled()) {
+            return $accepted;
+        }
+
+        $reject = function (string $message, string $reason, array $extra = []) use ($photoPath) {
+            if ($photoPath) {
+                Storage::disk('public')->delete($photoPath);
+            }
+
+            return [
+                'response' => response()->json(['success' => false, 'message' => $message, 'reason' => $reason] + $extra, 422),
+                'issue' => null,
+                'flags' => null,
+            ];
+        };
+
+        if (!$employee->face_photo) {
+            return $reject(
+                'Anda belum mendaftarkan foto verifikasi wajah. Silakan daftarkan di menu Akun → Verifikasi Wajah terlebih dahulu.',
+                'not_registered'
+            );
+        }
+
+        if (!$photoPath) {
+            return $reject('Foto selfie wajib diambil untuk verifikasi wajah.', 'no_photo');
+        }
+
+        $service = new FaceVerificationService();
+        $result = $service->verify($photoPath, $employee->face_photo);
+
+        switch ($service->outcome($result)) {
+            case FaceVerificationService::REJECT:
+                return $reject($result['message'], $result['reason'], [
+                    'similarity' => $result['available'] ? round($result['similarity'] * 100, 1) : null,
+                ]);
+
+            case FaceVerificationService::REVIEW:
+                $label = $prefix === 'clock_out' ? 'clock out' : 'clock in';
+
+                return [
+                    'response' => null,
+                    'issue' => "Wajah belum terverifikasi saat {$label} (layanan verifikasi wajah tidak tersedia)",
+                    'flags' => ['status' => 'unavailable'],
+                ];
+        }
+
+        $accepted['flags'] = [
+            'status' => $result['available'] ? 'verified' : 'skipped',
+            'similarity' => $result['available'] ? round($result['similarity'], 4) : null,
+            'distance' => $result['distance'],
+            'brightness' => $result['quality']['brightness'] ?? null,
+            // Foto acuan lama yang kurang baik (gelap dsb.) dicatat agar bisa diminta mendaftar ulang.
+            'reference_quality' => $result['reference_quality']['reason'] ?? null,
+        ];
+
+        return $accepted;
     }
 
     private function mergeSuspiciousReason(?string $existingReason, string $newReason): string
@@ -566,10 +627,12 @@ class AttendanceController extends Controller
             [
                 'Fake GPS terdeteksi saat '.$eventLabel,
                 'Akurasi GPS rendah saat '.$eventLabel,
+                'Wajah belum terverifikasi saat '.$eventLabel,
             ],
             [
                 'Fake GPS saat '.$eventLabel,
                 'akurasi GPS rendah saat '.$eventLabel,
+                'wajah belum terverifikasi saat '.$eventLabel,
             ],
             $reason
         );
@@ -641,18 +704,9 @@ class AttendanceController extends Controller
         }
 
         // Face Verification saat clock-out
-        $faceVerify = Setting::getValue('face_verification_enabled', '1') === '1';
-        if ($faceVerify && $employee->face_photo && $photoPath) {
-            $result = (new FaceVerificationService())->verify($photoPath, $employee->face_photo);
-
-            if (!$result['match']) {
-                Storage::disk('public')->delete($photoPath);
-                return response()->json([
-                    'success'    => false,
-                    'message'    => $result['message'],
-                    'similarity' => isset($result['similarity']) ? round($result['similarity'] * 100, 1) : null,
-                ], 422);
-            }
+        $face = $this->verifyFace($employee, $photoPath, 'clock_out');
+        if ($face['response']) {
+            return $face['response'];
         }
 
         $clockOutTime = now();
@@ -669,7 +723,7 @@ class AttendanceController extends Controller
             'clock_out_lat' => $request->latitude,
             'clock_out_lng' => $request->longitude,
             ...$this->locationAuditAttributes($request, 'clock_out'),
-            ...$this->locationReviewAttributes($request, 'clock_out', $requireGps, $attendance),
+            ...$this->locationReviewAttributes($request, 'clock_out', $requireGps, $attendance, $face['issue'], $face['flags']),
             'clock_out_photo' => $photoPath,
             ...$clockOutStatus,
         ]);
