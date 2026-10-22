@@ -12,19 +12,6 @@
     $actionBtn = 'inline-flex items-center justify-center gap-1 h-8 px-2 text-[11px] font-semibold border rounded-lg transition-all';
 @endphp
 
-@if($awaitingIds->isNotEmpty())
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-5 py-3.5">
-        <div class="text-[13px] text-sky-900">
-            <span class="material-symbols-outlined text-[18px] align-text-bottom text-sky-600">approval</span>
-            <strong>{{ $awaitingIds->count() }} surat</strong> menunggu paraf Anda.
-        </div>
-        <a href="{{ route('admin.assignment-letters.index', ['status' => 'awaiting']) }}"
-           class="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-3.5 py-1.5 text-[12px] font-semibold text-white hover:bg-sky-700">
-            Lihat <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
-        </a>
-    </div>
-@endif
-
 @if($canIssue)
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-5">
     <div class="px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
@@ -82,14 +69,6 @@
                     {{ $label }}
                 </a>
             @endforeach
-            @if($awaitingIds->isNotEmpty() || request('status') === 'awaiting')
-                <a href="{{ route('admin.assignment-letters.index', array_merge(request()->except(['status', 'page']), ['status' => 'awaiting'])) }}"
-                   class="px-4 py-2 text-[13px] font-semibold border-b-2 -mb-[2px] whitespace-nowrap transition-all duration-200 inline-flex items-center gap-1.5
-                          {{ request('status') === 'awaiting' ? 'text-sky-700 border-sky-600' : 'text-sky-600 border-transparent hover:text-sky-800' }}">
-                    Menunggu paraf saya
-                    <span class="rounded-full bg-sky-600 px-1.5 text-[10px] font-bold text-white">{{ $awaitingIds->count() }}</span>
-                </a>
-            @endif
         </div>
 
         <form method="GET" class="order-1 lg:order-2 flex flex-wrap items-center gap-2 pb-3">
@@ -189,19 +168,21 @@
                             {{-- Semua tombol setinggi h-8. Ukuran ikon ditulis inline karena CSS layout
                                  memaksa .material-symbols-outlined 20px, yang membuat tombol berikon lebih tinggi. --}}
                             {{-- Tiga slot berlebar tetap (Detail · aksi sesuai status · Cetak) supaya tombol
-                                 lurus antarbaris walau jumlah tombolnya berbeda. --}}
-                            <div class="grid grid-cols-[76px_152px_92px] gap-1.5 justify-center whitespace-nowrap">
+                                 lurus antarbaris walau jenis aksi tengahnya berbeda. Surat tanpa aksi tengah
+                                 (mis. dibatalkan): Cetak pindah ke slot tengah, merapat ke Detail tanpa lubang
+                                 kosong; Detail tetap di slot pertama, lurus dengan baris lain. --}}
+                            @php
+                                $hasMiddleAction = ($canManage && $letter->isDraft())
+                                    || $letter->hasSignedFile()
+                                    || ($canManage && $letter->isIssued());
+                            @endphp
+                            <div class="grid grid-cols-[76px_152px_92px] gap-1.5 justify-center whitespace-nowrap"
+                                 @unless($hasMiddleAction) data-no-middle-action @endunless>
                                 <a href="{{ route('admin.assignment-letters.show', $letter->id) }}" title="Lihat detail"
                                    class="{{ $actionBtn }} text-indigo-600 bg-indigo-50 border-indigo-200 hover:bg-indigo-100">
                                     <span class="material-symbols-outlined" style="font-size: 16px">visibility</span> Detail
                                 </a>
-                                @if($awaitingIds->contains($letter->id))
-                                    {{-- Giliran admin ini memberi paraf: langsung ke kartu Paraf Digital di halaman detail. --}}
-                                    <a href="{{ route('admin.assignment-letters.show', $letter->id) }}#paraf-digital" title="Surat ini menunggu paraf Anda"
-                                       class="{{ $actionBtn }} text-white bg-sky-600 border-sky-600 hover:bg-sky-700">
-                                        <span class="material-symbols-outlined" style="font-size: 16px">approval</span> Putuskan
-                                    </a>
-                                @elseif($canManage && $letter->isDraft())
+                                @if($canManage && $letter->isDraft())
                                     <a href="{{ route('admin.assignment-letters.edit', $letter->id) }}" title="Ubah draft"
                                        class="{{ $actionBtn }} text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100">
                                         <span class="material-symbols-outlined" style="font-size: 16px">edit</span> Ubah
@@ -221,10 +202,9 @@
                                             <span class="material-symbols-outlined" style="font-size: 16px">upload</span> <span data-label>Upload Surat Tugas</span>
                                         </button>
                                     </form>
-                                @else
-                                    <span></span>
                                 @endif
                                 <a href="{{ route('admin.assignment-letters.print', $letter->id) }}" target="_blank" title="{{ $letter->number === null ? 'Pratinjau cetak' : 'Cetak surat' }}"
+                                   @unless($hasMiddleAction) style="grid-column: 2; justify-self: start; width: 92px" @endunless
                                    class="{{ $actionBtn }} text-teal-700 bg-teal-50 border-teal-200 hover:bg-teal-100">
                                     <span class="material-symbols-outlined" style="font-size: 16px">print</span> {{ $letter->number === null ? 'Pratinjau' : 'Cetak' }}
                                 </a>

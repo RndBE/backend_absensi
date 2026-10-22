@@ -476,21 +476,18 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
         $second = $this->publish($this->storeDraft());
         $index = fn (array $query = []) => $this->asRole('hr_admin')->get(route('admin.assignment-letters.index', $query))->assertOk();
 
-        // HRD tidak menunggu atasan: kedua surat langsung menunggu paraf HRD.
-        $index()->assertSee('2 surat')->assertSee('menunggu paraf Anda')->assertSee('Menunggu paraf saya')
-            ->assertSee(route('admin.assignment-letters.show', $first->id).'#paraf-digital', false)
-            ->assertSee(route('admin.assignment-letters.show', $second->id).'#paraf-digital', false);
+        // HRD tidak menunggu atasan: kedua surat langsung menunggu paraf HRD. Keputusan diambil di Persetujuan
+        // Tim, jadi daftar tidak punya spanduk, tab "Menunggu paraf saya", maupun tombol "Putuskan".
+        $index()->assertDontSee('Menunggu paraf saya')->assertDontSee('status=awaiting', false)
+            ->assertDontSee('Putuskan')->assertDontSee('#paraf-digital', false);
 
         // Angka muncul di menu admin mana pun (sidebar).
         $this->asRole('hr_admin')->get(route('admin.assignment-letters.show', $second->id))->assertSee('rounded-full min-w-[18px] text-center">2<', false);
 
-        // Setelah HRD memutuskan satu surat, surat itu keluar dari daftar HRD dan filter hanya memuat yang lain.
+        // Setelah HRD memutuskan satu surat, surat itu keluar dari daftar HRD.
         $this->approveAsHrd($first);
         $this->assertTrue(AssignmentLetterApprovalFlow::awaitingLetters(Employee::find(self::GA_HSE))->contains('id', $first->id));
         $this->assertFalse(AssignmentLetterApprovalFlow::awaitingLetters(Employee::find(self::ADMIN))->contains('id', $first->id), 'HRD sudah memutuskan');
-
-        $filtered = $index(['status' => 'awaiting']);
-        $filtered->assertSee($second->fresh()->number)->assertDontSee($first->fresh()->number);
 
         foreach ([self::LEADER_SOFTWARE, self::MANAGER_SOFTWARE, self::MANAGER_HARDWARE] as $id) {
             $this->approveAsSuperior($first, $id);

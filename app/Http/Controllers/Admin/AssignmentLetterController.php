@@ -42,12 +42,7 @@ class AssignmentLetterController extends Controller
         $query = AssignmentLetter::with(['employees', 'destinations', 'approvals'])
             ->where('company_id', $admin->company_id);
 
-        // Surat yang menunggu keputusan admin ini (sebagai HRD/GA HSE/atasan): banner, tab, dan tombol "Putuskan".
-        $awaiting = AssignmentLetterApprovalFlow::awaitingLetters($admin);
-
-        if ($request->status === 'awaiting') {
-            $query->whereIn('id', $awaiting->pluck('id'));
-        } elseif ($request->filled('status') && array_key_exists($request->status, AssignmentLetter::STATUSES)) {
+        if ($request->filled('status') && array_key_exists($request->status, AssignmentLetter::STATUSES)) {
             $query->where('status', $request->status);
         }
 
@@ -81,7 +76,6 @@ class AssignmentLetterController extends Controller
         return view('admin.assignment-letters.index', [
             'letters' => $letters,
             'draftLastNumbers' => $draftLastNumbers,
-            'awaitingIds' => $awaiting->pluck('id'),
             'canManage' => $permissions->can($admin, 'assignment_letters.manage'),
             'canIssue' => $permissions->can($admin, 'assignment_letters.issue'),
             'numbering' => [

@@ -368,6 +368,26 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
         $this->assertCount(1, $copy->destinations);
     }
 
+    public function test_list_closes_the_action_gap_when_a_letter_has_no_middle_action(): void
+    {
+        $index = route('admin.assignment-letters.index');
+        $letter = $this->issue($this->storeDraft());
+
+        // Terbit dan belum diunggah: ada tombol Upload di slot tengah, tiga slot penuh.
+        $this->asRole('hr_admin')->get($index)
+            ->assertSee('Upload Surat Tugas')
+            ->assertDontSee('data-no-middle-action', false)
+            ->assertDontSee('grid-column: 2', false);
+
+        // Dibatalkan: tak ada aksi tengah, jadi barisnya dua slot (Detail + Cetak) tanpa lubang.
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.cancel', $letter->id), ['cancel_reason' => 'Salah tanggal']);
+        $this->asRole('hr_admin')->get($index)
+            ->assertSee('Dibatalkan')
+            ->assertDontSee('Upload Surat Tugas')
+            ->assertSee('data-no-middle-action', false)
+            ->assertSee('grid-column: 2; justify-self: start; width: 92px', false);
+    }
+
     public function test_print_renders_letter_like_the_word_template(): void
     {
         $letter = $this->storeDraft();
