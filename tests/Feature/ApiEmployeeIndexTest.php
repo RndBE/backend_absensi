@@ -37,9 +37,56 @@ class ApiEmployeeIndexTest extends TestCase
             $table->string('phone')->nullable();
             $table->string('photo')->nullable();
             $table->string('position')->nullable();
+            $table->string('role')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
+    }
+
+    private function seedEmployee(int $id, string $name, ?string $role = null): void
+    {
+        DB::table('employees')->insert([
+            'id' => $id,
+            'company_id' => 1,
+            'employee_code' => 'EMP'.$id,
+            'full_name' => $name,
+            'email' => "emp{$id}@example.test",
+            'password' => 'password',
+            'role' => $role,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function listNames(array $query = [], int $asId = 1): array
+    {
+        $request = Request::create('/api/employees', 'GET', $query);
+        $request->setUserResolver(fn () => Employee::findOrFail($asId));
+
+        return array_column((new EmployeeController())->index($request)->getData(true)['data'], 'full_name');
+    }
+
+    public function test_search_hides_superadmin_and_apple_demo_account(): void
+    {
+        $this->seedEmployee(1, 'Budi Staff', 'employee');
+        $this->seedEmployee(2, 'Admin Sistem', 'superadmin');
+        $this->seedEmployee(3, 'Apple Demo Account', 'employee');
+        $this->seedEmployee(4, 'Citra Tanpa Role');
+
+        $this->assertSame(['Budi Staff', 'Citra Tanpa Role'], $this->listNames());
+        // Pencarian langsung memakai nama akun tersembunyi pun tidak menampilkannya.
+        $this->assertSame([], $this->listNames(['search' => 'Apple']));
+        $this->assertSame([], $this->listNames(['search' => 'Admin Sistem']));
+    }
+
+    public function test_exclude_self_leaves_the_requester_out(): void
+    {
+        $this->seedEmployee(1, 'Budi Staff', 'employee');
+        $this->seedEmployee(4, 'Citra Tanpa Role');
+
+        $this->assertSame(['Budi Staff', 'Citra Tanpa Role'], $this->listNames());
+        $this->assertSame(['Citra Tanpa Role'], $this->listNames(['exclude_self' => '1']));
     }
 
     public function test_employee_index_returns_all_active_company_employees_without_pagination(): void

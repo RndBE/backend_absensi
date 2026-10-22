@@ -70,8 +70,9 @@ class AssignmentLetterNotifier
     /**
      * Surat menunggu keputusan pemberi persetujuan di $approvals (atasan yang ditunjuk, atau
      * pemegang izin HRD/GA HSE). Push memakai reference_type 'assignment_letter_approval';
-     * aplikasi mobile belum mengenalnya, jadi pesannya tetap tampil tapi tidak membuka apa-apa.
-     * Keputusan diambil di portal karyawan (Persetujuan) atau admin panel (HRD/GA HSE).
+     * aplikasi mobile membukanya di detail surat tugas, yang memuat tombol setuju/tolak bila
+     * penerimanya memang pemberi paraf (versi aplikasi lama hanya menampilkan pesannya).
+     * Keputusan diambil di aplikasi, portal karyawan (Persetujuan), atau admin panel (HRD/GA HSE).
      *
      * @param  \Illuminate\Support\Collection<int, AssignmentLetterApproval>  $approvals
      */

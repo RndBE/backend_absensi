@@ -12,7 +12,13 @@ class EmployeeController extends Controller
     {
         $query = Employee::where('company_id', $request->user()->company_id)
             ->where('is_active', true)
+            ->listedInDirectory()
             ->with('department:id,name');
+
+        // Picker Tag Tim: diri sendiri tidak ikut, sama seperti form anggaran di portal.
+        if ($request->boolean('exclude_self')) {
+            $query->where('id', '!=', $request->user()->id);
+        }
 
         if ($request->has('search') && $request->search) {
             $search = $request->search;

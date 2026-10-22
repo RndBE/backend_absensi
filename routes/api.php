@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\ApprovalController;
+use App\Http\Controllers\Api\ApprovalHistoryController;
+use App\Http\Controllers\Api\AssignmentLetterApprovalController;
 use App\Http\Controllers\Api\AssignmentLetterController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AttendanceRequestController;
@@ -12,11 +14,13 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\HrContactController;
 use App\Http\Controllers\Api\LeaveController;
+use App\Http\Controllers\Api\LpjController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OvertimeController;
 use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\PegawaiLookupController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\TeamAttendanceController;
 use App\Http\Controllers\Api\TravelReportController;
 use App\Http\Controllers\Api\TravelZoneController;
 use App\Http\Controllers\Api\Tessa\TessaController;
@@ -99,10 +103,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Approvals
     Route::get('/approvals/monitor', [ApprovalController::class, 'monitor']);
+    Route::get('/approvals/history', [ApprovalHistoryController::class, 'index']);
     Route::get('/approvals', [ApprovalController::class, 'index']);
     Route::get('/approvals/{type}/{id}', [ApprovalController::class, 'show']);
     Route::post('/approvals/{type}/{id}/approve', [ApprovalController::class, 'approve']);
     Route::post('/approvals/{type}/{id}/reject', [ApprovalController::class, 'reject']);
+    Route::post('/approvals/lpj/{id}/transfer-date', [ApprovalController::class, 'saveLpjTransferDate'])->whereNumber('id');
 
     // Budget / Reimbursement
     Route::get('/budget/requests', [BudgetController::class, 'index']);
@@ -115,6 +121,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Surat tugas yang mencantumkan karyawan (bukan draft)
     Route::get('/assignment-letters', [AssignmentLetterController::class, 'index']);
     Route::get('/assignment-letters/{id}', [AssignmentLetterController::class, 'show'])->whereNumber('id');
+    // Paraf digital surat tugas oleh atasan L3/L2, HRD, dan GA HSE; antreannya ada di GET /approvals.
+    Route::get('/assignment-approvals/{id}', [AssignmentLetterApprovalController::class, 'show'])->whereNumber('id');
+    Route::post('/assignment-approvals/{id}/approve', [AssignmentLetterApprovalController::class, 'approve'])->whereNumber('id');
+    Route::post('/assignment-approvals/{id}/reject', [AssignmentLetterApprovalController::class, 'reject'])->whereNumber('id');
 
     // Travel Zone
     Route::get('/travel/estimate-zone', [TravelZoneController::class, 'estimateZone']);
@@ -126,6 +136,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/travel-reports/available-requests', [TravelReportController::class, 'availableRequests']);
     Route::get('/travel-reports/{id}', [TravelReportController::class, 'show']);
 
+    // LPJ
+    Route::get('/lpj', [LpjController::class, 'index']);
+    Route::post('/lpj', [LpjController::class, 'store']);
+    Route::get('/lpj/available-requests', [LpjController::class, 'availableRequests']);
+    Route::get('/lpj/{id}', [LpjController::class, 'show'])->whereNumber('id');
+
     // Profile
     Route::get('/profile', [ProfileController::class, 'index']);
     Route::get('/profile/personal', [ProfileController::class, 'personal']);
@@ -133,6 +149,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/profile/fcm-token', [ProfileController::class, 'updateFcmToken']);
     Route::post('/profile/face-photo', [ProfileController::class, 'uploadFacePhoto']);
     Route::delete('/profile/face-photo', [ProfileController::class, 'deleteFacePhoto']);
+    Route::post('/profile/photo', [ProfileController::class, 'uploadPhoto']);
+    Route::delete('/profile/photo', [ProfileController::class, 'deletePhoto']);
+    Route::post('/profile/signature', [ProfileController::class, 'uploadSignature']);
+    Route::delete('/profile/signature', [ProfileController::class, 'deleteSignature']);
 
     // Data Change Requests (Perubahan Data)
     Route::post('/data-change-requests', [ProfileController::class, 'requestDataChange']);
@@ -141,6 +161,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Employees (Pegawai)
     Route::get('/employees', [EmployeeController::class, 'index']);
     Route::get('/employees/{id}', [EmployeeController::class, 'show']);
+
+    // Presensi tim (level 1-3 / hr_admin; dijaga di dalam controller)
+    Route::get('/team-attendance', [TeamAttendanceController::class, 'index']);
+    Route::get('/team-attendance/{id}', [TeamAttendanceController::class, 'show'])->whereNumber('id');
 
     // Payslips
     Route::get('/payslips', [PayslipController::class, 'index']);

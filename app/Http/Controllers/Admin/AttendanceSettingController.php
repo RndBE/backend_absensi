@@ -14,6 +14,7 @@ class AttendanceSettingController extends Controller
         'office_latitude' => '1.0456',
         'office_longitude' => '104.0305',
         'office_radius_meters' => '100',
+        'max_gps_accuracy_meters' => '100',
         'office_address' => '',
         'require_photo' => '1',
         'require_gps' => '1',
@@ -61,6 +62,7 @@ class AttendanceSettingController extends Controller
             'office_latitude' => 'required|numeric',
             'office_longitude' => 'required|numeric',
             'office_radius_meters' => 'required|integer|min:50|max:1000',
+            'max_gps_accuracy_meters' => 'nullable|integer|min:10|max:500',
             'office_address' => 'nullable|string|max:255',
             'clockin_reminder_before' => 'nullable|integer|min:0|max:120',
             'auto_clockout_time' => 'nullable|date_format:H:i',
@@ -96,6 +98,7 @@ class AttendanceSettingController extends Controller
 
         $textKeys = [
             'office_latitude', 'office_longitude', 'office_radius_meters',
+            'max_gps_accuracy_meters',
             'office_address', 'clockin_reminder_before', 'auto_clockout_time',
             'lpj_reminder_days', 'lpj_reminder_time',
             'lhp_reminder_after_days', 'lhp_reminder_before_days', 'lhp_reminder_time',

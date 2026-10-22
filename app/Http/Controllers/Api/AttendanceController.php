@@ -734,6 +734,8 @@ class AttendanceController extends Controller
                 'allow_remote_clockin' => Setting::getValue('allow_remote_clockin', '0') === '1',
                 'remote_requires_approval' => Setting::getValue('remote_requires_approval', '1') === '1',
                 'remote_requires_notes' => Setting::getValue('remote_requires_notes', '1') === '1',
+                // Batas akurasi GPS; aplikasi mengambil lokasi sampai seakurat ini dan menolak yang lebih kasar.
+                'max_gps_accuracy_meters' => (int) Setting::getValue('max_gps_accuracy_meters', '100'),
             ],
         ]);
     }

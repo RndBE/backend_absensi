@@ -156,6 +156,29 @@ class Employee extends Authenticatable
         return $this->belongsToMany(Role::class, 'employee_roles')->withTimestamps();
     }
 
+    /** Nama akun demo untuk review Apple; bukan orang, jadi tidak boleh muncul di pencarian. */
+    public const APPLE_DEMO_NAME = 'Apple Demo Account';
+
+    /**
+     * Daftar yang boleh tampil saat karyawan mencari rekan (daftar Pegawai, Tag Tim): tanpa
+     * superadmin (akun sistem) dan tanpa akun demo Apple. Superadmin dikenali dari kolom `role`
+     * maupun dari tabel role tambahan.
+     */
+    public function scopeListedInDirectory($query)
+    {
+        $query->where('full_name', '!=', self::APPLE_DEMO_NAME);
+
+        if (Schema::hasColumn($this->getTable(), 'role')) {
+            $query->where(fn ($q) => $q->whereNull('role')->orWhere('role', '!=', 'superadmin'));
+        }
+
+        if (Schema::hasTable('roles') && Schema::hasTable('employee_roles')) {
+            $query->whereDoesntHave('roles', fn ($q) => $q->where('roles.slug', 'superadmin'));
+        }
+
+        return $query;
+    }
+
     public function adminActivityLogs(): HasMany
     {
         return $this->hasMany(AdminActivityLog::class);

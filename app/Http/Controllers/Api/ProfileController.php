@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\DataChangeRequest;
 use App\Models\Notification;
+use App\Support\SignatureImage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -59,6 +60,104 @@ class ProfileController extends Controller
         return response()->json(['success' => true, 'message' => 'Foto verifikasi wajah dihapus.']);
     }
 
+    /**
+     * Tanda tangan digital untuk paraf surat tugas. Sama dengan portal (Profil → Tanda tangan):
+     * satu gambar PNG/JPG/WEBP maksimal 2 MB. Paraf yang sudah diberikan menyimpan salinannya
+     * sendiri, jadi mengganti atau menghapus tanda tangan tidak mengubah surat yang sudah diparaf.
+     */
+    public function uploadSignature(Request $request)
+    {
+        $request->validate([
+            'signature' => ['required', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+        ], [
+            'signature.required' => 'Pilih file gambar tanda tangan.',
+            'signature.image' => 'File harus berupa gambar.',
+            'signature.mimes' => 'Gambar harus berformat PNG, JPG, atau WEBP.',
+            'signature.max' => 'Ukuran gambar maksimal 2 MB.',
+        ]);
+
+        $employee = $request->user();
+
+        if ($employee->signature) {
+            Storage::disk('public')->delete($employee->signature);
+        }
+
+        $path = $request->file('signature')->store('employees/signatures', 'public');
+        $employee->update(['signature' => $path]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tanda tangan digital berhasil disimpan.',
+            'signature' => SignatureImage::url($path),
+            'has_signature' => true,
+        ]);
+    }
+
+    public function deleteSignature(Request $request)
+    {
+        $employee = $request->user();
+
+        if ($employee->signature) {
+            Storage::disk('public')->delete($employee->signature);
+            $employee->update(['signature' => null]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tanda tangan digital dihapus.',
+            'signature' => null,
+            'has_signature' => false,
+        ]);
+    }
+
+    /**
+     * Foto profil (tampilan saja, bukan foto wajah untuk absen). Tanpa approval, sama seperti
+     * portal employee.
+     */
+    public function uploadPhoto(Request $request)
+    {
+        $request->validate([
+            'photo' => ['required', 'image', 'max:2048'],
+        ], [
+            'photo.required' => 'Pilih foto profil.',
+            'photo.image' => 'File harus berupa gambar.',
+            'photo.max' => 'Ukuran foto maksimal 2 MB.',
+        ]);
+
+        $employee = $request->user();
+
+        if ($employee->photo) {
+            Storage::disk('public')->delete($employee->photo);
+        }
+
+        $path = $request->file('photo')->store('employees/photos', 'public');
+        $employee->update(['photo' => $path]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Foto profil berhasil diperbarui.',
+            'photo' => asset('storage/'.$path),
+            'has_photo' => true,
+        ]);
+    }
+
+    public function deletePhoto(Request $request)
+    {
+        $employee = $request->user();
+
+        if ($employee->photo) {
+            Storage::disk('public')->delete($employee->photo);
+            $employee->update(['photo' => null]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Foto profil berhasil dihapus.',
+            'photo' => null,
+            'has_photo' => false,
+        ]);
+    }
+
     public function index(Request $request)
     {
         $employee = $request->user()->load(['department', 'company', 'workSchedule', 'manager', 'approver']);
@@ -81,8 +180,12 @@ class ProfileController extends Controller
                     'ktp_address' => $employee->ktp_address,
                     'residential_address' => $employee->residential_address,
                 ],
+                'photo' => $employee->photo ? asset('storage/'.$employee->photo) : null,
+                'has_photo' => (bool) $employee->photo,
                 'face_photo'  => $employee->face_photo ? asset('storage/' . $employee->face_photo) : null,
                 'has_face_photo' => (bool) $employee->face_photo,
+                'signature' => SignatureImage::url($employee->signature),
+                'has_signature' => filled($employee->signature),
                 'employment' => [
                     'employee_code' => $employee->employee_code,
                     'company' => $employee->company?->name,

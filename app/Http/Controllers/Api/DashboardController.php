@@ -10,6 +10,7 @@ use App\Models\ScheduleAssignment;
 use App\Models\Setting;
 use App\Support\AttendanceOpenShift;
 use App\Support\DashboardTimeline;
+use App\Support\TeamAttendanceScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -134,6 +135,7 @@ class DashboardController extends Controller
                     'company' => $employee->company?->name,
                     'photo' => $employee->photo ? asset('storage/'.$employee->photo) : null,
                     'role' => $employee->role,
+                    'can_view_team_attendance' => (new TeamAttendanceScope($employee))->allowed(),
                 ],
                 'work_schedule' => $workScheduleData,
                 'today_attendance' => $activeAttendance ? [

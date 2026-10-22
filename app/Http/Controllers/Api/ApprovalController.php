@@ -10,13 +10,20 @@ use App\Models\DataChangeRequest;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\LeaveRequest;
+use App\Models\Lpj;
 use App\Models\Notification;
 use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Services\FcmService;
+use App\Support\AssignmentLetterApprovalFlow;
+use App\Support\AssignmentLetterPresenter;
+use App\Support\BudgetSignatureSlots;
 use App\Support\LeaveQuota;
+use App\Support\LpjPresenter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class ApprovalController extends Controller
 {
@@ -27,6 +34,7 @@ class ApprovalController extends Controller
         'data-change' => DataChangeRequest::class,
         'budget' => BudgetRequest::class,
         'travel_report' => TravelReport::class,
+        'lpj' => Lpj::class,
     ];
 
     private $typeLabels = [
@@ -36,6 +44,7 @@ class ApprovalController extends Controller
         'data-change' => 'Perubahan Data',
         'budget' => 'Anggaran',
         'travel_report' => 'LHP',
+        'lpj' => 'LPJ',
     ];
 
     public function monitor(Request $request)
@@ -60,6 +69,10 @@ class ApprovalController extends Controller
 
         foreach ($this->typeMap as $typeKey => $modelClass) {
             if ($typeFilter && $typeFilter !== $typeKey) {
+                continue;
+            }
+
+            if (! Schema::hasTable((new $modelClass())->getTable())) {
                 continue;
             }
 
@@ -142,6 +155,13 @@ class ApprovalController extends Controller
             ['employee:id,full_name,photo,department_id,approver_id', 'employee.department:id,name', 'items']);
         $pending['travel_report'] = $this->getMyPendingItems(TravelReport::class, $employee,
             ['employee:id,full_name,photo,department_id,approver_id', 'employee.department:id,name']);
+        $pending['lpj'] = $this->getMyPendingItems(Lpj::class, $employee,
+            ['employee:id,full_name,photo,department_id,approver_id', 'employee.department:id,name',
+                'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city']);
+        // Paraf surat tugas yang menunggu: atasan L3/L2 peserta, atau pemegang izin HRD/GA HSE.
+        $pending['assignment_letter'] = AssignmentLetterApprovalFlow::pendingFor($employee)
+            ->map(fn ($approval) => AssignmentLetterPresenter::queueRow($approval))
+            ->values();
 
         return response()->json(['success' => true, 'data' => $pending]);
     }
@@ -151,6 +171,10 @@ class ApprovalController extends Controller
      */
     private function getMyPendingItems(string $modelClass, Employee $me, array $relations): Collection
     {
+        if (! Schema::hasTable((new $modelClass())->getTable())) {
+            return collect([]);
+        }
+
         if ($modelClass === DataChangeRequest::class) {
             if ($me->role !== 'superadmin') {
                 return collect([]);
@@ -201,6 +225,10 @@ class ApprovalController extends Controller
             return response()->json(['success' => false, 'message' => 'Tipe tidak valid'], 404);
         }
 
+        if ($modelClass === Lpj::class) {
+            return $this->showLpj($request, $id);
+        }
+
         $relations = ['employee', 'attachments', 'approvalLogs.approver'];
         if ($modelClass === LeaveRequest::class) {
             $relations[] = 'leaveType';
@@ -226,6 +254,7 @@ class ApprovalController extends Controller
             'notes' => 'nullable|string',
             'adjusted_duration' => 'nullable|integer|min:0',
             'adjusted_break' => 'nullable|integer|min:0',
+            'transfer_date' => 'nullable|date',
         ]);
 
         $modelClass = $this->typeMap[$type] ?? null;
@@ -258,6 +287,12 @@ class ApprovalController extends Controller
                 ? null
                 : EmployeeApprover::getApproverAt($item->employee_id, $requestType, $currentStep)
         );
+
+        // Finance mengisi tanggal transfer dana LPJ; tampil di header Excel LPJ. Dari approver
+        // lain, isian ini diabaikan (sama dengan portal).
+        if ($modelClass === Lpj::class && $request->filled('transfer_date') && BudgetSignatureSlots::isFinance($attributedApprover)) {
+            $item->update(['transfer_date' => Carbon::parse($request->transfer_date)->toDateString()]);
+        }
 
         // Log this approval step
         ApprovalLog::create([
@@ -423,9 +458,116 @@ class ApprovalController extends Controller
             AttendanceRequest::class => 'attendance',
             BudgetRequest::class => 'budget',
             TravelReport::class => 'travel_report',
+            Lpj::class => 'lpj',
             DataChangeRequest::class => 'data-change',
             default => 'leave',
         };
+    }
+
+    /**
+     * Detail LPJ untuk approver (dan pemohonnya), dengan bentuk yang sama seperti detail LPJ di
+     * daftar milik sendiri. LPJ memuat angka keuangan dan bukti pengeluaran, jadi hanya pemohon,
+     * approver pada rantainya, yang pernah memutuskannya, dan superadmin yang boleh membukanya.
+     */
+    private function showLpj(Request $request, $id)
+    {
+        $lpj = Lpj::with([
+            ...LpjPresenter::DETAIL_RELATIONS,
+            'employee:id,full_name,position,department_id',
+            'employee.department:id,name',
+        ])->findOrFail($id);
+
+        $user = $request->user();
+
+        if (! $this->canViewLpj($user, $lpj)) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak punya akses ke LPJ ini.'], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                ...LpjPresenter::detail($lpj),
+                'employee' => [
+                    'id' => $lpj->employee?->id,
+                    'full_name' => $lpj->employee?->full_name,
+                    'position' => $lpj->employee?->position,
+                    'department' => $lpj->employee?->department?->name,
+                ],
+                'current_step' => (int) ($lpj->current_step ?? 1),
+                'total_steps' => max(EmployeeApprover::totalSteps($lpj->employee_id, 'lpj'), 1),
+                // Hanya finance pada step aktif yang melihat isian tanggal transfer.
+                'can_set_transfer_date' => $this->lpjTransferApprover($user, $lpj) !== null,
+            ],
+        ]);
+    }
+
+    private function canViewLpj($user, Lpj $lpj): bool
+    {
+        if ($user->role === 'superadmin' || (int) $lpj->employee_id === (int) $user->id) {
+            return true;
+        }
+
+        return EmployeeApprover::where('employee_id', $lpj->employee_id)
+                ->where('request_type', 'lpj')
+                ->where('approver_id', $user->id)
+                ->exists()
+            || ApprovalLog::where('approvable_type', Lpj::class)
+                ->where('approvable_id', $lpj->id)
+                ->where('approver_id', $user->id)
+                ->exists();
+    }
+
+    /**
+     * Finance yang sah mengisi tanggal transfer LPJ ini: approver step aktif yang berjabatan
+     * finance, atau superadmin yang menggantikannya. Null bila tidak ada, atau LPJ sudah diproses.
+     */
+    private function lpjTransferApprover($user, Lpj $lpj): ?Employee
+    {
+        if (! in_array($lpj->status, ['pending', 'in_review'], true)) {
+            return null;
+        }
+
+        $expected = EmployeeApprover::getApproverAt($lpj->employee_id, 'lpj', (int) ($lpj->current_step ?? 1));
+
+        if ($user->role !== 'superadmin' && $expected?->id !== $user->id) {
+            return null;
+        }
+
+        [$approver] = $this->resolveAttribution($user, $expected);
+
+        return BudgetSignatureSlots::isFinance($approver) ? $approver : null;
+    }
+
+    /**
+     * Finance menyimpan tanggal transfer tanpa menyetujui dulu, supaya Excel LPJ sudah
+     * memuatnya sebelum keputusan diambil.
+     */
+    public function saveLpjTransferDate(Request $request, $id)
+    {
+        $validated = $request->validate(['transfer_date' => 'required|date'], [
+            'transfer_date.required' => 'Isi tanggal transfer dulu.',
+        ]);
+
+        $lpj = Lpj::findOrFail($id);
+
+        if (! in_array($lpj->status, ['pending', 'in_review'], true)) {
+            return response()->json(['success' => false, 'message' => 'Pengajuan sudah diproses'], 422);
+        }
+
+        if ($this->lpjTransferApprover($request->user(), $lpj) === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya finance pada step aktif yang bisa mengisi tanggal transfer.',
+            ], 403);
+        }
+
+        $lpj->update(['transfer_date' => Carbon::parse($validated['transfer_date'])->toDateString()]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tanggal transfer disimpan',
+            'data' => ['transfer_date' => $lpj->transfer_date->toDateString()],
+        ]);
     }
 
     /**

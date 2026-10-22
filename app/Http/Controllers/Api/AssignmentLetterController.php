@@ -4,28 +4,21 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AssignmentLetter;
-use App\Models\AssignmentLetterDestination;
-use App\Models\AssignmentLetterEmployee;
-use App\Models\AssignmentLetterFacility;
 use App\Models\Employee;
+use App\Support\AssignmentLetterPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 
 /**
  * Surat tugas untuk aplikasi mobile: hanya surat yang mencantumkan karyawan yang login, dan
- * bukan draft (isinya masih bisa berubah dan belum bernomor).
- *
- * Aplikasi membuka surat & hasil pindai TTD lewat browser, yang tidak membawa token API. Karena
- * itu API memberi tautan bertanda tangan yang berlaku FILE_LINK_MINUTES menit; aplikasi meminta
- * ulang detail surat setiap kali tombol ditekan supaya tautannya selalu baru.
+ * bukan draft (isinya masih bisa berubah dan belum bernomor). Bentuk datanya ada di
+ * AssignmentLetterPresenter, yang juga menjelaskan tautan bertanda tangan untuk surat dan
+ * hasil pindai TTD.
  */
 class AssignmentLetterController extends Controller
 {
-    private const FILE_LINK_MINUTES = 30;
-
     public function index(Request $request)
     {
         if (! Schema::hasTable('assignment_letters')) {
@@ -41,7 +34,7 @@ class AssignmentLetterController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $letters->map(fn (AssignmentLetter $letter) => $this->payload($letter))->values(),
+            'data' => $letters->map(fn (AssignmentLetter $letter) => AssignmentLetterPresenter::payload($letter))->values(),
         ]);
     }
 
@@ -51,7 +44,7 @@ class AssignmentLetterController extends Controller
             ->with(['employees', 'destinations', 'facilities'])
             ->findOrFail($id);
 
-        return response()->json(['success' => true, 'data' => $this->payload($letter)]);
+        return response()->json(['success' => true, 'data' => AssignmentLetterPresenter::payload($letter)]);
     }
 
     /** Halaman cetak surat, dibuka dari tautan bertanda tangan (middleware signed:relative). */
@@ -64,7 +57,7 @@ class AssignmentLetterController extends Controller
         return view('assignment-letters.print', [
             'letter' => $letter,
             'backUrl' => null,
-            'signedUrl' => $this->signedFileUrl($letter),
+            'signedUrl' => AssignmentLetterPresenter::signedFileUrl($letter),
         ]);
     }
 
@@ -83,68 +76,5 @@ class AssignmentLetterController extends Controller
             ->where('company_id', $employee->company_id)
             ->whereIn('status', AssignmentLetter::PUBLISHED_STATUSES)
             ->whereHas('employees', fn ($q) => $q->where('employee_id', $employee->id));
-    }
-
-    private function payload(AssignmentLetter $letter): array
-    {
-        $date = fn ($value) => $value?->toDateString();
-
-        return [
-            'id' => $letter->id,
-            'number' => $letter->number,
-            'status' => $letter->status,
-            'status_label' => $letter->statusLabel(),
-            'letter_date' => $date($letter->letter_date),
-            'city' => $letter->city,
-            'signer_name' => $letter->signer_name,
-            'signer_position' => $letter->signer_position,
-            'title' => (string) $letter->destinations->first()?->activity,
-            'purpose_text' => trim(implode("\n", array_filter([$letter->purposeHeading(), ...$letter->destinationSentences()]))),
-            'departure_date' => $date($letter->departure_date),
-            'work_start_date' => $date($letter->work_start_date),
-            'return_date' => $date($letter->return_date),
-            'working_days' => $letter->workingDays(),
-            'schedule_text' => $letter->scheduleSentence(),
-            'destinations' => $letter->destinations->map(fn (AssignmentLetterDestination $d) => [
-                'activity' => $d->activity,
-                'address' => $d->address,
-                'distance_km' => $d->distance_km !== null ? (float) $d->distance_km : null,
-            ])->values()->all(),
-            'employees' => $letter->employees->map(fn (AssignmentLetterEmployee $e) => [
-                'employee_id' => $e->employee_id,
-                'name' => $e->name,
-                'employee_code' => $e->employee_code,
-                'position' => $e->position,
-            ])->values()->all(),
-            'facilities' => $letter->facilities->map(fn (AssignmentLetterFacility $f) => [
-                'type' => $f->type,
-                'type_label' => $f->type === AssignmentLetterFacility::TYPE_DEVICE ? 'Perangkat Komunikasi' : 'Transportasi',
-                'description' => $f->description,
-                'inspection' => $f->inspectionLabel(),
-            ])->values()->all(),
-            'cancelled_at' => $letter->cancelled_at?->toIso8601String(),
-            'cancel_reason' => $letter->cancel_reason,
-            'print_url' => $this->link('assignment-letters.link.print', $letter),
-            'signed_file' => $letter->hasSignedFile() ? [
-                'file_name' => $letter->signed_file_name,
-                'is_pdf' => str_ends_with(strtolower((string) $letter->signed_file_name), '.pdf'),
-                'uploaded_at' => $letter->signed_uploaded_at?->toIso8601String(),
-                'url' => $this->signedFileUrl($letter),
-            ] : null,
-        ];
-    }
-
-    private function signedFileUrl(AssignmentLetter $letter): ?string
-    {
-        return $letter->hasSignedFile() ? $this->link('assignment-letters.link.signed', $letter) : null;
-    }
-
-    /**
-     * Tanda tangan dihitung dari path saja (relative) supaya tetap sah walau server berada di
-     * balik proxy yang mengubah skema/host; host diambil dari request yang sedang berjalan.
-     */
-    private function link(string $route, AssignmentLetter $letter): string
-    {
-        return url(URL::temporarySignedRoute($route, now()->addMinutes(self::FILE_LINK_MINUTES), ['id' => $letter->id], false));
     }
 }
