@@ -45,19 +45,38 @@ class LeaveController extends Controller
         ]);
     }
 
+    /** Paling banyak pengajuan yang dikirim sekaligus; riwayat seorang karyawan jauh di bawah ini. */
+    public const HISTORY_LIMIT = 500;
+
+    /**
+     * Riwayat cuti milik sendiri, terbaru lebih dulu.
+     *
+     * Dengan ?period=YYYY-MM: pengajuan yang dibuat di bulan itu ATAU cuti yang tanggalnya jatuh di bulan
+     * itu (cuti 2-3 Oktober yang diajukan 28 September muncul di kedua bulan). Tanpa ?period=: semua
+     * riwayat, seperti daftar cuti di portal employee.
+     */
     public function index(Request $request)
     {
         $request->validate(['period' => 'nullable|date_format:Y-m']);
-        $period = $request->period ? Carbon::parse($request->period.'-01') : now();
 
-        $requests = LeaveRequest::where('employee_id', $request->user()->id)
-            ->whereYear('created_at', $period->year)
-            ->whereMonth('created_at', $period->month)
+        $query = LeaveRequest::where('employee_id', $request->user()->id)
             ->with(['leaveType', 'attachments'])
-            ->orderBy('created_at', 'desc')
-            ->get();
+            ->orderBy('created_at', 'desc');
 
-        return response()->json(['success' => true, 'data' => $requests]);
+        if ($request->filled('period')) {
+            $start = Carbon::parse($request->period.'-01')->startOfMonth();
+            $end = $start->copy()->endOfMonth();
+
+            $query->where(function ($month) use ($start, $end) {
+                $month->whereBetween('created_at', [$start, $end])
+                    ->orWhere(function ($dates) use ($start, $end) {
+                        $dates->whereDate('start_date', '<=', $end->toDateString())
+                            ->whereDate('end_date', '>=', $start->toDateString());
+                    });
+            });
+        }
+
+        return response()->json(['success' => true, 'data' => $query->limit(self::HISTORY_LIMIT)->get()]);
     }
 
     public function companyTimeline(Request $request)
