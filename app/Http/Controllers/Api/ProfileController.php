@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\DataChangeRequest;
+use App\Models\Employee;
 use App\Models\Notification;
 use App\Services\FaceVerificationService;
 use App\Support\SignatureImage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class ProfileController extends Controller
@@ -346,7 +348,18 @@ class ProfileController extends Controller
     {
         $request->validate(['fcm_token' => 'required|string']);
 
-        $request->user()->update(['fcm_token' => $request->fcm_token]);
+        $user = $request->user();
+        $token = $request->fcm_token;
+
+        // Satu HP hanya terhubung ke satu akun. Tanpa ini, akun lain yang pernah login di HP yang
+        // sama tetap memegang token ini dan notifikasinya ikut masuk ke HP ini.
+        DB::transaction(function () use ($user, $token) {
+            Employee::where('fcm_token', $token)
+                ->where('id', '!=', $user->id)
+                ->update(['fcm_token' => null]);
+
+            $user->update(['fcm_token' => $token]);
+        });
 
         return response()->json(['success' => true, 'message' => 'FCM token updated']);
     }

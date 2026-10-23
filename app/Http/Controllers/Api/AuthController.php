@@ -56,7 +56,16 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+
+        // HP yang logout tidak boleh lagi menerima notifikasi akun ini. Bila app mengirim tokennya,
+        // token hanya dilepas kalau masih milik HP ini (akun yang sudah pindah ke HP lain tidak ikut putus).
+        $sentToken = $request->input('fcm_token');
+        if (! $sentToken || $sentToken === $user->fcm_token) {
+            $user->update(['fcm_token' => null]);
+        }
+
+        $user->currentAccessToken()->delete();
 
         return response()->json([
             'success' => true,
