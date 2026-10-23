@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\DailyReportPrefillController;
 use App\Http\Controllers\Api\DailyTokenController;
+use App\Http\Controllers\Api\CompanyInfoController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\HrContactController;
@@ -65,6 +66,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Company Info
     Route::get('/company', [DashboardController::class, 'companyInfo']);
+    Route::get('/company-info', [CompanyInfoController::class, 'index']);
+    Route::get('/company-info/regulations/{regulation}/attachments/{attachment}/link', [CompanyInfoController::class, 'attachmentLink'])
+        ->whereNumber(['regulation', 'attachment']);
 
     // Attendance
     Route::post('/attendance/clock-in', [AttendanceController::class, 'clockIn']);

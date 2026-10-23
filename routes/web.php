@@ -57,6 +57,7 @@ use App\Http\Controllers\Admin\TravelReportController;
 use App\Http\Controllers\Admin\TravelZoneController;
 use App\Http\Controllers\Api\TravelZoneController as ApiTravelZoneController;
 use App\Http\Controllers\Api\AssignmentLetterController as ApiAssignmentLetterController;
+use App\Http\Controllers\Api\CompanyInfoController as ApiCompanyInfoController;
 use App\Http\Controllers\Employee\AnnouncementFileController as EmployeeAnnouncementFileController;
 use App\Http\Controllers\Employee\AssignmentLetterApprovalController as EmployeeAssignmentLetterApprovalController;
 use App\Http\Controllers\Employee\AssignmentLetterController as EmployeeAssignmentLetterController;
@@ -109,6 +110,13 @@ Route::middleware('throttle:30,1')->group(function () {
 Route::middleware('signed:relative')->prefix('files/assignment-letters')->name('assignment-letters.link.')->group(function () {
     Route::get('/{id}/print', [ApiAssignmentLetterController::class, 'printFromLink'])->whereNumber('id')->name('print');
     Route::get('/{id}/signed', [ApiAssignmentLetterController::class, 'signedFileFromLink'])->whereNumber('id')->name('signed');
+});
+
+// Lampiran peraturan perusahaan untuk aplikasi mobile: tautan bertanda tangan & berbatas waktu dari
+// API /api/company-info/regulations/{id}/attachments/{id}/link, dibuka di browser HP tanpa token API.
+Route::middleware('signed:relative')->prefix('files/company-regulations')->name('company-regulations.link.')->group(function () {
+    Route::get('/{regulation}/attachments/{attachment}', [ApiCompanyInfoController::class, 'attachmentFromLink'])
+        ->whereNumber(['regulation', 'attachment'])->name('attachment');
 });
 
 // Employee Portal Auth
