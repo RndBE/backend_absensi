@@ -15,6 +15,7 @@ use App\Models\Notification;
 use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Services\FcmService;
+use App\Services\LpjExcelExporter;
 use App\Support\AssignmentLetterApprovalFlow;
 use App\Support\AssignmentLetterPresenter;
 use App\Support\BudgetSignatureSlots;
@@ -24,9 +25,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\URL;
 
 class ApprovalController extends Controller
 {
+    /** Masa berlaku tautan unduh Excel LPJ untuk app mobile. */
+    public const LPJ_EXCEL_LINK_MINUTES = 30;
+
     private $typeMap = [
         'leave' => LeaveRequest::class,
         'overtime' => OvertimeRequest::class,
@@ -568,6 +573,41 @@ class ApprovalController extends Controller
             'message' => 'Tanggal transfer disimpan',
             'data' => ['transfer_date' => $lpj->transfer_date->toDateString()],
         ]);
+    }
+
+    /**
+     * Tautan unduh Excel LPJ untuk app mobile. Berkasnya dibuka di browser HP yang tidak membawa token
+     * API, jadi app meminta tautan bertanda tangan yang berlaku sebentar tepat saat tombol diketuk.
+     * Yang boleh meminta sama dengan yang boleh membuka detail LPJ-nya (canViewLpj): pemohon, approver
+     * di rantainya, yang pernah memutuskannya, dan superadmin.
+     */
+    public function lpjExcelLink(Request $request, $id)
+    {
+        $lpj = Lpj::findOrFail($id);
+
+        if (! $this->canViewLpj($request->user(), $lpj)) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak punya akses ke LPJ ini.'], 403);
+        }
+
+        // Tanda tangan dihitung dari path saja (relative) supaya tetap sah di balik proxy yang mengubah
+        // skema/host; host diambil dari request yang sedang berjalan.
+        $url = url(URL::temporarySignedRoute(
+            'lpj.link.excel',
+            now()->addMinutes(self::LPJ_EXCEL_LINK_MINUTES),
+            ['id' => $lpj->id],
+            false,
+        ));
+
+        return response()->json([
+            'success' => true,
+            'data' => ['url' => $url, 'expires_in_minutes' => self::LPJ_EXCEL_LINK_MINUTES],
+        ]);
+    }
+
+    /** Excel LPJ, dibuka dari tautan bertanda tangan (isinya selalu yang terbaru, termasuk tanggal transfer). */
+    public function lpjExcelFromLink(int $id)
+    {
+        return LpjExcelExporter::download(Lpj::findOrFail($id));
     }
 
     /**

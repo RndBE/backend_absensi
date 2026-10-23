@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -34,11 +35,18 @@ class ApiLpjApprovalTest extends TestCase
         foreach ([
             'notifications', 'approval_logs', 'employee_approvers', 'lpj_items', 'lpjs', 'travel_reports',
             'budget_request_participants', 'budget_request_items', 'budget_requests', 'leave_requests',
-            'overtime_requests', 'attendance_requests', 'data_change_requests', 'departments', 'employees',
+            'overtime_requests', 'attendance_requests', 'data_change_requests', 'departments', 'companies', 'employees',
         ] as $table) {
             Schema::dropIfExists($table);
         }
 
+        // Kop Excel LPJ membaca perusahaan pertama.
+        Schema::create('companies', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+        DB::table('companies')->insert(['name' => 'PT Beacon', 'created_at' => now(), 'updated_at' => now()]);
         Schema::create('departments', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -76,6 +84,13 @@ class ApiLpjApprovalTest extends TestCase
             $table->date('departure_date')->nullable();
             $table->date('return_date')->nullable();
             $table->integer('lhp_deadline_days')->nullable();
+            $table->timestamps();
+        });
+        // Excel LPJ menghitung peserta perjalanan.
+        Schema::create('budget_request_participants', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('budget_request_id')->nullable();
+            $table->unsignedBigInteger('employee_id')->nullable();
             $table->timestamps();
         });
         Schema::create('budget_request_items', function (Blueprint $table) {
@@ -302,6 +317,97 @@ class ApiLpjApprovalTest extends TestCase
 
         $this->assertTrue($this->canSet(self::SUPERADMIN, $atFinance), 'menggantikan finance');
         $this->assertFalse($this->canSet(self::SUPERADMIN, $atManager), 'menggantikan manager yang bukan finance');
+    }
+
+    // ── tautan unduh Excel ────────────────────────────────────────────────────
+
+    public function test_everyone_who_can_open_the_lpj_gets_a_signed_excel_link(): void
+    {
+        $id = $this->lpj();
+
+        foreach ([self::OWNER, self::MANAGER, self::FINANCE, self::SUPERADMIN] as $who) {
+            $response = $this->respond('lpjExcelLink', $who, [], $id);
+
+            $this->assertSame(200, $response->getStatusCode(), "pengguna $who");
+            $data = $response->getData(true)['data'];
+            $this->assertStringContainsString("/files/lpj/{$id}/excel", $data['url']);
+            $this->assertStringContainsString('signature=', $data['url']);
+            $this->assertStringContainsString('expires=', $data['url']);
+            $this->assertSame(30, $data['expires_in_minutes']);
+        }
+    }
+
+    public function test_an_outsider_gets_no_excel_link(): void
+    {
+        $response = $this->respond('lpjExcelLink', self::OUTSIDER, [], $this->lpj());
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertFalse($response->getData(true)['success']);
+        $this->assertArrayNotHasKey('data', $response->getData(true));
+    }
+
+    public function test_someone_who_once_decided_still_gets_the_excel_link(): void
+    {
+        $id = $this->lpj(step: 2, status: 'in_review');
+        $this->log($id, self::DIRECTOR, 'approved', 1);
+
+        $this->assertSame(200, $this->respond('lpjExcelLink', self::DIRECTOR, [], $id)->getStatusCode());
+    }
+
+    public function test_the_excel_link_of_an_unknown_lpj_is_not_found(): void
+    {
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+
+        $this->respond('lpjExcelLink', self::MANAGER, [], 999);
+    }
+
+    public function test_the_signed_link_downloads_the_excel_without_any_token(): void
+    {
+        $id = $this->lpj(step: 2, status: 'in_review', transferDate: '2026-10-08');
+        $url = $this->respond('lpjExcelLink', self::FINANCE, [], $id)->getData(true)['data']['url'];
+
+        $response = $this->get($this->pathOf($url));
+
+        $response->assertOk();
+        $this->assertStringContainsString('spreadsheetml.sheet', (string) $response->headers->get('Content-Type'));
+        $this->assertStringContainsString('.xlsx', (string) $response->headers->get('Content-Disposition'));
+    }
+
+    public function test_the_link_cannot_be_pointed_at_another_lpj(): void
+    {
+        $mine = $this->lpj();
+        $other = $this->lpj();
+        $url = $this->respond('lpjExcelLink', self::OWNER, [], $mine)->getData(true)['data']['url'];
+
+        $tampered = str_replace("/files/lpj/{$mine}/excel", "/files/lpj/{$other}/excel", $this->pathOf($url));
+
+        $this->get($tampered)->assertForbidden();
+    }
+
+    public function test_a_link_without_its_signature_is_refused(): void
+    {
+        $id = $this->lpj();
+
+        $this->get("/files/lpj/{$id}/excel")->assertForbidden();
+    }
+
+    public function test_a_validly_signed_link_for_an_unknown_lpj_is_not_found(): void
+    {
+        $url = url(URL::temporarySignedRoute('lpj.link.excel', now()->addMinutes(5), ['id' => 999], false));
+
+        $this->get($this->pathOf($url))->assertNotFound();
+    }
+
+    public function test_the_link_expires(): void
+    {
+        $id = $this->lpj();
+        $url = $this->respond('lpjExcelLink', self::OWNER, [], $id)->getData(true)['data']['url'];
+
+        $this->travel(29)->minutes();
+        $this->get($this->pathOf($url))->assertOk();
+
+        $this->travel(2)->minutes();
+        $this->get($this->pathOf($url))->assertForbidden();
     }
 
     // ── setuju ────────────────────────────────────────────────────────────────
@@ -568,6 +674,7 @@ class ApiLpjApprovalTest extends TestCase
             ['POST', 'api/approvals/lpj/12/approve', 'approve'],
             ['POST', 'api/approvals/lpj/12/reject', 'reject'],
             ['POST', 'api/approvals/lpj/12/transfer-date', 'saveLpjTransferDate'],
+            ['GET', 'api/approvals/lpj/12/excel-link', 'lpjExcelLink'],
         ] as [$method, $uri, $action]) {
             $route = Route::getRoutes()->match(Request::create('/'.$uri, $method));
 
@@ -581,6 +688,22 @@ class ApiLpjApprovalTest extends TestCase
         $this->expectException(\Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class);
 
         Route::getRoutes()->match(Request::create('/api/approvals/lpj/abc/transfer-date', 'POST'));
+    }
+
+    public function test_the_excel_link_route_only_takes_a_numeric_id(): void
+    {
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class);
+
+        Route::getRoutes()->match(Request::create('/api/approvals/lpj/abc/excel-link', 'GET'));
+    }
+
+    public function test_the_signed_download_route_is_public_but_requires_a_signature(): void
+    {
+        $route = Route::getRoutes()->match(Request::create('/files/lpj/12/excel', 'GET'));
+
+        $this->assertSame(ApprovalController::class.'@lpjExcelFromLink', $route->getActionName());
+        $this->assertContains('signed:relative', $route->gatherMiddleware());
+        $this->assertNotContains('auth:sanctum', $route->gatherMiddleware(), 'dibuka di browser tanpa token API');
     }
 
     // ── bantuan ───────────────────────────────────────────────────────────────
@@ -634,6 +757,14 @@ class ApiLpjApprovalTest extends TestCase
 
         $this->assertSame($date, substr($stored, 0, 10));
         $this->assertStringNotContainsString('15:45', $stored, 'jam dari isian tidak ikut tersimpan');
+    }
+
+    /** Path dan query tautan, tanpa host (tes memanggil aplikasi langsung). */
+    private function pathOf(string $url): string
+    {
+        $parts = parse_url($url);
+
+        return $parts['path'].(isset($parts['query']) ? '?'.$parts['query'] : '');
     }
 
     private function canSet(int $as, int $lpjId): bool

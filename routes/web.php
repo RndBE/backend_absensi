@@ -56,6 +56,7 @@ use App\Http\Controllers\Admin\TaxController;
 use App\Http\Controllers\Admin\TravelReportController;
 use App\Http\Controllers\Admin\TravelZoneController;
 use App\Http\Controllers\Api\TravelZoneController as ApiTravelZoneController;
+use App\Http\Controllers\Api\ApprovalController as ApiApprovalController;
 use App\Http\Controllers\Api\AssignmentLetterController as ApiAssignmentLetterController;
 use App\Http\Controllers\Api\CompanyInfoController as ApiCompanyInfoController;
 use App\Http\Controllers\Employee\AnnouncementFileController as EmployeeAnnouncementFileController;
@@ -117,6 +118,12 @@ Route::middleware('signed:relative')->prefix('files/assignment-letters')->name('
 Route::middleware('signed:relative')->prefix('files/company-regulations')->name('company-regulations.link.')->group(function () {
     Route::get('/{regulation}/attachments/{attachment}', [ApiCompanyInfoController::class, 'attachmentFromLink'])
         ->whereNumber(['regulation', 'attachment'])->name('attachment');
+});
+
+// Excel LPJ untuk aplikasi mobile: tautan bertanda tangan & berbatas waktu dari API
+// /api/approvals/lpj/{id}/excel-link, dibuka di browser HP tanpa token API.
+Route::middleware('signed:relative')->prefix('files/lpj')->name('lpj.link.')->group(function () {
+    Route::get('/{id}/excel', [ApiApprovalController::class, 'lpjExcelFromLink'])->whereNumber('id')->name('excel');
 });
 
 // Employee Portal Auth
