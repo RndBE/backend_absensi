@@ -56,6 +56,12 @@
         </div>
 
         <div class="space-y-2.5 text-[13px]">
+            @if((int) $lpj->employee_id !== (int) $employee->id)
+            <div class="flex gap-2">
+                <span class="text-gray-400 w-28 shrink-0">Dibuat oleh</span>
+                <span class="text-gray-700">{{ $lpj->employee?->full_name ?? '-' }} <span class="text-gray-400">(LPJ tim, hanya dilihat)</span></span>
+            </div>
+            @endif
             <div class="flex gap-2">
                 <span class="text-gray-400 w-28 shrink-0">Kegiatan</span>
                 <span class="font-semibold text-gray-800">{{ $lpj->budgetRequest?->title ?? '-' }}</span>

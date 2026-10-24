@@ -30,6 +30,8 @@ class LpjReminderService
     /**
      * Kirim pengingat LPJ untuk perjalanan yang tanggal pulangnya tepat
      * sejumlah hari yang dikonfigurasi sebelum $date, dan LPJ-nya belum dibuat.
+     * LPJ satu per anggaran dan dibuat pemilik anggaran, jadi hanya pemilik yang diingatkan,
+     * sekali per anggaran, walau LHP-nya dibuat beberapa peserta.
      *
      * @return array{sent: int, skipped: int}
      */
@@ -41,32 +43,18 @@ class LpjReminderService
 
         $reminderDays = self::reminderDays();
 
-        // Tanggal pulang yang memicu reminder hari ini.
-        $targetReturnDate = $date->copy()->subDays($reminderDays)->toDateString();
-
-        $reports = TravelReport::with(['budgetRequest', 'employee'])
-            ->whereNotNull('return_date')
-            ->whereDate('return_date', $targetReturnDate)
-            ->whereHas('budgetRequest', fn ($q) => $q
-                ->whereIn('status', ['approved', 'paid']))
-            ->get();
-
         $sent = 0;
         $skipped = 0;
 
-        foreach ($reports as $report) {
-            $budget = $report->budgetRequest;
-            $employee = $report->employee;
+        foreach (self::budgetsReturningOn($date, $reminderDays) as $budget) {
+            $employee = $budget->employee;
 
-            if (! $budget || ! $employee) {
+            if (! $employee) {
                 $skipped++;
                 continue;
             }
 
-            $lpjExists = Lpj::where('budget_request_id', $budget->id)
-                ->where('employee_id', $employee->id)
-                ->exists();
-            if ($lpjExists) {
+            if (Lpj::where('budget_request_id', $budget->id)->exists()) {
                 $skipped++;
                 continue;
             }
@@ -118,24 +106,15 @@ class LpjReminderService
         }
 
         $reminderDays = self::reminderDays();
-        $targetReturnDate = $date->copy()->subDays($reminderDays)->toDateString();
-
-        $reports = TravelReport::with(['budgetRequest', 'employee'])
-            ->whereNotNull('return_date')
-            ->whereDate('return_date', $targetReturnDate)
-            ->whereHas('budgetRequest', fn ($q) => $q->whereIn('status', ['approved', 'paid']))
-            ->when($companyId, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('company_id', $companyId)))
-            ->get();
 
         $items = collect();
 
-        foreach ($reports as $report) {
-            $budget = $report->budgetRequest;
-            $employee = $report->employee;
-            if (! $budget || ! $employee) {
+        foreach (self::budgetsReturningOn($date, $reminderDays) as $budget) {
+            $employee = $budget->employee;
+            if (! $employee || ($companyId && (int) $employee->company_id !== $companyId)) {
                 continue;
             }
-            if (Lpj::where('budget_request_id', $budget->id)->where('employee_id', $employee->id)->exists()) {
+            if (Lpj::where('budget_request_id', $budget->id)->exists()) {
                 continue;
             }
 
@@ -148,5 +127,27 @@ class LpjReminderService
         }
 
         return $items;
+    }
+
+    /**
+     * Anggaran disetujui/cair yang punya LHP dengan tanggal pulang tepat $reminderDays hari
+     * sebelum $date, sekali per anggaran beserta pemiliknya.
+     *
+     * @return Collection<int, BudgetRequest>
+     */
+    private static function budgetsReturningOn(Carbon $date, int $reminderDays): Collection
+    {
+        $targetReturnDate = $date->copy()->subDays($reminderDays)->toDateString();
+
+        $budgetIds = TravelReport::whereNotNull('return_date')
+            ->whereDate('return_date', $targetReturnDate)
+            ->whereNotNull('budget_request_id')
+            ->distinct()
+            ->pluck('budget_request_id');
+
+        return BudgetRequest::with('employee')
+            ->whereIn('id', $budgetIds)
+            ->whereIn('status', ['approved', 'paid'])
+            ->get();
     }
 }

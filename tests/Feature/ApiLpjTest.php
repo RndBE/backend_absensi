@@ -178,6 +178,37 @@ class ApiLpjTest extends TestCase
 
         $this->assertSame([$newer, $older], array_column($data, 'id'));
         $this->assertSame('LPJ-LAMA', $data[1]['nomor_lpj']);
+        $this->assertTrue($data[0]['is_mine']);
+        $this->assertSame('Shandy', $data[0]['employee']['full_name']);
+    }
+
+    public function test_a_participant_sees_the_team_lpj_made_by_the_owner_as_not_theirs(): void
+    {
+        $budget = $this->budget(self::OTHER, 'Rapat bersama');
+        $this->participate($budget, self::ME);
+        $id = $this->lpj($budget, self::OTHER, '2026-10-01 08:00:00');
+
+        $row = $this->invoke('index', $this->listRequest(self::ME))['data'][0];
+        $detail = $this->invoke('show', $this->listRequest(self::ME), $id)['data'];
+
+        $this->assertSame($id, $row['id']);
+        $this->assertFalse($row['is_mine']);
+        $this->assertSame('Rina', $row['employee']['full_name']);
+        $this->assertFalse($detail['is_mine']);
+        $this->assertSame('Rina', $detail['employee']['full_name']);
+        $this->assertSame('Rapat bersama', $detail['budget_request']['title']);
+    }
+
+    public function test_the_budget_owner_sees_a_legacy_lpj_made_by_a_participant(): void
+    {
+        $budget = $this->budget(self::ME, 'Rapat bersama');
+        $this->participate($budget, self::OTHER);
+        $id = $this->lpj($budget, self::OTHER, '2026-10-01 08:00:00');
+
+        $row = $this->invoke('index', $this->listRequest(self::ME))['data'][0];
+
+        $this->assertSame($id, $row['id']);
+        $this->assertFalse($row['is_mine']);
     }
 
     public function test_list_rows_carry_money_as_numbers_and_the_related_names(): void
@@ -288,17 +319,22 @@ class ApiLpjTest extends TestCase
         $this->assertNumber(200000, $first['items'][0]['jumlah']);
     }
 
-    public function test_a_participant_can_make_their_own_lpj_even_when_the_owner_already_did(): void
+    public function test_team_budgets_are_not_offered_to_participants(): void
     {
         $budget = $this->budget(self::OTHER, 'Rapat bersama', status: 'approved');
-        DB::table('budget_request_participants')->insert([
-            'budget_request_id' => $budget, 'employee_id' => self::ME, 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $this->participate($budget, self::ME);
+
+        $this->assertSame([], $this->invoke('availableRequests', $this->listRequest(self::ME))['data']);
+        $this->assertSame([$budget], array_column($this->invoke('availableRequests', $this->listRequest(self::OTHER))['data'], 'id'));
+    }
+
+    public function test_a_budget_with_any_lpj_is_not_offered_again(): void
+    {
+        $budget = $this->budget(self::ME, 'Rapat bersama', status: 'approved');
+        $this->participate($budget, self::OTHER);
         $this->lpj($budget, self::OTHER, '2026-10-01 08:00:00');
 
-        $ids = array_column($this->invoke('availableRequests', $this->listRequest(self::ME))['data'], 'id');
-
-        $this->assertSame([$budget], $ids);
+        $this->assertSame([], $this->invoke('availableRequests', $this->listRequest(self::ME))['data']);
     }
 
     public function test_available_budgets_come_with_the_expense_categories(): void
@@ -423,17 +459,27 @@ class ApiLpjTest extends TestCase
         $this->assertNull(Lpj::firstOrFail()->travel_report_id);
     }
 
-    public function test_a_participant_can_create_their_own_lpj(): void
+    public function test_the_lpj_links_to_a_participants_lhp_when_the_owner_wrote_none(): void
+    {
+        $budget = $this->budget(self::ME, 'Rapat bersama');
+        $this->participate($budget, self::OTHER);
+        $theirs = $this->lhp($budget, self::OTHER, 'approved');
+
+        $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 1000]]]);
+
+        $this->assertSame($theirs, Lpj::firstOrFail()->travel_report_id);
+    }
+
+    public function test_a_participant_cannot_create_the_team_lpj(): void
     {
         $budget = $this->budget(self::OTHER, 'Rapat bersama', total: 100000);
-        DB::table('budget_request_participants')->insert([
-            'budget_request_id' => $budget, 'employee_id' => self::ME, 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $this->participate($budget, self::ME);
 
         $response = $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 1000]]]);
 
-        $this->assertSame(201, $response->getStatusCode());
-        $this->assertSame(self::ME, Lpj::firstOrFail()->employee_id);
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('LPJ anggaran tim dibuat oleh pemilik anggaran. Peserta cukup melihat LPJ-nya.', $response->getData(true)['message']);
+        $this->assertSame(0, Lpj::count());
     }
 
     public function test_a_second_lpj_for_the_same_budget_is_refused(): void
@@ -463,18 +509,17 @@ class ApiLpjTest extends TestCase
         $this->assertSame(0, Lpj::count());
     }
 
-    public function test_the_same_budget_by_a_participant_and_the_owner_each_gets_their_own_lpj(): void
+    public function test_the_owner_cannot_add_a_second_lpj_after_a_legacy_participant_lpj(): void
     {
-        $budget = $this->budget(self::OTHER, 'Rapat bersama');
-        DB::table('budget_request_participants')->insert([
-            'budget_request_id' => $budget, 'employee_id' => self::ME, 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $budget = $this->budget(self::ME, 'Rapat bersama');
+        $this->participate($budget, self::OTHER);
         $this->lpj($budget, self::OTHER, '2026-10-01 08:00:00');
 
         $response = $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 1000]]]);
 
-        $this->assertSame(201, $response->getStatusCode());
-        $this->assertSame(2, Lpj::count());
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('LPJ untuk anggaran ini sudah dibuat.', $response->getData(true)['message']);
+        $this->assertSame(1, Lpj::count());
     }
 
     #[DataProvider('invalidBodies')]
@@ -614,6 +659,13 @@ class ApiLpjTest extends TestCase
         }
 
         return $id;
+    }
+
+    private function participate(int $budgetId, int $employeeId): void
+    {
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => $employeeId, 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     private function lhp(int $budgetId, int $employeeId, string $status): int

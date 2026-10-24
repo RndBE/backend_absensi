@@ -508,11 +508,13 @@ class ApprovalController extends Controller
 
     private function canViewLpj($user, Lpj $lpj): bool
     {
-        if ($user->role === 'superadmin' || (int) $lpj->employee_id === (int) $user->id) {
+        if ($user->role === 'superadmin') {
             return true;
         }
 
-        return EmployeeApprover::where('employee_id', $lpj->employee_id)
+        // Pembuat, pemilik anggaran, atau peserta anggaran (LPJ tim cukup dilihat peserta).
+        return Lpj::visibleTo($user->id)->whereKey($lpj->id)->exists()
+            || EmployeeApprover::where('employee_id', $lpj->employee_id)
                 ->where('request_type', 'lpj')
                 ->where('approver_id', $user->id)
                 ->exists()

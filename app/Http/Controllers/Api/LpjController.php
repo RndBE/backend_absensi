@@ -16,39 +16,44 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * LPJ (laporan pertanggungjawaban anggaran) untuk app mobile: daftar, detail, dan buat.
- * Aturannya sama dengan portal employee (Employee\LpjController). Angka uang dikirim sebagai
- * angka, bukan teks desimal, supaya app tidak perlu menebak bentuknya.
+ * Aturannya sama dengan portal employee (Employee\LpjController): satu LPJ per anggaran, dibuat
+ * pemilik anggaran; peserta anggaran tim hanya melihat. Angka uang dikirim sebagai angka, bukan
+ * teks desimal, supaya app tidak perlu menebak bentuknya.
  */
 class LpjController extends Controller
 {
     public function index(Request $request)
     {
-        $lpjs = Lpj::with(['budgetRequest:id,title,total_amount', 'travelReport:id,destination_city'])
-            ->where('employee_id', $request->user()->id)
+        $viewerId = $request->user()->id;
+
+        $lpjs = Lpj::with(['budgetRequest:id,title,total_amount', 'travelReport:id,destination_city', 'employee:id,full_name'])
+            ->visibleTo($viewerId)
             ->latest()
             ->get()
-            ->map(fn (Lpj $lpj) => LpjPresenter::summary($lpj));
+            ->map(fn (Lpj $lpj) => [...LpjPresenter::summary($lpj), ...$this->authorship($lpj, $viewerId)]);
 
         return response()->json(['success' => true, 'data' => $lpjs]);
     }
 
     public function show(Request $request, $id)
     {
-        $lpj = Lpj::with(LpjPresenter::DETAIL_RELATIONS)
-            ->where('employee_id', $request->user()->id)
+        $viewerId = $request->user()->id;
+
+        $lpj = Lpj::with([...LpjPresenter::DETAIL_RELATIONS, 'employee:id,full_name'])
+            ->visibleTo($viewerId)
             ->findOrFail($id);
 
-        return response()->json(['success' => true, 'data' => LpjPresenter::detail($lpj)]);
+        return response()->json(['success' => true, 'data' => [...LpjPresenter::detail($lpj), ...$this->authorship($lpj, $viewerId)]]);
     }
 
     /**
-     * Anggaran yang bisa dibuatkan LPJ: disetujui/cair, milik sendiri atau diikuti sebagai peserta,
-     * dan belum punya LPJ dari karyawan ini. Beserta kategori pengeluaran untuk formulirnya.
+     * Anggaran yang bisa dibuatkan LPJ: milik sendiri, disetujui/cair, dan belum punya LPJ.
+     * Beserta kategori pengeluaran untuk formulirnya.
      */
     public function availableRequests(Request $request)
     {
         $requests = $this->eligibleBudgets($request->user()->id)
-            ->whereDoesntHave('lpj', fn ($q) => $q->where('employee_id', $request->user()->id))
+            ->whereDoesntHave('lpj')
             ->with(['items', 'travelReport:id,budget_request_id,destination_city'])
             ->latest()
             ->get()
@@ -101,13 +106,19 @@ class LpjController extends Controller
         $budgetRequest = $this->eligibleBudgets($employee->id)->find($request->budget_request_id);
 
         if (! $budgetRequest) {
+            $asParticipant = BudgetRequest::whereKey($request->budget_request_id)
+                ->whereHas('participants', fn ($q) => $q->where('employees.id', $employee->id))
+                ->exists();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Anggaran tidak ditemukan, belum disetujui, atau bukan milik Anda.',
+                'message' => $asParticipant
+                    ? 'LPJ anggaran tim dibuat oleh pemilik anggaran. Peserta cukup melihat LPJ-nya.'
+                    : 'Anggaran tidak ditemukan, belum disetujui, atau bukan milik Anda.',
             ], 422);
         }
 
-        if ($budgetRequest->lpj()->where('employee_id', $employee->id)->exists()) {
+        if ($budgetRequest->lpj()->exists()) {
             return response()->json([
                 'success' => false,
                 'message' => 'LPJ untuk anggaran ini sudah dibuat.',
@@ -118,10 +129,11 @@ class LpjController extends Controller
         try {
             $lpj = Lpj::create([
                 'budget_request_id' => $budgetRequest->id,
-                // LHP yang berlaku, bukan versi yang ditolak lalu diajukan ulang.
+                // LHP yang berlaku (bukan versi yang ditolak lalu diajukan ulang): milik pemilik dulu,
+                // bila pemilik tidak ikut berangkat pakai LHP peserta terbaru.
                 'travel_report_id'  => TravelReport::where('budget_request_id', $budgetRequest->id)
-                    ->where('employee_id', $employee->id)
                     ->where('status', '!=', 'rejected')
+                    ->orderByRaw('employee_id = ? desc', [$employee->id])
                     ->latest('id')
                     ->value('id'),
                 'employee_id'       => $employee->id,
@@ -190,13 +202,19 @@ class LpjController extends Controller
         ], 201);
     }
 
-    /** Anggaran milik karyawan, atau yang diikutinya sebagai peserta, yang sudah disetujui atau cair. */
+    /** Anggaran milik karyawan yang sudah disetujui atau cair. Peserta tidak membuat LPJ sendiri. */
     private function eligibleBudgets(int $employeeId)
     {
-        return BudgetRequest::where(function ($query) use ($employeeId) {
-                $query->where('employee_id', $employeeId)
-                    ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employeeId));
-            })
+        return BudgetRequest::where('employee_id', $employeeId)
             ->whereIn('status', ['approved', 'paid']);
+    }
+
+    /** Pembuat LPJ, dan apakah itu yang sedang melihat (false = LPJ tim, hanya bisa dilihat). */
+    private function authorship(Lpj $lpj, int $viewerId): array
+    {
+        return [
+            'employee' => ['id' => $lpj->employee?->id, 'full_name' => $lpj->employee?->full_name],
+            'is_mine'  => (int) $lpj->employee_id === $viewerId,
+        ];
     }
 }

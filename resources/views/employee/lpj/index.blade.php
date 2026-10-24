@@ -46,6 +46,9 @@
                         @if($lpj->nomor_lpj)
                         <span class="text-[11px] text-gray-400">{{ $lpj->nomor_lpj }}</span>
                         @endif
+                        @if((int) $lpj->employee_id !== (int) $employee->id)
+                        <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700">LPJ Tim · {{ $lpj->employee?->full_name ?? '-' }}</span>
+                        @endif
                     </div>
                     <div class="text-[14px] font-bold text-gray-900 truncate">{{ $lpj->budgetRequest?->title ?? '-' }}</div>
                     <div class="text-[12px] text-gray-500 mt-0.5">{{ $lpj->travelReport?->destination_city ?? '' }}</div>

@@ -10,6 +10,7 @@
         </a>
         <h1 class="text-[22px] font-black text-gray-900">Buat LPJ</h1>
         <p class="text-[13px] text-gray-500 mt-1">Laporan Pertanggungjawaban anggaran kegiatan.</p>
+        <p class="text-[12px] text-gray-400 mt-1">Satu LPJ per anggaran, dibuat pemilik anggaran. Peserta anggaran tim melihat LPJ-nya di daftar LPJ.</p>
     </div>
 
     @if($errors->has('error'))

@@ -966,14 +966,20 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        // LPJ satu per anggaran dan dibuat pemilik; peserta tidak ditawari anggaran tim.
         $this->withSession(['employee_id' => 2])
+            ->get('/employee/lpj/create')
+            ->assertOk()
+            ->assertDontSee('Perjalanan Batam');
+
+        $this->withSession(['employee_id' => 1])
             ->get('/employee/lpj/create')
             ->assertOk()
             ->assertSee('Perjalanan Batam')
             ->assertSee('Rp 225.000');
     }
 
-    public function test_tagged_participant_can_create_own_lpj_after_owner_lpj_exists(): void
+    public function test_tagged_participant_cannot_create_lpj_but_sees_the_owner_lpj(): void
     {
         $this->seedEmployee();
         $this->seedEmployee([
@@ -1006,7 +1012,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        DB::table('lpjs')->insert([
+        $lpjId = DB::table('lpjs')->insertGetId([
             'employee_id' => 1,
             'budget_request_id' => $budgetId,
             'nomor_lpj' => 'LPJ-PIC',
@@ -1033,15 +1039,22 @@ class EmployeeBudgetTravelPortalTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHasErrors(['error' => 'LPJ anggaran tim dibuat oleh pemilik anggaran. Peserta cukup melihat LPJ-nya.']);
 
-        $this->assertDatabaseHas('lpjs', [
-            'employee_id' => 2,
-            'budget_request_id' => $budgetId,
-            'nomor_lpj' => 'LPJ-PESERTA',
-            'total_anggaran' => 225000,
-            'total_realisasi' => 75000,
-        ]);
+        $this->assertDatabaseMissing('lpjs', ['nomor_lpj' => 'LPJ-PESERTA']);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/lpj')
+            ->assertOk()
+            ->assertSee('LPJ-PIC')
+            ->assertSee('LPJ Tim · Employee One');
+
+        $this->withSession(['employee_id' => 2])
+            ->get("/employee/lpj/{$lpjId}")
+            ->assertOk()
+            ->assertSee('Employee One')
+            ->assertSee('LPJ tim, hanya dilihat');
     }
 
     public function test_employee_approver_can_approve_budget_and_lhp_from_web_portal(): void

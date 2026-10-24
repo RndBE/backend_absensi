@@ -22,8 +22,9 @@ class LpjController extends Controller
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
 
-        $lpjs = Lpj::with(['budgetRequest:id,title,total_amount', 'travelReport:id,destination_city'])
-            ->where('employee_id', $employee->id)
+        // Termasuk LPJ anggaran tim yang dibuat pemiliknya, supaya peserta bisa melihatnya.
+        $lpjs = Lpj::with(['budgetRequest:id,title,total_amount', 'travelReport:id,destination_city', 'employee:id,full_name'])
+            ->visibleTo($employee->id)
             ->latest()
             ->paginate(15);
 
@@ -35,25 +36,16 @@ class LpjController extends Controller
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
 
-        $availableRequests = BudgetRequest::where(function ($query) use ($employee) {
-                $query->where('employee_id', $employee->id)
-                    ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
-            })
-            ->whereIn('status', ['approved', 'paid'])
-            ->whereDoesntHave('lpj', fn ($q) => $q->where('employee_id', $employee->id))
+        // LPJ satu per anggaran dan dibuat pemilik anggaran; peserta tidak membuat LPJ sendiri.
+        $availableRequests = $this->ownBudgetsWithoutLpj($employee->id)
             ->with(['items', 'travelReport:id,budget_request_id,destination_city'])
             ->latest()
             ->get();
 
         $selectedRequest = null;
         if ($request->filled('budget_request_id')) {
-            $selectedRequest = BudgetRequest::with(['items', 'travelReport'])
-                ->where(function ($query) use ($employee) {
-                    $query->where('employee_id', $employee->id)
-                        ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
-                })
-                ->whereIn('status', ['approved', 'paid'])
-                ->whereDoesntHave('lpj', fn ($q) => $q->where('employee_id', $employee->id))
+            $selectedRequest = $this->ownBudgetsWithoutLpj($employee->id)
+                ->with(['items', 'travelReport'])
                 ->find($request->budget_request_id);
         }
 
@@ -80,14 +72,21 @@ class LpjController extends Controller
             'items.*.realisasi.required'=> 'Jumlah realisasi tiap baris wajib diisi.',
         ]);
 
-        $budgetRequest = BudgetRequest::where(function ($query) use ($employee) {
-                $query->where('employee_id', $employee->id)
-                    ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
-            })
+        $budgetRequest = BudgetRequest::where('employee_id', $employee->id)
             ->whereIn('status', ['approved', 'paid'])
-            ->findOrFail($request->budget_request_id);
+            ->find($request->budget_request_id);
 
-        if ($budgetRequest->lpj()->where('employee_id', $employee->id)->exists()) {
+        if (! $budgetRequest) {
+            $asParticipant = BudgetRequest::whereKey($request->budget_request_id)
+                ->whereHas('participants', fn ($q) => $q->where('employees.id', $employee->id))
+                ->exists();
+
+            abort_unless($asParticipant, 404);
+
+            return back()->withInput()->withErrors(['error' => 'LPJ anggaran tim dibuat oleh pemilik anggaran. Peserta cukup melihat LPJ-nya.']);
+        }
+
+        if ($budgetRequest->lpj()->exists()) {
             return back()->with('error', 'LPJ untuk anggaran ini sudah dibuat.');
         }
 
@@ -95,10 +94,11 @@ class LpjController extends Controller
         try {
             $lpj = Lpj::create([
                 'budget_request_id' => $budgetRequest->id,
-                // LHP yang berlaku, bukan versi yang ditolak lalu diajukan ulang.
+                // LHP yang berlaku (bukan versi yang ditolak lalu diajukan ulang): milik pemilik dulu,
+                // bila pemilik tidak ikut berangkat pakai LHP peserta terbaru.
                 'travel_report_id'  => TravelReport::where('budget_request_id', $budgetRequest->id)
-                    ->where('employee_id', $employee->id)
                     ->where('status', '!=', 'rejected')
+                    ->orderByRaw('employee_id = ? desc', [$employee->id])
                     ->latest('id')
                     ->value('id'),
                 'employee_id'       => $employee->id,
@@ -170,21 +170,31 @@ class LpjController extends Controller
             'travelReport:id,destination_city',
             'items',
             'approvalLogs.approver:id,full_name,photo',
-        ])->where('employee_id', $employee->id)->findOrFail($id);
+            'employee:id,full_name',
+        ])->visibleTo($employee->id)->findOrFail($id);
 
         return view('employee.lpj.show', compact('employee', 'lpj'));
     }
 
     /**
-     * Unduh LPJ milik sendiri sebagai Excel (.xlsx), format sama dengan export admin.
+     * Unduh LPJ sebagai Excel (.xlsx), format sama dengan export admin. Peserta anggaran tim
+     * juga boleh mengunduh LPJ yang dibuat pemiliknya.
      */
     public function exportExcel(Request $request, $id)
     {
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
 
-        $lpj = Lpj::where('employee_id', $employee->id)->findOrFail($id);
+        $lpj = Lpj::visibleTo($employee->id)->findOrFail($id);
 
         return LpjExcelExporter::download($lpj);
+    }
+
+    /** Anggaran milik karyawan yang disetujui/cair dan belum punya LPJ. */
+    private function ownBudgetsWithoutLpj(int $employeeId)
+    {
+        return BudgetRequest::where('employee_id', $employeeId)
+            ->whereIn('status', ['approved', 'paid'])
+            ->whereDoesntHave('lpj');
     }
 }

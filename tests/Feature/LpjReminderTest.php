@@ -127,27 +127,68 @@ class LpjReminderTest extends TestCase
         $this->assertSame(0, Notification::count());
     }
 
-    public function test_owner_lpj_does_not_block_participant_lpj_reminder(): void
+    public function test_only_the_budget_owner_is_reminded_once_even_when_participants_wrote_lhps(): void
     {
         $owner = $this->seedTrip('2026-06-19');
-        $participantId = DB::table('employees')->insertGetId([
-            'full_name' => 'Peserta', 'email' => 'peserta'.uniqid().'@test.id', 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        DB::table('travel_reports')->insert([
-            'budget_request_id' => $owner['budget_id'], 'employee_id' => $participantId, 'return_date' => '2026-06-19', 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        DB::table('lpjs')->insert([
-            'budget_request_id' => $owner['budget_id'], 'employee_id' => $owner['employee_id'], 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $participantId = $this->participantLhp($owner['budget_id'], '2026-06-19');
 
         $result = LpjReminderService::remindForDate(Carbon::today());
 
         $this->assertSame(1, $result['sent']);
-        $this->assertDatabaseHas('notifications', [
-            'employee_id' => $participantId,
-            'type' => 'lpj_reminder',
-            'reference_id' => $owner['budget_id'],
+        $this->assertSame(1, Notification::where('type', 'lpj_reminder')->count());
+        $this->assertDatabaseHas('notifications', ['employee_id' => $owner['employee_id'], 'reference_id' => $owner['budget_id']]);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => $participantId]);
+    }
+
+    public function test_the_owner_is_reminded_when_only_a_participant_wrote_the_lhp(): void
+    {
+        $owner = $this->seedTrip('2026-06-25'); // LHP pemilik belum jatuh tempo
+        $this->participantLhp($owner['budget_id'], '2026-06-19');
+
+        $result = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(1, $result['sent']);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $owner['employee_id'], 'reference_id' => $owner['budget_id']]);
+    }
+
+    public function test_an_lpj_from_anyone_on_the_budget_stops_the_reminder(): void
+    {
+        $owner = $this->seedTrip('2026-06-19');
+        $participantId = $this->participantLhp($owner['budget_id'], '2026-06-19');
+        // LPJ lama buatan peserta (sebelum aturan satu LPJ per anggaran) tetap dihitung.
+        DB::table('lpjs')->insert([
+            'budget_request_id' => $owner['budget_id'], 'employee_id' => $participantId, 'created_at' => now(), 'updated_at' => now(),
         ]);
+
+        $result = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(0, $result['sent']);
+        $this->assertSame(0, Notification::count());
+    }
+
+    public function test_due_list_names_only_the_owner_once_per_budget(): void
+    {
+        $owner = $this->seedTrip('2026-06-19');
+        $this->participantLhp($owner['budget_id'], '2026-06-19');
+
+        $due = LpjReminderService::dueForDate(Carbon::today());
+
+        $this->assertCount(1, $due);
+        $this->assertSame($owner['employee_id'], $due->first()['employee']->id);
+        $this->assertSame($owner['budget_id'], $due->first()['reference_id']);
+    }
+
+    /** Peserta lain yang menulis LHP untuk anggaran yang sama. */
+    private function participantLhp(int $budgetId, string $returnDate): int
+    {
+        $participantId = DB::table('employees')->insertGetId([
+            'full_name' => 'Peserta', 'email' => 'peserta'.uniqid().'@test.id', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('travel_reports')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => $participantId, 'return_date' => $returnDate, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return $participantId;
     }
 
     public function test_does_not_send_when_budget_not_approved(): void
