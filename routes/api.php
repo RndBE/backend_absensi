@@ -20,7 +20,9 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OvertimeController;
 use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\PegawaiLookupController;
+use App\Http\Controllers\Api\PlaceController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\RegencyController;
 use App\Http\Controllers\Api\TeamAttendanceController;
 use App\Http\Controllers\Api\TravelReportController;
 use App\Http\Controllers\Api\TravelZoneController;
@@ -133,6 +135,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Travel Zone
     Route::get('/travel/estimate-zone', [TravelZoneController::class, 'estimateZone']);
+    Route::get('/regencies', [RegencyController::class, 'index']);
+    Route::get('/places', [PlaceController::class, 'index']);
+    // Saran tempat sambil mengetik (TomTom): dibatasi 30 kali per menit per pengguna supaya kuota aman.
+    Route::get('/places/suggest', [PlaceController::class, 'suggest'])->middleware('throttle:30,1');
 
     // Travel Reports (LHP)
     Route::get('/travel-reports', [TravelReportController::class, 'index']);

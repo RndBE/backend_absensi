@@ -4,76 +4,188 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\CityDistance;
-use App\Models\Setting;
+use App\Models\Regency;
 use App\Models\TravelZone;
+use App\Services\TravelDistance;
+use App\Support\RegencyMatcher;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 
 class TravelZoneController extends Controller
 {
+    private bool $regenciesReady = false;
+
     /**
-     * Estimasi zona perjalanan berdasarkan nama kota tujuan.
-     * Geocoding via OpenStreetMap Nominatim (gratis, tanpa API key).
+     * Estimasi zona perjalanan dari kota tujuan. Jarak selalu jarak jalan TomTom dari kantor, ke:
+     * - ibukota kabupaten/kota, bila yang dipilih/diketik nama kabupaten/kota ("Kendal",
+     *   "Kab. Kendal", "Kendal, Jawa Tengah" sama semua), dihitung sekali per kabupaten/kota;
+     * - titik tempat itu sendiri, bila yang diketik nama tempat atau alamat ("Ungaran", "Balai
+     *   Besar ..."), dihitung sekali per teks.
      */
     public function estimateZone(Request $request)
     {
-        $request->validate(['city' => 'required|string|max:255']);
+        $request->validate([
+            'city'        => 'nullable|required_without_all:regency_id,place_token|string|max:255',
+            'regency_id'  => 'nullable|integer',
+            'place_token' => 'nullable|string',
+        ]);
 
-        $city = trim($request->city);
+        $city = trim((string) $request->city);
         $cityKey = CityDistance::normalizeKey($city);
+        // Server yang belum menjalankan migrasi kabupaten/kota tetap bekerja seperti sebelumnya.
+        $this->regenciesReady = Schema::hasTable('regencies') && Schema::hasColumn('city_distances', 'regency_id');
 
-        // 1. Sudah pernah dihitung / dikoreksi admin → pakai langsung (instan, tanpa API)
+        // 0. Tempat yang dipilih dari tombol "Cari tempat": jarak ke titik tempat itu sendiri.
+        if ($request->filled('place_token')) {
+            return $this->chosenPlaceResponse((string) $request->place_token);
+        }
+
+        // 1. Kabupaten/kota dari daftar, atau dikenali dari teksnya (awalan, salah ketik, provinsi).
+        if ($request->filled('regency_id')) {
+            $regency = $this->regenciesReady ? Regency::find($request->regency_id) : null;
+            if (! $regency) {
+                return $this->fail('Kabupaten/kota tidak ditemukan. Pilih dari daftar.');
+            }
+
+            return $this->regencyResponse($regency);
+        }
+
+        $regency = $this->regenciesReady ? RegencyMatcher::match($city) : null;
+        if ($regency) {
+            return $this->regencyResponse($regency);
+        }
+
+        // 2. Teks yang pernah dicari (nama tempat, alamat) atau dikoreksi admin: tanpa API.
         $cached = CityDistance::where('city_key', $cityKey)->first();
-        if ($cached) {
-            return $this->zoneResponse($cached->city_label, $cached->distance_km, $cached->lat, $cached->lng);
+        if ($cached && $cached->source === 'alias' && $cached->regency_id) {
+            $regency = Regency::find($cached->regency_id);
+            if ($regency) {
+                return $this->regencyResponse($regency);
+            }
+        } elseif ($cached && $cached->distance_km !== null) {
+            $regency = $cached->regency_id ? Regency::find($cached->regency_id) : null;
+
+            return $this->zoneResponse($cached->city_label, $cached->distance_km, $cached->lat, $cached->lng, $regency, $this->placeTarget($cached->city_label, $regency));
         }
 
-        // 2. Geocode kota via Nominatim
-        $coords = $this->geocodeCity($city);
-        if (! $coords) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Kota tidak ditemukan. Coba gunakan nama kota yang lebih spesifik.',
-            ], 422);
+        $office = TravelDistance::office();
+        if (! $office) {
+            return $this->fail('Koordinat kantor belum dikonfigurasi.');
         }
 
-        // Koordinat kantor dari Setting
-        $officeLat = (float) Setting::getValue('office_latitude', '0');
-        $officeLng = (float) Setting::getValue('office_longitude', '0');
-
-        if ($officeLat === 0.0 && $officeLng === 0.0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Koordinat kantor belum dikonfigurasi.',
-            ], 422);
+        // 3. Teks baru: cari lokasinya. Bila hasilnya seluruh wilayah kabupaten/kota (bukan tempat),
+        //    jarak ke ibukotanya; selain itu jarak ke titik tempat itu sendiri.
+        $place = TravelDistance::geocode($city);
+        if (! $place) {
+            return $this->fail('Kota tidak ditemukan. Pilih kabupaten/kota dari daftar.');
         }
 
-        // 3. Jarak jalan via TomTom; fallback ke garis lurus (Haversine) bila gagal
-        $roadKm = $this->roadDistanceKm($officeLat, $officeLng, $coords['lat'], $coords['lng']);
-        $distanceKm = (int) round(
-            $roadKm ?? $this->haversineKm($officeLat, $officeLng, $coords['lat'], $coords['lng'])
-        );
+        $regency = $this->regenciesReady ? RegencyMatcher::fromAddress($place['address']) : null;
 
-        // 4. Simpan permanen HANYA jika berhasil jarak jalan, agar fallback sementara
-        //    (TomTom down) tidak mengunci kota ke nilai garis lurus selamanya.
-        if ($roadKm !== null) {
-            CityDistance::create([
-                'city_key'    => $cityKey,
+        if ($regency && $place['area']) {
+            CityDistance::updateOrCreate(['city_key' => $cityKey], [
                 'city_label'  => $city,
-                'distance_km' => $distanceKm,
-                'lat'         => $coords['lat'],
-                'lng'         => $coords['lng'],
+                'regency_id'  => $regency->id,
+                'distance_km' => null,
+                'lat'         => null,
+                'lng'         => null,
+                'source'      => 'alias',
+            ]);
+
+            return $this->regencyResponse($regency, $office);
+        }
+
+        return $this->placeResponse($city, $cityKey, $place, $office, $regency);
+    }
+
+    /**
+     * Tempat pilihan pengguna dari hasil "Cari tempat". Titiknya dari token yang ditandatangani
+     * server, dan jaraknya disimpan per tempat (id OpenStreetMap), bukan per teks.
+     */
+    private function chosenPlaceResponse(string $token)
+    {
+        $place = PlaceController::readToken($token);
+        if (! $place) {
+            return $this->fail('Pilihan tempat tidak dikenali. Cari ulang tempatnya.');
+        }
+
+        $cityKey = CityDistance::normalizeKey('place:'.$place['key']);
+        $regency = $this->regenciesReady && $place['regency_id'] ? Regency::find($place['regency_id']) : null;
+
+        // Saran TomTom tidak menebak kabupaten/kota; letaknya ditulis seperti dari TomTom.
+        $target = $regency || empty($place['where'])
+            ? $this->placeTarget($place['name'], $regency)
+            : "{$place['name']} ({$place['where']})";
+
+        $cached = CityDistance::where('city_key', $cityKey)->first();
+        if ($cached && $cached->distance_km !== null) {
+            return $this->zoneResponse($place['name'], $cached->distance_km, $cached->lat, $cached->lng, $regency, $target);
+        }
+
+        $office = TravelDistance::office();
+        if (! $office) {
+            return $this->fail('Koordinat kantor belum dikonfigurasi.');
+        }
+
+        return $this->placeResponse($place['name'], $cityKey, ['lat' => (float) $place['lat'], 'lng' => (float) $place['lng']], $office, $regency, $target);
+    }
+
+    /** Jarak ke ibukota kabupaten/kota, disimpan di kabupaten/kotanya setelah dihitung pertama kali. */
+    private function regencyResponse(Regency $regency, ?array $office = null)
+    {
+        if ($regency->distance_km === null) {
+            $office ??= TravelDistance::office();
+            if (! $office) {
+                return $this->fail('Koordinat kantor belum dikonfigurasi.');
+            }
+        }
+
+        $distance = TravelDistance::forRegency($regency, $office ?? []);
+        if (! $distance) {
+            return $this->fail('Lokasi kabupaten/kota belum bisa dihitung. Coba lagi nanti.');
+        }
+
+        return $this->zoneResponse($regency->fullLabel(), $distance['distance_km'], $distance['lat'], $distance['lng'], $regency, $regency->distanceTarget());
+    }
+
+    /**
+     * Nama tempat atau alamat: jarak ke titik tempat itu sendiri, disimpan per teks bila jarak
+     * jalan berhasil. Kabupaten/kota tempatnya ikut disimpan sebagai keterangan.
+     */
+    private function placeResponse(string $city, string $cityKey, array $place, array $office, ?Regency $regency, ?string $target = null)
+    {
+        $distance = TravelDistance::fromOffice($office, $place['lat'], $place['lng']);
+
+        if ($distance['road']) {
+            CityDistance::updateOrCreate(['city_key' => $cityKey], [
+                'city_label'  => $city,
+                ...($this->regenciesReady ? ['regency_id' => $regency?->id] : []),
+                'distance_km' => $distance['km'],
+                'lat'         => $place['lat'],
+                'lng'         => $place['lng'],
                 'source'      => 'routing',
             ]);
         }
 
-        return $this->zoneResponse($city, $distanceKm, $coords['lat'], $coords['lng']);
+        return $this->zoneResponse($city, $distance['km'], $place['lat'], $place['lng'], $regency, $target ?? $this->placeTarget($city, $regency));
+    }
+
+    /** "Ungaran (Kabupaten Semarang)", atau teksnya saja bila kabupaten/kotanya tidak dikenali. */
+    private function placeTarget(string $city, ?Regency $regency): string
+    {
+        return $regency ? "$city ({$regency->label()})" : $city;
+    }
+
+    private function fail(string $message)
+    {
+        return response()->json(['success' => false, 'message' => $message], 422);
     }
 
     /**
-     * Bentuk respons jarak + zona yang cocok.
+     * Bentuk respons jarak + zona yang cocok, beserta kabupaten/kota dan titik yang dipakai
+     * menghitung jarak.
      */
-    private function zoneResponse(string $city, int $distanceKm, ?float $lat, ?float $lng)
+    private function zoneResponse(string $city, int $distanceKm, ?float $lat, ?float $lng, ?Regency $regency, string $distanceTo)
     {
         $zone = TravelZone::findByKm($distanceKm);
 
@@ -82,8 +194,10 @@ class TravelZoneController extends Controller
             'data'    => [
                 'city'        => $city,
                 'distance_km' => $distanceKm,
+                'distance_to' => $distanceTo,
                 'lat'         => $lat !== null ? (float) $lat : null,
                 'lng'         => $lng !== null ? (float) $lng : null,
+                'regency'     => $regency?->toSummary(),
                 'zone'        => $zone ? [
                     'id'             => $zone->id,
                     'zone'           => $zone->zone,
@@ -93,82 +207,5 @@ class TravelZoneController extends Controller
                 ] : null,
             ],
         ]);
-    }
-
-    /**
-     * Jarak jalan (km) via TomTom Routing API — rute tercepat (mempertimbangkan
-     * tol & lalu lintas), mirip Google. Mengembalikan null bila key kosong atau
-     * request gagal, agar pemanggil bisa fallback ke Haversine.
-     */
-    private function roadDistanceKm(float $lat1, float $lng1, float $lat2, float $lng2): ?float
-    {
-        // Key dari konfigurasi sistem (.env); fallback ke Setting lama bila ada.
-        $key = trim((string) config('services.tomtom.key'));
-        if ($key === '') {
-            $key = trim((string) Setting::getValue('tomtom_api_key', ''));
-        }
-        if ($key === '') return null;
-
-        try {
-            // TomTom memakai urutan lat,lng dan format "asal:tujuan" di path.
-            $locations = "$lat1,$lng1:$lat2,$lng2";
-            $response = Http::withoutVerifying()->timeout(8)
-                ->get("https://api.tomtom.com/routing/1/calculateRoute/{$locations}/json", [
-                    'key'        => $key,
-                    'routeType'  => 'fastest',
-                    'travelMode' => 'car',
-                ]);
-
-            if (! $response->ok()) return null;
-
-            $meters = $response->json('routes.0.summary.lengthInMeters');
-
-            return $meters !== null ? $meters / 1000 : null;
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * Geocode nama kota menggunakan OpenStreetMap Nominatim.
-     */
-    private function geocodeCity(string $city): ?array
-    {
-        try {
-            $response = Http::withHeaders([
-                'User-Agent'      => 'AbsensiBeacon/1.0 (support@bejogja.com)',
-                'Accept-Language' => 'id,en',
-            ])->withoutVerifying()->timeout(8)->get('https://nominatim.openstreetmap.org/search', [
-                'q'      => "$city, Indonesia",
-                'format' => 'json',
-                'limit'  => 1,
-            ]);
-
-            if (! $response->ok()) return null;
-
-            $results = $response->json();
-            if (empty($results)) return null;
-
-            return [
-                'lat' => (float) $results[0]['lat'],
-                'lng' => (float) $results[0]['lon'],
-            ];
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * Haversine formula — jarak garis lurus dalam km.
-     */
-    private function haversineKm(float $lat1, float $lng1, float $lat2, float $lng2): float
-    {
-        $R    = 6371;
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLng = deg2rad($lng2 - $lng1);
-        $a    = sin($dLat / 2) ** 2
-            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
-
-        return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 }

@@ -273,7 +273,10 @@
                     return;
                 }
 
-                title.textContent = `${currentZone.name} (${currentZone.km_range})${data.distance_km !== null ? ` - ${data.distance_km} km` : ''}`;
+                // Titik jarak jalan (ibukota kabupaten/kota, atau tempatnya) ditampilkan supaya
+                // pengguna tahu jarak dihitung ke mana.
+                const place = data.distance_to ? `${data.distance_to} · ` : '';
+                title.textContent = `${place}${currentZone.name} (${currentZone.km_range})${data.distance_km !== null ? ` - ${data.distance_km} km` : ''}`;
                 meal.textContent = `Uang makan: ${formatRupiah(Number(currentZone.meal_allowance || 0))}/hari`;
                 show(card);
             } catch (e) {
