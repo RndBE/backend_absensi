@@ -42,6 +42,7 @@
         <div>
             <div class="text-[11px] font-bold uppercase text-gray-400">Jarak / Zona</div>
             <div class="mt-1 text-[13px] text-gray-700">{{ $budgetRequest->distance_km ? $budgetRequest->distance_km.' km' : '-' }} @if($budgetRequest->travelZone) · {{ $budgetRequest->travelZone->name }} @endif</div>
+            @include('partials.budget-destination', ['budgetRequest' => $budgetRequest])
         </div>
         <div>
             <div class="text-[11px] font-bold uppercase text-gray-400">Peserta</div>

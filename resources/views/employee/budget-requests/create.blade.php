@@ -68,6 +68,12 @@
                     >
                 </label>
                 <input type="hidden" name="distance_km" value="{{ old('distance_km') }}" data-distance-km>
+                {{-- Tujuan yang dipakai menghitung jarak, disimpan supaya approver bisa melihatnya di peta. --}}
+                <input type="hidden" name="destination_label" value="{{ old('destination_label') }}" data-destination-field="distance_to">
+                <input type="hidden" name="destination_lat" value="{{ old('destination_lat') }}" data-destination-field="lat">
+                <input type="hidden" name="destination_lng" value="{{ old('destination_lng') }}" data-destination-field="lng">
+                <input type="hidden" name="distance_source" value="{{ old('distance_source') }}" data-destination-field="distance_source">
+                <input type="hidden" name="destination_regency_id" value="{{ old('destination_regency_id') }}" data-destination-field="regency_id">
 
                 <div class="hidden items-center gap-2 text-[12px] font-semibold text-gray-500" data-zone-loading>
                     <span class="inline-block h-3.5 w-3.5 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin"></span>
@@ -230,9 +236,19 @@
             if (element === loading) element?.classList.remove('flex');
         }
 
+        // Isian tersembunyi tujuan (label, titik, asal jarak) dari jawaban estimate-zone.
+        function setDestination(data) {
+            estimator.querySelectorAll('[data-destination-field]').forEach((input) => {
+                const field = input.dataset.destinationField;
+                const value = field === 'regency_id' ? data?.regency?.id : data?.[field];
+                input.value = value ?? '';
+            });
+        }
+
         function resetZone() {
             currentZone = null;
             if (distanceInput) distanceInput.value = '';
+            setDestination(null);
             hide(card);
             hide(error);
         }
@@ -267,6 +283,7 @@
                 const data = body.data;
                 currentZone = data.zone || null;
                 if (distanceInput) distanceInput.value = data.distance_km ?? '';
+                setDestination(data);
 
                 if (!currentZone) {
                     showError('Zona perjalanan belum ditemukan untuk kota ini.');

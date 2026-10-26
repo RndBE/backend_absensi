@@ -241,6 +241,7 @@ class ApprovalController extends Controller
         if ($modelClass === BudgetRequest::class) {
             $relations[] = 'items';
             $relations[] = 'participants';
+            $relations[] = 'travelZone';
         }
         if ($modelClass === TravelReport::class) {
             $relations[] = 'activities.documents';

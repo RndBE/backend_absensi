@@ -123,6 +123,13 @@
                                 <div class="text-gray-700">{{ $budgetRequest->return_date?->format('d M Y') ?? '-' }}</div>
                             </div>
                         </div>
+                        @if($budgetRequest->distance_km)
+                        <div class="mt-3 pt-3 border-t border-indigo-100 text-[12px]">
+                            <div class="text-gray-400 font-semibold">Jarak / Zona</div>
+                            <div class="text-gray-700">{{ $budgetRequest->distance_km }} km @if($budgetRequest->travelZone) · {{ $budgetRequest->travelZone->name }} @endif</div>
+                            @include('partials.budget-destination', ['budgetRequest' => $budgetRequest])
+                        </div>
+                        @endif
                         <div class="mt-3 pt-3 border-t border-indigo-100">
                             <div class="text-[11px] font-bold text-gray-400 uppercase mb-0.5">Batas Pengumpulan LHP</div>
                             @if($lhpDeadline)

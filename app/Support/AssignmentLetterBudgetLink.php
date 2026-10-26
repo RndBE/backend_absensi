@@ -80,6 +80,7 @@ class AssignmentLetterBudgetLink
         if (($km = self::farthestKm($letter)) !== null) {
             $attributes['distance_km'] = $km;
             $attributes['travel_zone_id'] = TravelZone::findByKm($km)?->id;
+            $attributes += BudgetDestination::letterAttributes($letter);
         }
 
         return $attributes;

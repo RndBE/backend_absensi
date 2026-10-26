@@ -10,6 +10,7 @@ use App\Models\Notification;
 use App\Models\TravelZone;
 use App\Services\FcmService;
 use App\Support\AssignmentLetterBudgetLink;
+use App\Support\BudgetDestination;
 use App\Support\BudgetItemOwners;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -87,6 +88,7 @@ class BudgetRequestController extends Controller
             'items.*.employee_id' => 'nullable|integer',
             'item_attachments_*' => 'nullable|array',
             'item_attachments_*.*' => 'file|max:5120',
+            ...BudgetDestination::rules(),
         ], $this->travelDateMessages());
 
         /** @var Employee $employee */
@@ -118,7 +120,9 @@ class BudgetRequestController extends Controller
                 'travel_zone_id' => $travelZone?->id,
                 'departure_date' => $validated['departure_date'] ?? null,
                 'return_date' => $validated['return_date'] ?? null,
-            ], $letter ? AssignmentLetterBudgetLink::budgetAttributes($letter) : []));
+            ],
+                BudgetDestination::attributes($request, $distanceKm),
+                $letter ? AssignmentLetterBudgetLink::budgetAttributes($letter) : []));
 
             $total = 0;
             foreach ($validated['items'] as $index => $itemData) {
@@ -219,6 +223,7 @@ class BudgetRequestController extends Controller
             'items.*.employee_id' => 'nullable|integer',
             'item_attachments_*' => 'nullable|array',
             'item_attachments_*.*' => 'file|max:5120',
+            ...BudgetDestination::rules(),
         ], $this->travelDateMessages());
 
         /** @var Employee $employee */
@@ -244,6 +249,12 @@ class BudgetRequestController extends Controller
             $letter = $letter ? AssignmentLetterBudgetLink::resolve($employee, $letter->id, $budgetRequest, true) : null;
             $distanceKm = $request->filled('distance_km') ? (int) $validated['distance_km'] : null;
             $travelZone = $distanceKm !== null ? TravelZone::findByKm($distanceKm) : null;
+            // Form edit tidak menghitung ulang jarak: tujuan lama dipertahankan selama jaraknya sama,
+            // dan dikosongkan bila jaraknya berubah tanpa tujuan baru.
+            $previousKm = $budgetRequest->distance_km === null ? null : (int) $budgetRequest->distance_km;
+            $destination = $request->has('distance_source') || $distanceKm !== $previousKm
+                ? BudgetDestination::attributes($request, $distanceKm)
+                : [];
 
             $budgetRequest->update(array_merge([
                 'type' => $validated['type'],
@@ -256,6 +267,7 @@ class BudgetRequestController extends Controller
                 'departure_date' => $validated['departure_date'] ?? null,
                 'return_date' => $validated['return_date'] ?? null,
             ],
+                $destination,
                 // Surat tugas dilepas bila pengaju mengosongkan pilihannya.
                 $budgetRequest->assignment_letter_id && ! $letter ? ['assignment_letter_id' => null] : [],
                 $letter ? AssignmentLetterBudgetLink::budgetAttributes($letter) : []));

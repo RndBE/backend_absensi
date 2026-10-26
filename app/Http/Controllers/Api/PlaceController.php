@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Regency;
 use App\Services\TravelDistance;
+use App\Support\MapPoint;
 use App\Support\RegencyMatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -15,7 +16,8 @@ use Illuminate\Support\Facades\Schema;
  * Tempat spesifik untuk kota tujuan, dipilih pengguna sebelum jarak jalan dihitung:
  * - suggest(): saran yang langsung muncul saat mengetik, dari TomTom Search;
  * - index(): tombol "Cari tempat", dari Nominatim, sekali per tekan tombol (server Nominatim
- *   publik melarang pencarian sambil mengetik). Jadi cadangan bila TomTom tidak menemukan.
+ *   publik melarang pencarian sambil mengetik). Jadi cadangan bila TomTom tidak menemukan;
+ * - reverse() dan point(): pilih titik di peta, dan titik dari link/koordinat yang ditempel.
  */
 class PlaceController extends Controller
 {
@@ -97,6 +99,49 @@ class PlaceController extends Controller
             ->values();
 
         return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    /**
+     * Alamat perkiraan titik pin di peta (TomTom), disimpan 30 hari per titik (±10 m).
+     * Tanpa alamat (TomTom gagal) app menampilkan koordinatnya saja.
+     */
+    public function reverse(Request $request)
+    {
+        $request->validate([
+            'lat' => 'required|numeric|between:-11.5,6.5',
+            'lng' => 'required|numeric|between:94,141.5',
+        ]);
+
+        $lat = (float) $request->lat;
+        $lng = (float) $request->lng;
+        $cacheKey = sprintf('places:reverse:%.4f,%.4f', $lat, $lng);
+        $address = Cache::get($cacheKey);
+        if ($address === null) {
+            $address = TravelDistance::reverse($lat, $lng);
+            if ($address !== null) {
+                Cache::put($cacheKey, $address, now()->addDays(30));
+            }
+        }
+
+        return response()->json(['success' => true, 'data' => $address]);
+    }
+
+    /**
+     * Titik dari link Google Maps atau koordinat yang ditempel di kota tujuan.
+     */
+    public function point(Request $request)
+    {
+        $request->validate(['text' => 'required|string|max:2000']);
+
+        $point = MapPoint::fromText((string) $request->text);
+        if (! $point) {
+            return response()->json(['success' => false, 'message' => 'Link atau koordinat tidak dikenali.'], 422);
+        }
+        if ($point['lat'] < -11.5 || $point['lat'] > 6.5 || $point['lng'] < 94 || $point['lng'] > 141.5) {
+            return response()->json(['success' => false, 'message' => 'Titik itu di luar Indonesia.'], 422);
+        }
+
+        return response()->json(['success' => true, 'data' => $point]);
     }
 
     private static function token(array $place, ?Regency $regency): string

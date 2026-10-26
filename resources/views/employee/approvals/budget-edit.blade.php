@@ -69,6 +69,7 @@
                     @if($tripDays) × {{ $tripDays }} hari = Rp {{ number_format((float) $zone->meal_allowance * $tripDays, 0, ',', '.') }} @endif
                 </div>
             @endif
+            @include('partials.budget-destination', ['budgetRequest' => $budgetRequest])
         </div>
     </section>
 

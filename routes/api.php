@@ -139,6 +139,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/places', [PlaceController::class, 'index']);
     // Saran tempat sambil mengetik (TomTom): dibatasi 30 kali per menit per pengguna supaya kuota aman.
     Route::get('/places/suggest', [PlaceController::class, 'suggest'])->middleware('throttle:30,1');
+    // Pilih titik di peta: alamat perkiraan pin, dan titik dari link Google Maps/koordinat.
+    Route::get('/places/reverse', [PlaceController::class, 'reverse'])->middleware('throttle:30,1');
+    Route::get('/places/point', [PlaceController::class, 'point'])->middleware('throttle:20,1');
 
     // Travel Reports (LHP)
     Route::get('/travel-reports', [TravelReportController::class, 'index']);

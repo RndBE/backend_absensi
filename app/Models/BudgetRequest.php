@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\BudgetDestination;
 use App\Support\WorkingDays;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -22,8 +23,12 @@ class BudgetRequest extends Model
         'status', 'current_step', 'total_amount',
         'surat_tugas_no', 'surat_tugas_date', 'assignment_letter_id', 'rejection_reason',
         'distance_km', 'travel_zone_id',
+        'destination_label', 'destination_lat', 'destination_lng', 'distance_source', 'destination_regency_id',
         'departure_date', 'return_date', 'lhp_deadline_days',
     ];
+
+    /** Untuk app: asal jarak yang terbaca dan tautan peta tujuan (lihat BudgetDestination). */
+    protected $appends = ['distance_source_label', 'destination_map_url'];
 
     protected function casts(): array
     {
@@ -33,7 +38,19 @@ class BudgetRequest extends Model
             'return_date' => 'date',
             'lhp_deadline_days' => 'integer',
             'total_amount' => 'decimal:2',
+            'destination_lat' => 'float',
+            'destination_lng' => 'float',
         ];
+    }
+
+    public function getDistanceSourceLabelAttribute(): ?string
+    {
+        return BudgetDestination::sourceLabel($this->attributes['distance_source'] ?? null);
+    }
+
+    public function getDestinationMapUrlAttribute(): ?string
+    {
+        return BudgetDestination::mapUrl($this->destination_lat, $this->destination_lng);
     }
 
     public function employee(): BelongsTo

@@ -210,6 +210,48 @@ class TravelDistance
         }
     }
 
+    /**
+     * Alamat perkiraan sebuah titik (untuk pin di peta), lewat TomTom Reverse Geocoding.
+     * Null bila key kosong, TomTom gagal, atau titiknya tidak beralamat.
+     *
+     * @return array{label: string, address: string, where: string}|null
+     */
+    public static function reverse(float $lat, float $lng): ?array
+    {
+        $key = self::tomtomKey();
+        if ($key === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::withoutVerifying()->timeout(6)
+                ->get("https://api.tomtom.com/search/2/reverseGeocode/{$lat},{$lng}.json", [
+                    'key'      => $key,
+                    'language' => 'id-ID',
+                ]);
+            $address = $response->ok() ? (array) $response->json('addresses.0.address') : [];
+        } catch (\Throwable) {
+            return null;
+        }
+        if ($address === []) {
+            return null;
+        }
+
+        $label = implode(', ', array_filter([
+            $address['streetName'] ?? null,
+            $address['municipalitySecondarySubdivision'] ?? $address['municipalitySubdivision'] ?? null,
+        ])) ?: (string) ($address['municipality'] ?? $address['freeformAddress'] ?? '');
+
+        return [
+            'label'   => $label,
+            'address' => (string) ($address['freeformAddress'] ?? $label),
+            'where'   => implode(', ', array_filter([
+                $address['municipality'] ?? null,
+                $address['countrySubdivisionName'] ?? $address['countrySubdivision'] ?? null,
+            ])),
+        ];
+    }
+
     /** Key TomTom dari konfigurasi sistem (.env); fallback ke Setting lama bila ada. */
     private static function tomtomKey(): string
     {

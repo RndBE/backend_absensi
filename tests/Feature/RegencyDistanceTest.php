@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\RegencyController;
 use App\Http\Controllers\Api\TravelZoneController;
 use App\Models\CityDistance;
 use App\Models\Regency;
+use App\Support\MapPoint;
 use App\Support\RegencyMatcher;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Client\Request as HttpRequest;
@@ -507,6 +508,132 @@ class RegencyDistanceTest extends TestCase
         $this->assertSame(PlaceController::class.'@suggest', $route->getActionName());
         $this->assertContains('throttle:30,1', $route->gatherMiddleware());
         $this->assertContains('auth:sanctum', $route->gatherMiddleware());
+    }
+
+    // ── pilih titik di peta ───────────────────────────────────────────────────
+
+    public function test_a_map_point_is_measured_to_itself_and_marked_as_chosen_by_hand(): void
+    {
+        Http::fake(['api.tomtom.com/routing/*' => Http::response(['routes' => [['summary' => ['lengthInMeters' => 131200]]]])]);
+
+        $first = $this->estimate(['lat' => '-6.990312', 'lng' => '110.423104', 'point_label' => 'Jalan Pahlawan, Pleburan (Semarang, Jawa Tengah)']);
+        $nearby = $this->estimate(['lat' => '-6.990330', 'lng' => '110.423120', 'point_label' => 'Jalan Pahlawan']);
+
+        $this->assertSame(131, $first['distance_km']);
+        $this->assertSame('map', $first['distance_source']);
+        $this->assertSame('titik peta: Jalan Pahlawan, Pleburan (Semarang, Jawa Tengah)', $first['distance_to']);
+        $this->assertSame(-6.990312, $first['lat']);
+        $this->assertSame(131, $nearby['distance_km'], 'titik ±10 m memakai jarak yang sama');
+        Http::assertSentCount(1);
+        Http::assertSent(fn (HttpRequest $r) => str_contains(urldecode($r->url()), '-6.990312,110.423104/json'));
+    }
+
+    public function test_a_map_point_without_an_address_is_named_by_its_coordinates(): void
+    {
+        Http::fake(['api.tomtom.com/routing/*' => Http::response(['routes' => [['summary' => ['lengthInMeters' => 50000]]]])]);
+
+        $data = $this->estimate(['lat' => '-7.5', 'lng' => '110.25']);
+
+        $this->assertSame('titik peta: -7.50000, 110.25000', $data['distance_to']);
+    }
+
+    public function test_a_map_point_outside_indonesia_is_refused(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->estimateResponse(['lat' => '35.6812', 'lng' => '139.7671']); // Tokyo
+    }
+
+    public function test_every_estimate_says_where_its_distance_came_from(): void
+    {
+        Regency::find(self::KENDAL)->update(['distance_km' => 98, 'lat' => -6.92, 'lng' => 110.2]);
+        Http::fake(['nominatim.openstreetmap.org/*' => Http::response([
+            ['osm_type' => 'node', 'osm_id' => 9, 'addresstype' => 'town', 'name' => 'Ungaran', 'display_name' => 'Ungaran, Indonesia', 'lat' => '-7.129', 'lon' => '110.404', 'address' => ['county' => 'Kabupaten Semarang', 'state' => 'Jawa Tengah']],
+        ]), 'api.tomtom.com/*' => Http::response(['routes' => [['summary' => ['lengthInMeters' => 58000]]]])]);
+
+        $this->assertSame('regency', $this->estimate(['city' => 'Kendal'])['distance_source']);
+        $this->assertSame('text', $this->estimate(['city' => 'Ungaran'])['distance_source']);
+        $this->assertSame('text', $this->estimate(['city' => 'Ungaran'])['distance_source'], 'dari simpanan pun sama');
+        $token = $this->places('Ungaran')[0]['place_token'];
+        $this->assertSame('place', $this->estimate(['place_token' => $token])['distance_source']);
+    }
+
+    #[DataProvider('pastedPoints')]
+    public function test_coordinates_and_google_maps_links_are_read(string $text, float $lat, float $lng): void
+    {
+        $this->assertEquals(['lat' => $lat, 'lng' => $lng], MapPoint::fromText($text));
+    }
+
+    public static function pastedPoints(): array
+    {
+        return [
+            'koordinat' => ['-6.9903, 110.4231', -6.9903, 110.4231],
+            'koordinat tanpa koma' => ['-6.9903 110.4231', -6.9903, 110.4231],
+            'link tempat: pin didahulukan dari pusat peta' => ['https://www.google.com/maps/place/Simpang+Lima/@-6.9900,110.4200,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x1!8m2!3d-6.9903!4d110.4231', -6.9903, 110.4231],
+            'link pusat peta' => ['https://www.google.com/maps/@-7.7956,110.3695,15z', -7.7956, 110.3695],
+            'link q' => ['https://maps.google.com/?q=-7.7956,110.3695', -7.7956, 110.3695],
+            'link api query' => ['https://www.google.com/maps/search/?api=1&query=-7.7956%2C110.3695', -7.7956, 110.3695],
+            'teks dengan link' => ['Lokasi klien: https://maps.google.com/?q=-7.7956,110.3695 ya', -7.7956, 110.3695],
+        ];
+    }
+
+    public function test_a_short_share_link_is_followed_only_within_google(): void
+    {
+        Http::fake([
+            'maps.app.goo.gl/abc' => Http::response('', 302, ['Location' => 'https://www.google.com/maps/place/X/@-6.9,110.4,17z/data=!3d-6.9903!4d110.4231']),
+            'maps.app.goo.gl/evil' => Http::response('', 302, ['Location' => 'https://evil.example.com/@-6.9,110.4']),
+        ]);
+
+        $this->assertEquals(['lat' => -6.9903, 'lng' => 110.4231], MapPoint::fromText('https://maps.app.goo.gl/abc'));
+        $this->assertNull(MapPoint::fromText('https://maps.app.goo.gl/evil'), 'pengalihan ke luar Google tidak diikuti');
+        $this->assertNull(MapPoint::fromText('https://example.com/share/abc'), 'link pendek bukan Google tidak dibuka');
+        Http::assertSentCount(2); // hanya dua link pendek Google; link lain tidak pernah diminta
+    }
+
+    public function test_the_point_endpoint_refuses_unknown_text_and_points_outside_indonesia(): void
+    {
+        Http::fake();
+
+        $ok = (new PlaceController())->point(Request::create('/api/places/point', 'GET', ['text' => '-6.9903, 110.4231']));
+        $unknown = (new PlaceController())->point(Request::create('/api/places/point', 'GET', ['text' => 'kantor klien']));
+        $abroad = (new PlaceController())->point(Request::create('/api/places/point', 'GET', ['text' => '35.6812, 139.7671']));
+
+        $this->assertSame(['lat' => -6.9903, 'lng' => 110.4231], $ok->getData(true)['data']);
+        $this->assertSame(422, $unknown->getStatusCode());
+        $this->assertSame('Link atau koordinat tidak dikenali.', $unknown->getData(true)['message']);
+        $this->assertSame(422, $abroad->getStatusCode());
+        $this->assertSame('Titik itu di luar Indonesia.', $abroad->getData(true)['message']);
+    }
+
+    public function test_the_pin_address_comes_from_tomtom_and_is_kept(): void
+    {
+        Http::fake(['api.tomtom.com/search/2/reverseGeocode/*' => Http::response(['addresses' => [['address' => [
+            'streetName' => 'Jalan Pahlawan', 'municipalitySecondarySubdivision' => 'Pleburan', 'municipality' => 'Semarang',
+            'countrySubdivisionName' => 'Jawa Tengah', 'freeformAddress' => 'Jalan Pahlawan, Kelurahan Pleburan, Semarang, Jawa Tengah 50241',
+        ]]]])]);
+
+        $reverse = fn () => (new PlaceController())->reverse(Request::create('/api/places/reverse', 'GET', ['lat' => '-6.99031', 'lng' => '110.42311']))->getData(true)['data'];
+        $first = $reverse();
+        $second = $reverse();
+
+        $this->assertSame([
+            'label' => 'Jalan Pahlawan, Pleburan',
+            'address' => 'Jalan Pahlawan, Kelurahan Pleburan, Semarang, Jawa Tengah 50241',
+            'where' => 'Semarang, Jawa Tengah',
+        ], $first);
+        $this->assertSame($first, $second);
+        Http::assertSentCount(1);
+    }
+
+    public function test_map_routes_are_limited_per_user(): void
+    {
+        foreach ([['api/places/reverse', 'reverse', 'throttle:30,1'], ['api/places/point', 'point', 'throttle:20,1']] as [$uri, $action, $throttle]) {
+            $route = Route::getRoutes()->match(Request::create('/'.$uri, 'GET'));
+
+            $this->assertSame(PlaceController::class.'@'.$action, $route->getActionName());
+            $this->assertContains($throttle, $route->gatherMiddleware());
+            $this->assertContains('auth:sanctum', $route->gatherMiddleware());
+        }
     }
 
     public function test_the_routes_exist_behind_sanctum(): void

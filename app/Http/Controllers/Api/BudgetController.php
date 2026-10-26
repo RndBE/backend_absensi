@@ -10,6 +10,7 @@ use App\Models\Notification;
 use App\Models\TravelZone;
 use App\Services\FcmService;
 use App\Support\AssignmentLetterBudgetLink;
+use App\Support\BudgetDestination;
 use App\Support\BudgetItemOwners;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -68,6 +69,8 @@ class BudgetController extends Controller
             'distance_km' => 'nullable|integer|min:0',
             'participants' => 'nullable|array',
             'participants.*' => 'exists:employees,id',
+            // Tujuan perjalanan dari travel/estimate-zone, untuk diperiksa approver di peta.
+            ...BudgetDestination::rules(),
         ]);
 
         $employee = $request->user();
@@ -107,7 +110,9 @@ class BudgetController extends Controller
             if ($canStoreTravelZone) {
                 $payload['travel_zone_id'] = $travelZone?->id;
             }
+            $payload += BudgetDestination::attributes($request, $canStoreDistance ? $distanceKm : null);
 
+            // Surat tugas yang memuat jarak menimpa jarak dan tujuan dari form.
             if ($letter) {
                 $payload = array_merge($payload, AssignmentLetterBudgetLink::budgetAttributes($letter));
             }
