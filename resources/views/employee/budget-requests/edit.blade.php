@@ -4,6 +4,7 @@
 @section('content')
 @php
     $formItems = collect(old('items', $budgetRequest->items->map(fn ($item) => [
+        'employee_id' => $item->employee_id,
         'type' => $item->type,
         'description' => $item->description,
         'amount' => $item->amount,
@@ -155,4 +156,5 @@
         button.closest('[data-budget-item]').remove();
     });
 </script>
+@include('employee.budget-requests.partials.item-owner-script')
 @endpush

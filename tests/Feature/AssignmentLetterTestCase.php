@@ -281,6 +281,7 @@ abstract class AssignmentLetterTestCase extends TestCase
         Schema::create('budget_request_items', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('employee_id')->nullable();
             $table->string('type');
             $table->text('description')->nullable();
             $table->decimal('amount', 15, 2)->default(0);

@@ -10,6 +10,7 @@ use App\Models\Notification;
 use App\Models\TravelZone;
 use App\Services\FcmService;
 use App\Support\AssignmentLetterBudgetLink;
+use App\Support\BudgetItemOwners;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -57,6 +58,9 @@ class BudgetController extends Controller
             'items.*.type' => 'required|string|in:transport,meal,lumpsum,entertain,operasional,lainnya',
             'items.*.description' => 'nullable|string|max:500',
             'items.*.amount' => 'required|numeric|min:0',
+            // Peserta pemilik biaya pribadi (uang makan, tunjangan). Kosong = biaya bersama yang
+            // dilaporkan pemilik anggaran di LPJ-nya. Harus salah satu peserta anggaran.
+            'items.*.employee_id' => 'nullable|integer|exists:employees,id',
             'surat_tugas_no' => 'nullable|string|max:255',
             'surat_tugas_date' => 'nullable|date',
             // Opsional: aplikasi versi lama tidak mengirimnya dan tetap berjalan seperti biasa.
@@ -68,6 +72,11 @@ class BudgetController extends Controller
 
         $employee = $request->user();
         $letter = AssignmentLetterBudgetLink::resolve($employee, $request->input('assignment_letter_id'));
+        // Surat tugas menentukan peserta bila dipakai; kalau tidak, dari daftar yang dikirim.
+        $participantIds = $letter
+            ? AssignmentLetterBudgetLink::participantIds($letter, $employee)
+            : array_map('intval', (array) $request->input('participants', []));
+        $itemOwners = BudgetItemOwners::resolve((array) $request->input('items'), $employee->id, $participantIds);
 
         DB::beginTransaction();
         try {
@@ -110,6 +119,7 @@ class BudgetController extends Controller
 
             foreach ($itemsData as $index => $itemData) {
                 $item = $budgetRequest->items()->create([
+                    'employee_id' => $itemOwners[$index] ?? null,
                     'type' => $itemData['type'],
                     'description' => $itemData['description'] ?? '',
                     'amount' => $itemData['amount'],
@@ -144,15 +154,7 @@ class BudgetController extends Controller
                 }
             }
 
-            // Sync participants: surat tugas menentukan peserta bila dipakai.
-            if ($letter) {
-                $budgetRequest->participants()->sync(AssignmentLetterBudgetLink::participantIds($letter, $employee));
-            } elseif ($request->filled('participants')) {
-                $participantIds = is_string($request->participants)
-                    ? json_decode($request->participants, true)
-                    : $request->participants;
-                $budgetRequest->participants()->sync($participantIds);
-            }
+            $budgetRequest->participants()->sync($participantIds);
 
             DB::commit();
 
@@ -213,6 +215,7 @@ class BudgetController extends Controller
             'employee:id,full_name,photo,department_id,position',
             'employee.department:id,name',
             'items.attachments',
+            'items.employee:id,full_name',
             'attachments',
             'participants:id,full_name,photo',
             'approvalLogs.approver:id,full_name,photo',

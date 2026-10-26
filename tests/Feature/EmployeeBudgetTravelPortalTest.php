@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\BudgetRequest;
+use App\Models\BudgetRequestRevision;
 use App\Models\TravelReport;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
@@ -228,6 +229,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         Schema::create('budget_request_items', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('employee_id')->nullable();
             $table->string('type');
             $table->text('description')->nullable();
             $table->decimal('amount', 15, 2)->default(0);
@@ -456,6 +458,142 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             ->assertDontSee('type="month"', false)
             ->assertSee('Perjalanan Batam')
             ->assertSee('Rp 225.000');
+    }
+
+    public function test_budget_items_can_be_assigned_to_tagged_participants_or_left_shared(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'p2@example.test', 'full_name' => 'Tagged Participant']);
+        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'p3@example.test', 'full_name' => 'Not Tagged']);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/budget-requests/create')
+            ->assertOk()
+            ->assertSee('data-item-owner', false)
+            ->assertSee('Bersama / milik pengaju');
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/budget-requests', [
+                'type' => 'budget',
+                'title' => 'Perjalanan Batam',
+                'participants' => [2],
+                'items' => [
+                    ['type' => 'transport', 'description' => 'Bensin dan tol', 'amount' => 400000, 'employee_id' => ''],
+                    ['type' => 'meal', 'description' => 'Uang makan pengaju', 'amount' => 75000, 'employee_id' => 1],
+                    ['type' => 'meal', 'description' => 'Uang makan peserta', 'amount' => 75000, 'employee_id' => 2],
+                ],
+            ])
+            ->assertRedirect(route('employee.budget-requests.index'));
+
+        $this->assertDatabaseHas('budget_request_items', ['description' => 'Bensin dan tol', 'employee_id' => null]);
+        $this->assertDatabaseHas('budget_request_items', ['description' => 'Uang makan pengaju', 'employee_id' => null]);
+        $this->assertDatabaseHas('budget_request_items', ['description' => 'Uang makan peserta', 'employee_id' => 2]);
+        $budget = BudgetRequest::firstOrFail();
+        $this->assertSame([2], $budget->participants()->pluck('employees.id')->all());
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/budget-requests/{$budget->id}")
+            ->assertOk()
+            ->assertSee('Untuk Tagged Participant')
+            ->assertSee('Bersama / milik pengaju');
+
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/budget-requests/{$budget->id}/edit")
+            ->assertOk()
+            ->assertSee('data-selected="2"', false);
+    }
+
+    public function test_a_budget_item_cannot_belong_to_someone_who_is_not_a_participant(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'p3@example.test', 'full_name' => 'Not Tagged']);
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/budget-requests', [
+                'type' => 'budget',
+                'title' => 'Perjalanan Batam',
+                'items' => [['type' => 'meal', 'description' => 'Uang makan', 'amount' => 75000, 'employee_id' => 3]],
+            ])
+            ->assertSessionHasErrors('items.0.employee_id');
+
+        $this->assertSame(0, BudgetRequest::count());
+        $this->assertSame(0, DB::table('budget_request_items')->count());
+    }
+
+    public function test_the_pending_budget_edit_keeps_or_changes_item_owners(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'p2@example.test', 'full_name' => 'Tagged Participant']);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_requests')->where('id', $budgetId)->update(['status' => 'pending']);
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->put("/employee/budget-requests/{$budgetId}", [
+                'type' => 'budget',
+                'title' => 'Perjalanan Batam',
+                'participants' => [2],
+                'items' => [
+                    ['type' => 'transport', 'description' => 'Bensin', 'amount' => 100000, 'employee_id' => ''],
+                    ['type' => 'meal', 'description' => 'Makan peserta', 'amount' => 50000, 'employee_id' => 2],
+                ],
+            ])
+            ->assertRedirect(route('employee.budget-requests.show', $budgetId));
+
+        $this->assertDatabaseHas('budget_request_items', ['budget_request_id' => $budgetId, 'description' => 'Makan peserta', 'employee_id' => 2]);
+        $this->assertDatabaseHas('budget_request_items', ['budget_request_id' => $budgetId, 'description' => 'Bensin', 'employee_id' => null]);
+
+        // Peserta dilepas dari tag: barisnya tidak boleh tetap atas namanya.
+        $this->withSession(['employee_id' => 1])
+            ->put("/employee/budget-requests/{$budgetId}", [
+                'type' => 'budget',
+                'title' => 'Perjalanan Batam',
+                'items' => [['type' => 'meal', 'description' => 'Makan peserta', 'amount' => 50000, 'employee_id' => 2]],
+            ])
+            ->assertSessionHasErrors('items.0.employee_id');
+        $this->assertDatabaseHas('budget_request_items', ['budget_request_id' => $budgetId, 'description' => 'Makan peserta', 'employee_id' => 2]);
+    }
+
+    public function test_the_budget_approver_can_assign_an_item_to_a_participant_and_it_is_logged(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'hr@example.test', 'full_name' => 'Maritza HR', 'department_id' => 1]);
+        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'p3@example.test', 'full_name' => 'Tagged Participant', 'department_id' => 1]);
+        $this->seedApprover(1, 'budget', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_requests')->where('id', $budgetId)->update(['status' => 'pending']);
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => 3, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $mealId = DB::table('budget_request_items')->insertGetId([
+            'budget_request_id' => $budgetId, 'type' => 'meal', 'description' => 'Uang makan', 'amount' => 75000,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get("/employee/approvals/budget/{$budgetId}/edit")
+            ->assertOk()
+            ->assertSee('Tagged Participant');
+
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/budget/{$budgetId}", [
+                'items' => [['id' => $mealId, 'type' => 'meal', 'description' => 'Uang makan', 'amount' => 75000, 'employee_id' => 3]],
+            ])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertDatabaseHas('budget_request_items', ['id' => $mealId, 'employee_id' => 3]);
+        // Hanya pemilik yang berubah, tetapi tetap tercatat sebagai penyesuaian.
+        $revision = BudgetRequestRevision::firstOrFail();
+        $this->assertStringContainsString('untuk Tagged Participant', collect($revision->changes())->pluck('text')->implode(' '));
+
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/budget/{$budgetId}", [
+                'items' => [['id' => $mealId, 'type' => 'meal', 'description' => 'Uang makan', 'amount' => 75000, 'employee_id' => 4]],
+            ])
+            ->assertSessionHasErrors('items.0.employee_id');
+        $this->assertDatabaseHas('budget_request_items', ['id' => $mealId, 'employee_id' => 3]);
     }
 
     public function test_employee_can_submit_budget_request_item_with_zero_amount(): void
@@ -928,7 +1066,8 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'employee_id' => 1,
             'budget_request_id' => $budgetId,
             'nomor_lpj' => 'LPJ-001',
-            'total_anggaran' => 225000,
+            // Anggaran LPJ = baris biaya milik pembuatnya, bukan total seluruh anggaran.
+            'total_anggaran' => 50000,
             'total_realisasi' => 80000,
         ]);
         $this->assertDatabaseHas('lpj_items', [
@@ -966,7 +1105,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        // LPJ satu per anggaran dan dibuat pemilik; peserta tidak ditawari anggaran tim.
+        // Biaya bersama dilaporkan pemilik; peserta tanpa biaya pribadi tidak ditawari anggaran tim.
         $this->withSession(['employee_id' => 2])
             ->get('/employee/lpj/create')
             ->assertOk()
@@ -976,10 +1115,81 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             ->get('/employee/lpj/create')
             ->assertOk()
             ->assertSee('Perjalanan Batam')
-            ->assertSee('Rp 225.000');
+            ->assertSee('Rp 50.000');
     }
 
-    public function test_tagged_participant_cannot_create_lpj_but_sees_the_owner_lpj(): void
+    public function test_a_participant_with_personal_costs_is_offered_the_budget_with_only_those_costs(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'EMP002',
+            'email' => 'participant@example.test',
+            'full_name' => 'Tagged Participant',
+        ]);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('budget_request_items')->insert([
+            ['budget_request_id' => $budgetId, 'employee_id' => null, 'type' => 'transport', 'description' => 'Bensin dan tol', 'amount' => 50000, 'created_at' => now(), 'updated_at' => now()],
+            ['budget_request_id' => $budgetId, 'employee_id' => 2, 'type' => 'meal', 'description' => 'Uang makan peserta', 'amount' => 30000, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/lpj/create')
+            ->assertOk()
+            ->assertSee('Perjalanan Batam - Rp 30.000', false)
+            ->assertSee('Uang makan peserta')
+            ->assertDontSee('Bensin dan tol');
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/lpj/create')
+            ->assertOk()
+            ->assertSee('Perjalanan Batam - Rp 50.000', false)
+            ->assertSee('Bensin dan tol')
+            ->assertDontSee('Uang makan peserta');
+    }
+
+    public function test_a_participant_creates_an_lpj_for_their_personal_costs_next_to_the_owner_lpj(): void
+    {
+        $this->seedEmployee();
+        $this->seedEmployee([
+            'id' => 2,
+            'employee_code' => 'EMP002',
+            'email' => 'participant@example.test',
+            'full_name' => 'Tagged Participant',
+        ]);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('budget_request_items')->insert([
+            ['budget_request_id' => $budgetId, 'employee_id' => null, 'type' => 'transport', 'description' => 'Bensin dan tol', 'amount' => 50000, 'created_at' => now(), 'updated_at' => now()],
+            ['budget_request_id' => $budgetId, 'employee_id' => 2, 'type' => 'meal', 'description' => 'Uang makan peserta', 'amount' => 30000, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $payload = fn (string $number, int $amount) => [
+            'budget_request_id' => $budgetId,
+            'nomor_lpj' => $number,
+            'items' => [['kategori' => 'meal', 'uraian' => 'Biaya', 'realisasi' => $amount]],
+        ];
+
+        $this->withSession(['employee_id' => 1])->post('/employee/lpj', $payload('LPJ-PIC', 45000))->assertRedirect();
+        $this->withSession(['employee_id' => 2])->post('/employee/lpj', $payload('LPJ-PESERTA', 28000))->assertRedirect();
+
+        $this->assertDatabaseHas('lpjs', ['employee_id' => 1, 'nomor_lpj' => 'LPJ-PIC', 'total_anggaran' => 50000]);
+        $this->assertDatabaseHas('lpjs', ['employee_id' => 2, 'nomor_lpj' => 'LPJ-PESERTA', 'total_anggaran' => 30000]);
+
+        // Masing-masing hanya sekali; peserta tidak melihat LPJ pribadi lain, pemilik melihat semuanya.
+        $this->withSession(['employee_id' => 2])->post('/employee/lpj', $payload('LPJ-PESERTA-2', 1000))
+            ->assertSessionHasErrors(['error' => 'Anda sudah membuat LPJ untuk anggaran ini.']);
+        $this->assertDatabaseMissing('lpjs', ['nomor_lpj' => 'LPJ-PESERTA-2']);
+
+        $this->withSession(['employee_id' => 1])->get('/employee/lpj')->assertOk()->assertSee('LPJ-PIC')->assertSee('LPJ-PESERTA');
+        $this->withSession(['employee_id' => 2])->get('/employee/lpj')->assertOk()->assertSee('LPJ-PIC')->assertSee('LPJ-PESERTA');
+    }
+
+    public function test_tagged_participant_without_personal_costs_cannot_create_lpj_but_sees_the_owner_lpj(): void
     {
         $this->seedEmployee();
         $this->seedEmployee([
@@ -1040,7 +1250,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
                 ],
             ])
             ->assertRedirect()
-            ->assertSessionHasErrors(['error' => 'LPJ anggaran tim dibuat oleh pemilik anggaran. Peserta cukup melihat LPJ-nya.']);
+            ->assertSessionHasErrors(['error' => 'Anggaran ini tidak punya biaya atas nama Anda, jadi tidak ada LPJ yang perlu Anda buat. Biaya bersama dilaporkan oleh pemilik anggaran.']);
 
         $this->assertDatabaseMissing('lpjs', ['nomor_lpj' => 'LPJ-PESERTA']);
 

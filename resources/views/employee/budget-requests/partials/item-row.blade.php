@@ -4,6 +4,7 @@
         $selectedType = old("items.{$index}.type", data_get($item, 'type'));
         $description = old("items.{$index}.description", data_get($item, 'description'));
         $amount = old("items.{$index}.amount", data_get($item, 'amount'));
+        $itemOwner = old("items.{$index}.employee_id", data_get($item, 'employee_id'));
     @endphp
     <div class="flex items-center justify-between gap-3">
         <div class="text-[13px] font-black text-gray-900">Item Biaya</div>
@@ -26,6 +27,14 @@
             <input name="items[{{ $index }}][description]" value="{{ $description }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="Contoh: Taksi bandara">
         </label>
     </div>
+    <label class="block">
+        <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Untuk</span>
+        {{-- Opsi peserta diisi skrip dari Tag Tim di atas; "Bersama" masuk LPJ pemilik anggaran. --}}
+        <select name="items[{{ $index }}][employee_id]" data-item-owner data-selected="{{ $itemOwner }}" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+            <option value="">Bersama / milik pengaju</option>
+        </select>
+        <span class="block mt-1 text-[11px] text-gray-400">Biaya bersama (bensin, tol) dilaporkan pengaju. Uang makan atau tunjangan satu orang dipilih ke orangnya, supaya masuk LPJ-nya sendiri.</span>
+    </label>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label>
             <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Nominal</span>

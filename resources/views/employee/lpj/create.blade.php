@@ -10,7 +10,7 @@
         </a>
         <h1 class="text-[22px] font-black text-gray-900">Buat LPJ</h1>
         <p class="text-[13px] text-gray-500 mt-1">Laporan Pertanggungjawaban anggaran kegiatan.</p>
-        <p class="text-[12px] text-gray-400 mt-1">Satu LPJ per anggaran, dibuat pemilik anggaran. Peserta anggaran tim melihat LPJ-nya di daftar LPJ.</p>
+        <p class="text-[12px] text-gray-400 mt-1">Tiap orang membuat LPJ untuk biayanya sendiri. Biaya bersama (misalnya bensin dan tol) dilaporkan pemilik anggaran. Peserta anggaran tim melihat LPJ pemilik di daftar LPJ.</p>
     </div>
 
     @if($errors->has('error'))
@@ -31,10 +31,10 @@
                         <option value="">-- Pilih Anggaran --</option>
                         @foreach($availableRequests as $br)
                         <option value="{{ $br->id }}"
-                            data-total="{{ $br->total_amount }}"
+                            data-total="{{ $br->lpj_total }}"
                             data-items="{{ json_encode($br->items->map(fn($i) => ['uraian' => $i->description, 'kategori' => $i->type_label, 'anggaran' => $i->amount])) }}"
                             {{ old('budget_request_id', $selectedRequest?->id) == $br->id ? 'selected' : '' }}>
-                            {{ $br->title }} - Rp {{ number_format($br->total_amount, 0, ',', '.') }}
+                            {{ $br->title }} - Rp {{ number_format($br->lpj_total, 0, ',', '.') }}
                         </option>
                         @endforeach
                     </select>
@@ -298,7 +298,7 @@ document.getElementById('budget_request_id').addEventListener('change', function
         'anggaran' => $i->amount,
     ])->values();
 @endphp
-renderPemasukan(@json($preloadItems), {{ (float) ($selectedRequest->total_amount ?? 0) }});
+renderPemasukan(@json($preloadItems), {{ (float) ($selectedRequest->lpj_total ?? 0) }});
 @endif
 
 addRow();

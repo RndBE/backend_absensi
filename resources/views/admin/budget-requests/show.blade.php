@@ -184,6 +184,7 @@
                                     <div class="flex items-center gap-2">
                                         <span class="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-[11px] font-bold shrink-0">{{ $i + 1 }}</span>
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white border border-gray-200 text-gray-700">{{ $item->type_label }}</span>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border {{ $item->employee ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-100 border-gray-200 text-gray-500' }}">{{ $item->employee ? 'Untuk '.$item->employee->full_name : 'Bersama' }}</span>
                                     </div>
                                     <p class="mt-2 text-[13px] leading-relaxed text-gray-700 break-words">{{ $item->description ?: '-' }}</p>
                                 </div>

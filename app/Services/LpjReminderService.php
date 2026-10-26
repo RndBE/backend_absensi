@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\BudgetRequest;
-use App\Models\Lpj;
+use App\Models\Employee;
 use App\Models\Notification;
 use App\Models\Setting;
 use App\Models\TravelReport;
@@ -30,8 +30,8 @@ class LpjReminderService
     /**
      * Kirim pengingat LPJ untuk perjalanan yang tanggal pulangnya tepat
      * sejumlah hari yang dikonfigurasi sebelum $date, dan LPJ-nya belum dibuat.
-     * LPJ satu per anggaran dan dibuat pemilik anggaran, jadi hanya pemilik yang diingatkan,
-     * sekali per anggaran, walau LHP-nya dibuat beberapa peserta.
+     * Yang diingatkan: pemilik anggaran (biaya bersama dan miliknya) dan tiap peserta yang punya
+     * biaya pribadi, masing-masing sekali per anggaran selama LPJ-nya belum dibuat.
      *
      * @return array{sent: int, skipped: int}
      */
@@ -46,15 +46,8 @@ class LpjReminderService
         $sent = 0;
         $skipped = 0;
 
-        foreach (self::budgetsReturningOn($date, $reminderDays) as $budget) {
-            $employee = $budget->employee;
-
-            if (! $employee) {
-                $skipped++;
-                continue;
-            }
-
-            if (Lpj::where('budget_request_id', $budget->id)->exists()) {
+        foreach (self::authorsDueOn($date, $reminderDays) as ['budget' => $budget, 'employee' => $employee, 'done' => $done]) {
+            if ($done) {
                 $skipped++;
                 continue;
             }
@@ -109,12 +102,8 @@ class LpjReminderService
 
         $items = collect();
 
-        foreach (self::budgetsReturningOn($date, $reminderDays) as $budget) {
-            $employee = $budget->employee;
-            if (! $employee || ($companyId && (int) $employee->company_id !== $companyId)) {
-                continue;
-            }
-            if (Lpj::where('budget_request_id', $budget->id)->exists()) {
+        foreach (self::authorsDueOn($date, $reminderDays) as ['budget' => $budget, 'employee' => $employee, 'done' => $done]) {
+            if ($done || ($companyId && (int) $employee->company_id !== $companyId)) {
                 continue;
             }
 
@@ -130,8 +119,34 @@ class LpjReminderService
     }
 
     /**
+     * Pasangan (anggaran, pembuat LPJ) untuk anggaran yang tanggal pulangnya jatuh tempo.
+     * `done` true bila pembuat itu sudah membuat LPJ-nya.
+     *
+     * @return Collection<int, array{budget: BudgetRequest, employee: Employee, done: bool}>
+     */
+    private static function authorsDueOn(Carbon $date, int $reminderDays): Collection
+    {
+        $pairs = collect();
+
+        foreach (self::budgetsReturningOn($date, $reminderDays) as $budget) {
+            $authors = Employee::whereIn('id', $budget->lpjAuthorIds())->get()->keyBy('id');
+            $doneIds = $budget->lpjs()->pluck('employee_id')->map(fn ($id) => (int) $id);
+
+            foreach ($authors as $employee) {
+                $pairs->push([
+                    'budget' => $budget,
+                    'employee' => $employee,
+                    'done' => $doneIds->contains($employee->id),
+                ]);
+            }
+        }
+
+        return $pairs;
+    }
+
+    /**
      * Anggaran disetujui/cair yang punya LHP dengan tanggal pulang tepat $reminderDays hari
-     * sebelum $date, sekali per anggaran beserta pemiliknya.
+     * sebelum $date.
      *
      * @return Collection<int, BudgetRequest>
      */
@@ -145,7 +160,7 @@ class LpjReminderService
             ->distinct()
             ->pluck('budget_request_id');
 
-        return BudgetRequest::with('employee')
+        return BudgetRequest::with('items')
             ->whereIn('id', $budgetIds)
             ->whereIn('status', ['approved', 'paid'])
             ->get();

@@ -21,7 +21,13 @@ class LpjSummary
     {
         $lpj->loadMissing(['items', 'budgetRequest.items']);
 
-        $budgetItems = $lpj->budgetRequest?->items ?? collect();
+        // Pemasukan hanya baris biaya milik pembuat LPJ ini (biaya bersama ada di LPJ pemilik).
+        // LPJ yang dibuat peserta sebelum anggaran dipecah per orang tidak punya baris atas
+        // namanya dan melaporkan seluruh anggaran, jadi tetap dibandingkan dengan seluruh baris.
+        $budgetItems = $lpj->budgetRequest?->itemsForLpj((int) $lpj->employee_id) ?? collect();
+        if ($budgetItems->isEmpty()) {
+            $budgetItems = $lpj->budgetRequest?->items ?? collect();
+        }
 
         // ── PEMASUKAN (dari item anggaran) ──
         $pemasukan = $budgetItems->map(fn ($bi) => [

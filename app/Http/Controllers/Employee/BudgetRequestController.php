@@ -10,6 +10,7 @@ use App\Models\Notification;
 use App\Models\TravelZone;
 use App\Services\FcmService;
 use App\Support\AssignmentLetterBudgetLink;
+use App\Support\BudgetItemOwners;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -83,6 +84,7 @@ class BudgetRequestController extends Controller
             'items.*.type' => 'required|in:transport,meal,lumpsum,entertain,operasional,lainnya',
             'items.*.description' => 'nullable|string|max:500',
             'items.*.amount' => 'required|numeric|min:0',
+            'items.*.employee_id' => 'nullable|integer',
             'item_attachments_*' => 'nullable|array',
             'item_attachments_*.*' => 'file|max:5120',
         ], $this->travelDateMessages());
@@ -90,6 +92,10 @@ class BudgetRequestController extends Controller
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
         $letter = AssignmentLetterBudgetLink::resolve($employee, $validated['assignment_letter_id'] ?? null);
+        $participantIds = $letter
+            ? AssignmentLetterBudgetLink::participantIds($letter, $employee)
+            : array_map('intval', $validated['participants'] ?? []);
+        $itemOwners = BudgetItemOwners::resolve($validated['items'], $employee->id, $participantIds);
 
         DB::beginTransaction();
         try {
@@ -118,6 +124,7 @@ class BudgetRequestController extends Controller
             foreach ($validated['items'] as $index => $itemData) {
                 $amount = (float) $itemData['amount'];
                 $item = $budgetRequest->items()->create([
+                    'employee_id' => $itemOwners[$index],
                     'type' => $itemData['type'],
                     'description' => $itemData['description'] ?? '',
                     'amount' => $amount,
@@ -145,9 +152,7 @@ class BudgetRequestController extends Controller
                 ]);
             }
 
-            $budgetRequest->participants()->sync($letter
-                ? AssignmentLetterBudgetLink::participantIds($letter, $employee)
-                : ($validated['participants'] ?? []));
+            $budgetRequest->participants()->sync($participantIds);
 
             DB::commit();
 
@@ -211,6 +216,7 @@ class BudgetRequestController extends Controller
             'items.*.type' => 'required|in:transport,meal,lumpsum,entertain,operasional,lainnya',
             'items.*.description' => 'nullable|string|max:500',
             'items.*.amount' => 'required|numeric|min:0',
+            'items.*.employee_id' => 'nullable|integer',
             'item_attachments_*' => 'nullable|array',
             'item_attachments_*.*' => 'file|max:5120',
         ], $this->travelDateMessages());
@@ -228,6 +234,10 @@ class BudgetRequestController extends Controller
         }
 
         $letter = AssignmentLetterBudgetLink::resolve($employee, $validated['assignment_letter_id'] ?? null, $budgetRequest);
+        $participantIds = $letter
+            ? AssignmentLetterBudgetLink::participantIds($letter, $employee)
+            : array_map('intval', $validated['participants'] ?? []);
+        $itemOwners = BudgetItemOwners::resolve($validated['items'], $employee->id, $participantIds);
 
         DB::beginTransaction();
         try {
@@ -250,9 +260,7 @@ class BudgetRequestController extends Controller
                 $budgetRequest->assignment_letter_id && ! $letter ? ['assignment_letter_id' => null] : [],
                 $letter ? AssignmentLetterBudgetLink::budgetAttributes($letter) : []));
 
-            $budgetRequest->participants()->sync($letter
-                ? AssignmentLetterBudgetLink::participantIds($letter, $employee)
-                : ($validated['participants'] ?? []));
+            $budgetRequest->participants()->sync($participantIds);
 
             $budgetRequest->items->each(fn ($item) => $item->attachments()->delete());
             $budgetRequest->items()->delete();
@@ -261,6 +269,7 @@ class BudgetRequestController extends Controller
             foreach ($validated['items'] as $index => $itemData) {
                 $amount = (float) $itemData['amount'];
                 $item = $budgetRequest->items()->create([
+                    'employee_id' => $itemOwners[$index],
                     'type' => $itemData['type'],
                     'description' => $itemData['description'] ?? '',
                     'amount' => $amount,
@@ -310,6 +319,7 @@ class BudgetRequestController extends Controller
         return view('employee.budget-requests.show', [
             'budgetRequest' => BudgetRequest::with([
                 'items.attachments',
+                'items.employee:id,full_name',
                 'attachments',
                 'participants:id,full_name',
                 'approvalLogs.approver:id,full_name',

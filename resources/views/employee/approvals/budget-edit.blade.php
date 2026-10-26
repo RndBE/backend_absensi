@@ -5,11 +5,14 @@
 @php
     $formItems = collect(old('items', $budgetRequest->items->sortBy('id')->map(fn ($item) => [
         'id' => $item->id,
+        'employee_id' => $item->employee_id,
         'type' => $item->type,
         'description' => $item->description,
         'amount' => $item->amount,
     ])->values()->all()));
     $attachmentsById = $budgetRequest->items->mapWithKeys(fn ($item) => [$item->id => $item->attachments]);
+    // Pemilik biaya pribadi: peserta anggaran. Kosong = biaya bersama, dilaporkan pemilik anggaran.
+    $ownerOptions = $budgetRequest->participants->pluck('full_name', 'id');
 
     // Bantuan hitung tunjangan: uang makan zona × jumlah hari perjalanan.
     $zone = $budgetRequest->travelZone;
@@ -89,6 +92,7 @@
                     @include('employee.approvals.partials.budget-item-row', [
                         'index' => $index,
                         'itemTypes' => $itemTypes,
+                        'ownerOptions' => $ownerOptions,
                         'item' => $item,
                         'attachments' => $attachmentsById->get((int) ($item['id'] ?? 0), collect()),
                     ])
@@ -116,7 +120,7 @@
 </div>
 
 <template id="budgetItemTemplate">
-    @include('employee.approvals.partials.budget-item-row', ['index' => '__INDEX__', 'itemTypes' => $itemTypes, 'item' => null])
+    @include('employee.approvals.partials.budget-item-row', ['index' => '__INDEX__', 'itemTypes' => $itemTypes, 'ownerOptions' => $ownerOptions, 'item' => null])
 </template>
 @endsection
 

@@ -18,6 +18,7 @@ use App\Models\TravelReport;
 use App\Services\FcmService;
 use App\Services\LpjExcelExporter;
 use App\Support\AssignmentLetterApprovalFlow;
+use App\Support\BudgetItemOwners;
 use App\Support\BudgetSignatureSlots;
 use App\Support\LeaveQuota;
 use Illuminate\Database\Eloquent\Model;
@@ -135,6 +136,7 @@ class ApprovalController extends Controller
         $budgetRequest = BudgetRequest::with([
             'employee:id,full_name,position',
             'items.attachments',
+            'participants:id,full_name',
             'travelZone',
             'revisions.editor:id,full_name',
         ])->findOrFail($id);
@@ -158,17 +160,24 @@ class ApprovalController extends Controller
             'items.*.type' => 'required|in:'.implode(',', array_keys(EmployeeBudgetRequestController::ITEM_TYPES)),
             'items.*.description' => 'nullable|string|max:500',
             'items.*.amount' => 'required|numeric|min:0',
+            'items.*.employee_id' => 'nullable|integer',
             'notes' => 'nullable|string|max:1000',
         ]);
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
-        $budgetRequest = BudgetRequest::with(['employee', 'items'])->findOrFail($id);
+        $budgetRequest = BudgetRequest::with(['employee', 'items.employee:id,full_name'])->findOrFail($id);
 
         if (! $this->canActOn($employee, 'budget', $budgetRequest)) {
             return redirect()->route('employee.approvals.index')
                 ->with('error', 'Anda bukan approver untuk step ini.');
         }
+
+        $itemOwners = BudgetItemOwners::resolve(
+            $validated['items'],
+            (int) $budgetRequest->employee_id,
+            $budgetRequest->participants()->pluck('employees.id')->all(),
+        );
 
         $existing = $budgetRequest->items->keyBy('id');
         $keptIds = collect($validated['items'])->pluck('id')->filter()->map(fn ($itemId) => (int) $itemId);
@@ -179,15 +188,16 @@ class ApprovalController extends Controller
 
         $before = $this->budgetSnapshot($budgetRequest->items);
 
-        DB::transaction(function () use ($budgetRequest, $validated, $existing, $keptIds) {
+        DB::transaction(function () use ($budgetRequest, $validated, $existing, $keptIds, $itemOwners) {
             // Item yang dihapus approver ikut membuang catatan lampirannya, sama seperti edit oleh pengaju.
             $existing->except($keptIds->all())->each(function ($item) {
                 $item->attachments()->delete();
                 $item->delete();
             });
 
-            foreach ($validated['items'] as $data) {
+            foreach ($validated['items'] as $index => $data) {
                 $values = [
+                    'employee_id' => $itemOwners[$index],
                     'type' => $data['type'],
                     'description' => $data['description'] ?? '',
                     'amount' => (float) $data['amount'],
@@ -202,7 +212,7 @@ class ApprovalController extends Controller
             $budgetRequest->recalculateTotal();
         });
 
-        $after = $this->budgetSnapshot($budgetRequest->items()->get());
+        $after = $this->budgetSnapshot($budgetRequest->items()->with('employee:id,full_name')->get());
 
         if ($before === $after) {
             return redirect()->route('employee.approvals.index')
@@ -237,11 +247,13 @@ class ApprovalController extends Controller
             ->with('success', 'Item anggaran disesuaikan. Lanjutkan dengan menyetujui atau menolak pengajuan.');
     }
 
-    /** @return array{total: float, items: array<int, array{id: int, type: string, description: string, amount: float}>} */
+    /** @return array{total: float, items: array<int, array{id: int, employee_id: int|null, owner: string|null, type: string, description: string, amount: float}>} */
     private function budgetSnapshot(Collection $items): array
     {
         $rows = $items->sortBy('id')->values()->map(fn ($item) => [
             'id' => (int) $item->id,
+            'employee_id' => $item->employee_id ? (int) $item->employee_id : null,
+            'owner' => $item->employee?->full_name,
             'type' => (string) $item->type,
             'description' => (string) ($item->description ?? ''),
             'amount' => (float) $item->amount,
@@ -286,7 +298,7 @@ class ApprovalController extends Controller
         $lpj = Lpj::with([
             'employee:id,full_name,photo,department_id,position,job_level',
             'employee.department:id,name',
-            'budgetRequest:id,title,total_amount,surat_tugas_no,surat_tugas_date',
+            'budgetRequest:id,employee_id,title,total_amount,surat_tugas_no,surat_tugas_date',
             'travelReport:id,destination_city,departure_date,return_date',
             'items.budgetRequestItem',
             'approvalLogs.approver:id,full_name,photo',

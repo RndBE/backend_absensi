@@ -16,7 +16,7 @@ class LpjPresenter
 
     /** Relasi yang harus dimuat sebelum memanggil detail(). */
     public const DETAIL_RELATIONS = [
-        'budgetRequest:id,title,total_amount,surat_tugas_no,surat_tugas_date',
+        'budgetRequest:id,employee_id,title,total_amount,surat_tugas_no,surat_tugas_date',
         'travelReport:id,destination_city',
         'items',
         'approvalLogs.approver:id,full_name,photo',

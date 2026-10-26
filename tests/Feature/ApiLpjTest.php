@@ -69,6 +69,7 @@ class ApiLpjTest extends TestCase
         Schema::create('budget_request_items', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('employee_id')->nullable();
             $table->string('type');
             $table->string('description');
             $table->decimal('amount', 15, 2)->default(0);
@@ -282,6 +283,46 @@ class ApiLpjTest extends TestCase
         $this->assertNumber(50000.0, $summary['total_over_budget']);
     }
 
+    public function test_the_detail_income_is_only_the_costs_the_author_reports(): void
+    {
+        $budget = $this->budget(self::OTHER, 'Perjalanan tim', total: 550000, items: [
+            ['transport', 'Bensin dan tol', 400000],
+            ['meal', 'Uang makan Shandy', 75000, self::ME],
+            ['meal', 'Uang makan Budi', 75000, self::APPROVER],
+        ]);
+        $this->participate($budget, self::ME);
+        $this->participate($budget, self::APPROVER);
+        $ownerLpj = $this->lpj($budget, self::OTHER, '2026-10-01 08:00:00', anggaran: 400000);
+        $myLpj = $this->lpj($budget, self::ME, '2026-10-02 08:00:00', anggaran: 75000);
+
+        $owner = $this->invoke('show', $this->listRequest(self::OTHER), $ownerLpj)['data']['summary'];
+        $mine = $this->invoke('show', $this->listRequest(self::ME), $myLpj)['data']['summary'];
+
+        $this->assertSame(['Bensin dan tol'], array_column($owner['pemasukan'], 'uraian'));
+        $this->assertNumber(400000.0, $owner['total_pemasukan']);
+        $this->assertSame(['Uang makan Shandy'], array_column($mine['pemasukan'], 'uraian'));
+        $this->assertNumber(75000.0, $mine['total_pemasukan']);
+
+        // Anggaran yang dimuat tanpa kolom pemilik tetap dikenali pemiliknya.
+        $partial = Lpj::with('budgetRequest:id,title')->findOrFail($ownerLpj);
+        $this->assertSame(['Bensin dan tol'], array_column(\App\Support\LpjSummary::for($partial)['pemasukan']->all(), 'uraian'));
+    }
+
+    public function test_an_lpj_made_before_costs_had_owners_still_shows_the_whole_budget_as_income(): void
+    {
+        $budget = $this->budget(self::OTHER, 'Rapat lama', total: 300000, items: [
+            ['transport', 'Tiket', 200000],
+            ['meal', 'Makan', 100000],
+        ]);
+        $this->participate($budget, self::ME);
+        $legacy = $this->lpj($budget, self::ME, '2026-10-01 08:00:00', anggaran: 300000);
+
+        $summary = $this->invoke('show', $this->listRequest(self::ME), $legacy)['data']['summary'];
+
+        $this->assertSame(['Tiket', 'Makan'], array_column($summary['pemasukan'], 'uraian'));
+        $this->assertNumber(300000.0, $summary['total_pemasukan']);
+    }
+
     public function test_someone_elses_lpj_is_not_found(): void
     {
         $id = $this->lpj($this->budget(self::OTHER, 'Rapat Malang'), self::OTHER, '2026-10-21 08:00:00');
@@ -319,7 +360,7 @@ class ApiLpjTest extends TestCase
         $this->assertNumber(200000, $first['items'][0]['jumlah']);
     }
 
-    public function test_team_budgets_are_not_offered_to_participants(): void
+    public function test_a_participant_without_personal_costs_is_not_offered_the_team_budget(): void
     {
         $budget = $this->budget(self::OTHER, 'Rapat bersama', status: 'approved');
         $this->participate($budget, self::ME);
@@ -328,13 +369,36 @@ class ApiLpjTest extends TestCase
         $this->assertSame([$budget], array_column($this->invoke('availableRequests', $this->listRequest(self::OTHER))['data'], 'id'));
     }
 
-    public function test_a_budget_with_any_lpj_is_not_offered_again(): void
+    public function test_each_person_is_offered_the_budget_with_only_the_costs_they_report(): void
     {
-        $budget = $this->budget(self::ME, 'Rapat bersama', status: 'approved');
+        $budget = $this->budget(self::OTHER, 'Perjalanan tim', total: 650000, items: [
+            ['transport', 'Bensin dan tol', 400000],
+            ['meal', 'Uang makan Rina', 100000, self::OTHER],
+            ['meal', 'Uang makan Shandy', 150000, self::ME],
+        ]);
+        $this->participate($budget, self::ME);
+
+        $mine = $this->invoke('availableRequests', $this->listRequest(self::ME))['data'];
+        $owners = $this->invoke('availableRequests', $this->listRequest(self::OTHER))['data'];
+
+        $this->assertSame([$budget], array_column($mine, 'id'));
+        $this->assertSame(['Uang makan Shandy'], array_column($mine[0]['items'], 'uraian'));
+        $this->assertNumber(150000.0, $mine[0]['total_amount']);
+        $this->assertSame(['Bensin dan tol', 'Uang makan Rina'], array_column($owners[0]['items'], 'uraian'));
+        $this->assertNumber(500000.0, $owners[0]['total_amount']);
+    }
+
+    public function test_the_budget_is_offered_again_to_whoever_has_no_lpj_yet(): void
+    {
+        $budget = $this->budget(self::ME, 'Rapat bersama', status: 'approved', items: [
+            ['transport', 'Bensin', 100000],
+            ['meal', 'Uang makan Rina', 50000, self::OTHER],
+        ]);
         $this->participate($budget, self::OTHER);
         $this->lpj($budget, self::OTHER, '2026-10-01 08:00:00');
 
-        $this->assertSame([], $this->invoke('availableRequests', $this->listRequest(self::ME))['data']);
+        $this->assertSame([$budget], array_column($this->invoke('availableRequests', $this->listRequest(self::ME))['data'], 'id'));
+        $this->assertSame([], $this->invoke('availableRequests', $this->listRequest(self::OTHER))['data'], 'peserta sudah membuat LPJ-nya');
     }
 
     public function test_available_budgets_come_with_the_expense_categories(): void
@@ -470,7 +534,7 @@ class ApiLpjTest extends TestCase
         $this->assertSame($theirs, Lpj::firstOrFail()->travel_report_id);
     }
 
-    public function test_a_participant_cannot_create_the_team_lpj(): void
+    public function test_a_participant_without_personal_costs_cannot_create_an_lpj(): void
     {
         $budget = $this->budget(self::OTHER, 'Rapat bersama', total: 100000);
         $this->participate($budget, self::ME);
@@ -478,11 +542,60 @@ class ApiLpjTest extends TestCase
         $response = $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 1000]]]);
 
         $this->assertSame(422, $response->getStatusCode());
-        $this->assertSame('LPJ anggaran tim dibuat oleh pemilik anggaran. Peserta cukup melihat LPJ-nya.', $response->getData(true)['message']);
+        $this->assertStringContainsString('tidak punya biaya atas nama Anda', $response->getData(true)['message']);
         $this->assertSame(0, Lpj::count());
     }
 
-    public function test_a_second_lpj_for_the_same_budget_is_refused(): void
+    public function test_a_participant_creates_an_lpj_for_their_own_costs_only(): void
+    {
+        $budget = $this->budget(self::OTHER, 'Perjalanan tim', total: 650000, items: [
+            ['transport', 'Bensin dan tol', 400000],
+            ['meal', 'Uang makan Rina', 100000, self::OTHER],
+            ['meal', 'Uang makan Shandy', 150000, self::ME],
+        ]);
+        $this->participate($budget, self::ME);
+
+        $response = $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Makan 3 hari', 'realisasi' => 120000]]]);
+
+        $this->assertSame(201, $response->getStatusCode());
+        $lpj = Lpj::firstOrFail();
+        $this->assertSame(self::ME, $lpj->employee_id);
+        $this->assertEquals(150000, $lpj->total_anggaran, 'hanya uang makan miliknya');
+        $this->assertEquals(30000, $lpj->sisa);
+    }
+
+    public function test_the_owner_lpj_carries_the_shared_costs_and_their_own_but_not_a_participants(): void
+    {
+        $budget = $this->budget(self::ME, 'Perjalanan tim', total: 650000, items: [
+            ['transport', 'Bensin dan tol', 400000],
+            ['meal', 'Uang makan Shandy', 100000, self::ME],
+            ['meal', 'Uang makan Rina', 150000, self::OTHER],
+        ]);
+        $this->participate($budget, self::OTHER);
+
+        $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'transport', 'uraian' => 'Bensin', 'realisasi' => 380000]]]);
+
+        $this->assertEquals(500000, Lpj::firstOrFail()->total_anggaran);
+    }
+
+    public function test_the_owner_and_a_participant_each_get_their_own_lpj_for_one_budget(): void
+    {
+        $budget = $this->budget(self::ME, 'Perjalanan tim', total: 550000, items: [
+            ['transport', 'Bensin dan tol', 400000],
+            ['meal', 'Uang makan Rina', 150000, self::OTHER],
+        ]);
+        $this->participate($budget, self::OTHER);
+        $body = ['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Biaya', 'realisasi' => 1000]]];
+
+        $this->assertSame(201, $this->store($body, as: self::ME)->getStatusCode());
+        $this->assertSame(201, $this->store($body, as: self::OTHER)->getStatusCode());
+
+        $this->assertSame([self::ME, self::OTHER], Lpj::orderBy('id')->pluck('employee_id')->all());
+        $this->assertSame([400000.0, 150000.0], Lpj::orderBy('id')->pluck('total_anggaran')->map(fn ($v) => (float) $v)->all());
+        $this->assertSame(422, $this->store($body, as: self::OTHER)->getStatusCode(), 'LPJ kedua dari orang yang sama ditolak');
+    }
+
+    public function test_a_second_lpj_from_the_same_person_for_the_same_budget_is_refused(): void
     {
         $budget = $this->budget(self::ME, 'Perjalanan Surabaya');
         $this->lpj($budget, self::ME, '2026-10-01 08:00:00');
@@ -490,7 +603,7 @@ class ApiLpjTest extends TestCase
         $response = $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 1000]]]);
 
         $this->assertSame(422, $response->getStatusCode());
-        $this->assertSame('LPJ untuk anggaran ini sudah dibuat.', $response->getData(true)['message']);
+        $this->assertSame('Anda sudah membuat LPJ untuk anggaran ini.', $response->getData(true)['message']);
         $this->assertSame(1, Lpj::count());
     }
 
@@ -504,12 +617,12 @@ class ApiLpjTest extends TestCase
             $response = $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 1000]]]);
 
             $this->assertSame(422, $response->getStatusCode(), "anggaran #$budget");
-            $this->assertSame('Anggaran tidak ditemukan, belum disetujui, atau bukan milik Anda.', $response->getData(true)['message']);
+            $this->assertSame('Anggaran tidak ditemukan, belum disetujui, atau Anda bukan pemilik maupun pesertanya.', $response->getData(true)['message']);
         }
         $this->assertSame(0, Lpj::count());
     }
 
-    public function test_the_owner_cannot_add_a_second_lpj_after_a_legacy_participant_lpj(): void
+    public function test_the_owner_can_still_create_their_lpj_after_a_participant_made_one(): void
     {
         $budget = $this->budget(self::ME, 'Rapat bersama');
         $this->participate($budget, self::OTHER);
@@ -517,9 +630,28 @@ class ApiLpjTest extends TestCase
 
         $response = $this->store(['budget_request_id' => $budget, 'items' => [['kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 1000]]]);
 
-        $this->assertSame(422, $response->getStatusCode());
-        $this->assertSame('LPJ untuk anggaran ini sudah dibuat.', $response->getData(true)['message']);
-        $this->assertSame(1, Lpj::count());
+        $this->assertSame(201, $response->getStatusCode());
+        $this->assertSame(2, Lpj::count());
+    }
+
+    public function test_a_participant_sees_the_owner_lpj_but_not_another_participants(): void
+    {
+        $budget = $this->budget(self::OTHER, 'Perjalanan tim', total: 550000, items: [
+            ['transport', 'Bensin dan tol', 400000],
+            ['meal', 'Uang makan Shandy', 75000, self::ME],
+            ['meal', 'Uang makan Budi', 75000, self::APPROVER],
+        ]);
+        $this->participate($budget, self::ME);
+        $this->participate($budget, self::APPROVER);
+        $ownerLpj = $this->lpj($budget, self::OTHER, '2026-10-01 08:00:00');
+        $myLpj = $this->lpj($budget, self::ME, '2026-10-02 08:00:00');
+        $this->lpj($budget, self::APPROVER, '2026-10-03 08:00:00');
+
+        $ids = array_column($this->invoke('index', $this->listRequest(self::ME))['data'], 'id');
+        $ownerSees = array_column($this->invoke('index', $this->listRequest(self::OTHER))['data'], 'id');
+
+        $this->assertEqualsCanonicalizing([$ownerLpj, $myLpj], $ids);
+        $this->assertCount(3, $ownerSees, 'pemilik anggaran melihat semua LPJ anggarannya');
     }
 
     #[DataProvider('invalidBodies')]
@@ -651,10 +783,13 @@ class ApiLpjTest extends TestCase
             'employee_id' => $employeeId, 'title' => $title, 'status' => $status, 'total_amount' => $total,
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        foreach ($items as [$type, $description, $amount]) {
+        // Tanpa rincian, anggaran punya satu biaya bersama sebesar totalnya. Elemen ke-4 baris
+        // adalah pemilik biaya pribadi (id peserta); tanpa itu biayanya bersama.
+        $items = $items ?: [['transport', 'Biaya', $total]];
+        foreach ($items as $item) {
             DB::table('budget_request_items')->insert([
-                'budget_request_id' => $id, 'type' => $type, 'description' => $description, 'amount' => $amount,
-                'created_at' => now(), 'updated_at' => now(),
+                'budget_request_id' => $id, 'employee_id' => $item[3] ?? null, 'type' => $item[0], 'description' => $item[1],
+                'amount' => $item[2], 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
 

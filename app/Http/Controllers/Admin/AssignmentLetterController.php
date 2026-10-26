@@ -210,7 +210,7 @@ class AssignmentLetterController extends Controller
         // menjalankannya tetap bisa membuka detail surat (tanpa daftar anggaran terkait).
         $budgets = Schema::hasColumn('budget_requests', 'assignment_letter_id')
             ? $letter->budgetRequests()
-                ->with(['employee:id,full_name', 'lpj:id,budget_request_id,status'])
+                ->with(['employee:id,full_name', 'lpjs:id,budget_request_id,employee_id,status'])
                 ->latest()
                 ->get()
             : collect();

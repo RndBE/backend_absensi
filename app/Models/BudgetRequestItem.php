@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class BudgetRequestItem extends Model
 {
     protected $fillable = [
-        'budget_request_id', 'type', 'description', 'amount',
+        'budget_request_id', 'employee_id', 'type', 'description', 'amount',
     ];
 
     protected function casts(): array
@@ -22,6 +22,12 @@ class BudgetRequestItem extends Model
     public function budgetRequest(): BelongsTo
     {
         return $this->belongsTo(BudgetRequest::class);
+    }
+
+    /** Peserta pemilik biaya ini; kosong berarti biaya bersama milik pemilik anggaran. */
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class);
     }
 
     public function attachments(): MorphMany

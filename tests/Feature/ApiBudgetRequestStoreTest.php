@@ -51,6 +51,7 @@ class ApiBudgetRequestStoreTest extends TestCase
         Schema::create('budget_request_items', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('employee_id')->nullable();
             $table->string('type');
             $table->string('description')->nullable();
             $table->decimal('amount', 15, 2)->default(0);
@@ -94,6 +95,44 @@ class ApiBudgetRequestStoreTest extends TestCase
             $table->boolean('is_read')->default(false);
             $table->timestamps();
         });
+    }
+
+    public function test_items_can_be_assigned_to_participants_and_others_are_rejected(): void
+    {
+        foreach ([1 => 'Requester', 2 => 'Peserta', 3 => 'Bukan peserta'] as $id => $name) {
+            DB::table('employees')->insert([
+                'id' => $id, 'full_name' => $name, 'email' => "e{$id}@example.test", 'password' => 'secret',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $store = function (array $items) {
+            $request = Request::create('/api/budget/requests', 'POST', [
+                'type' => 'budget',
+                'title' => 'Perjalanan tim',
+                'participants' => json_encode([2]),
+                'items' => json_encode($items),
+            ]);
+            $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+            return app(BudgetController::class)->store($request);
+        };
+
+        $response = $store([
+            ['type' => 'transport', 'description' => 'Bensin dan tol', 'amount' => 400000],
+            ['type' => 'meal', 'description' => 'Uang makan peserta', 'amount' => 75000, 'employee_id' => 2],
+        ]);
+
+        $this->assertSame(201, $response->getStatusCode());
+        $this->assertDatabaseHas('budget_request_items', ['description' => 'Bensin dan tol', 'employee_id' => null]);
+        $this->assertDatabaseHas('budget_request_items', ['description' => 'Uang makan peserta', 'employee_id' => 2]);
+
+        try {
+            $store([['type' => 'meal', 'description' => 'Uang makan orang lain', 'amount' => 75000, 'employee_id' => 3]]);
+            $this->fail('seharusnya ditolak');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('items.0.employee_id', $e->errors());
+        }
+        $this->assertDatabaseMissing('budget_request_items', ['description' => 'Uang makan orang lain']);
     }
 
     public function test_budget_request_accepts_items_json_string_from_multipart_form(): void

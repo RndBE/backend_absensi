@@ -55,7 +55,7 @@ class LpjController extends Controller
         $lpj = Lpj::with([
             'employee:id,full_name,photo,department_id,position,job_level',
             'employee.department:id,name',
-            'budgetRequest:id,title,total_amount,surat_tugas_no,surat_tugas_date',
+            'budgetRequest:id,employee_id,title,total_amount,surat_tugas_no,surat_tugas_date',
             'travelReport:id,destination_city,departure_date,return_date',
             'items.budgetRequestItem',
             'approvalLogs.approver:id,full_name,photo',

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Satu kali approver mengubah item anggaran. `before` & `after` berisi snapshot
- * {total, items: [{id, type, description, amount}]} supaya pengaju dan approver
+ * {total, items: [{id, employee_id, owner, type, description, amount}]} supaya pengaju dan approver
  * berikutnya bisa melihat persis apa yang diubah.
  */
 class BudgetRequestRevision extends Model
@@ -89,8 +89,10 @@ class BudgetRequestRevision extends Model
     {
         $type = (new BudgetRequestItem(['type' => $item['type'] ?? '']))->type_label;
         $description = trim((string) ($item['description'] ?? ''));
+        $label = $description !== '' ? "{$type} — {$description}" : $type;
 
-        return $description !== '' ? "{$type} — {$description}" : $type;
+        // Biaya pribadi peserta; yang tanpa pemilik adalah biaya bersama (atau data sebelum ada pemilik).
+        return filled($item['owner'] ?? null) ? "{$label} · untuk {$item['owner']}" : $label;
     }
 
     private static function rupiah($amount): string

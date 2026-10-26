@@ -53,8 +53,9 @@ class Lpj extends Model
     }
 
     /**
-     * LPJ yang boleh dilihat karyawan: buatannya sendiri, atau LPJ anggaran yang ia miliki atau
-     * ikuti sebagai peserta. LPJ satu per anggaran dan dibuat pemilik, peserta cukup melihat.
+     * LPJ yang boleh dilihat karyawan: buatannya sendiri, semua LPJ anggaran yang ia miliki,
+     * dan LPJ pemilik pada anggaran yang ia ikuti sebagai peserta (memuat biaya bersama).
+     * Peserta tidak melihat LPJ pribadi peserta lain.
      */
     public function scopeVisibleTo(Builder $query, int $employeeId): Builder
     {
@@ -62,7 +63,9 @@ class Lpj extends Model
             ->where('employee_id', $employeeId)
             ->orWhereHas('budgetRequest', fn (Builder $budget) => $budget
                 ->where('employee_id', $employeeId)
-                ->orWhereHas('participants', fn (Builder $p) => $p->where('employees.id', $employeeId))));
+                ->orWhere(fn (Builder $asParticipant) => $asParticipant
+                    ->whereColumn('budget_requests.employee_id', 'lpjs.employee_id')
+                    ->whereHas('participants', fn (Builder $p) => $p->where('employees.id', $employeeId)))));
     }
 
     public function recalculate(): void

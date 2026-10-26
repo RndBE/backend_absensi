@@ -57,6 +57,7 @@
                     <div>
                         <div class="text-[13px] font-black text-gray-900">{{ $item->type_label }}</div>
                         <div class="text-[12px] text-gray-500 mt-1">{{ $item->description ?: '-' }}</div>
+                        <div class="text-[11px] font-semibold text-gray-400 mt-1">{{ $item->employee ? 'Untuk '.$item->employee->full_name : 'Bersama / milik pengaju' }}</div>
                         @if($item->attachments->isNotEmpty())
                             <div class="mt-2 text-[12px] text-indigo-600">{{ $item->attachments->count() }} lampiran item</div>
                         @endif

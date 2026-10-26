@@ -432,7 +432,7 @@
                                 <div class="text-[11px] text-gray-400">{{ $reports->map(fn ($r) => $r->employee?->full_name)->filter()->implode(', ') }}</div>
                             @endif
                         </td>
-                        <td class="py-2 px-3 text-[12px] text-gray-600">{{ $budget->lpj ? ucfirst(str_replace('_', ' ', $budget->lpj->status)) : '-' }}</td>
+                        <td class="py-2 px-3 text-[12px] text-gray-600">{{ $budget->lpjs->isEmpty() ? '-' : ($budget->lpjs->count() > 1 ? $budget->lpjs->count().' LPJ: ' : '').$budget->lpjs->map(fn ($lpj) => ucfirst(str_replace('_', ' ', $lpj->status)))->join(', ') }}</td>
                     </tr>
                 @endforeach
                 </tbody>

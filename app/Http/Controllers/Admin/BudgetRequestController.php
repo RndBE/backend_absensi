@@ -58,6 +58,7 @@ class BudgetRequestController extends Controller
             'employee:id,full_name,photo,department_id,position,job_level,company_id',
             'employee.department:id,name',
             'items.attachments',
+            'items.employee:id,full_name',
             'attachments',
             'participants:id,full_name,photo',
             'approvalLogs.approver:id,full_name,photo',

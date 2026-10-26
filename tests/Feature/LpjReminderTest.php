@@ -18,7 +18,7 @@ class LpjReminderTest extends TestCase
         parent::setUp();
         Carbon::setTestNow('2026-06-22 08:00:00');
 
-        foreach (['notifications', 'lpjs', 'travel_reports', 'budget_requests', 'employees', 'settings'] as $table) {
+        foreach (['notifications', 'lpjs', 'travel_reports', 'budget_request_items', 'budget_request_participants', 'budget_requests', 'employees', 'settings'] as $table) {
             Schema::dropIfExists($table);
         }
 
@@ -42,6 +42,22 @@ class LpjReminderTest extends TestCase
             $table->unsignedBigInteger('employee_id');
             $table->string('title');
             $table->string('status')->default('pending');
+            $table->timestamps();
+        });
+
+        Schema::create('budget_request_items', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('employee_id')->nullable();
+            $table->string('type')->default('transport');
+            $table->decimal('amount', 15, 2)->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('budget_request_participants', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('budget_request_id');
+            $table->unsignedBigInteger('employee_id');
             $table->timestamps();
         });
 
@@ -83,6 +99,10 @@ class LpjReminderTest extends TestCase
         ]);
         DB::table('travel_reports')->insert([
             'budget_request_id' => $budgetId, 'employee_id' => $empId, 'return_date' => $returnDate, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        // Satu biaya bersama (tanpa pemilik), jadi pemilik anggaran punya LPJ untuk dibuat.
+        DB::table('budget_request_items')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => null, 'amount' => 100000, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
         return ['employee_id' => $empId, 'budget_id' => $budgetId];
@@ -127,7 +147,7 @@ class LpjReminderTest extends TestCase
         $this->assertSame(0, Notification::count());
     }
 
-    public function test_only_the_budget_owner_is_reminded_once_even_when_participants_wrote_lhps(): void
+    public function test_only_the_budget_owner_is_reminded_when_participants_have_no_personal_costs(): void
     {
         $owner = $this->seedTrip('2026-06-19');
         $participantId = $this->participantLhp($owner['budget_id'], '2026-06-19');
@@ -138,6 +158,33 @@ class LpjReminderTest extends TestCase
         $this->assertSame(1, Notification::where('type', 'lpj_reminder')->count());
         $this->assertDatabaseHas('notifications', ['employee_id' => $owner['employee_id'], 'reference_id' => $owner['budget_id']]);
         $this->assertDatabaseMissing('notifications', ['employee_id' => $participantId]);
+    }
+
+    public function test_a_participant_with_personal_costs_is_reminded_too_once(): void
+    {
+        $owner = $this->seedTrip('2026-06-19');
+        $participantId = $this->participantLhp($owner['budget_id'], '2026-06-19');
+        $this->personalCost($owner['budget_id'], $participantId);
+
+        $first = LpjReminderService::remindForDate(Carbon::today());
+        $second = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(2, $first['sent']);
+        $this->assertSame(0, $second['sent']);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $owner['employee_id'], 'reference_id' => $owner['budget_id']]);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $participantId, 'reference_id' => $owner['budget_id']]);
+    }
+
+    public function test_a_participant_with_personal_costs_is_reminded_even_without_an_lhp_of_their_own(): void
+    {
+        $owner = $this->seedTrip('2026-06-19');
+        $participantId = $this->participant();
+        $this->personalCost($owner['budget_id'], $participantId);
+
+        $result = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(2, $result['sent']);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $participantId, 'reference_id' => $owner['budget_id']]);
     }
 
     public function test_the_owner_is_reminded_when_only_a_participant_wrote_the_lhp(): void
@@ -151,22 +198,71 @@ class LpjReminderTest extends TestCase
         $this->assertDatabaseHas('notifications', ['employee_id' => $owner['employee_id'], 'reference_id' => $owner['budget_id']]);
     }
 
-    public function test_an_lpj_from_anyone_on_the_budget_stops_the_reminder(): void
+    public function test_each_lpj_only_stops_the_reminder_of_its_own_author(): void
     {
         $owner = $this->seedTrip('2026-06-19');
         $participantId = $this->participantLhp($owner['budget_id'], '2026-06-19');
-        // LPJ lama buatan peserta (sebelum aturan satu LPJ per anggaran) tetap dihitung.
+        $this->personalCost($owner['budget_id'], $participantId);
+        // Pemilik sudah membuat LPJ-nya; peserta belum.
+        DB::table('lpjs')->insert([
+            'budget_request_id' => $owner['budget_id'], 'employee_id' => $owner['employee_id'], 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $result = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(1, $result['sent']);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $participantId, 'reference_id' => $owner['budget_id']]);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => $owner['employee_id']]);
+    }
+
+    public function test_a_participant_lpj_does_not_stop_the_owner_reminder(): void
+    {
+        $owner = $this->seedTrip('2026-06-19');
+        $participantId = $this->participantLhp($owner['budget_id'], '2026-06-19');
+        $this->personalCost($owner['budget_id'], $participantId);
         DB::table('lpjs')->insert([
             'budget_request_id' => $owner['budget_id'], 'employee_id' => $participantId, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
         $result = LpjReminderService::remindForDate(Carbon::today());
 
-        $this->assertSame(0, $result['sent']);
-        $this->assertSame(0, Notification::count());
+        $this->assertSame(1, $result['sent']);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $owner['employee_id'], 'reference_id' => $owner['budget_id']]);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => $participantId]);
     }
 
-    public function test_due_list_names_only_the_owner_once_per_budget(): void
+    public function test_an_owner_whose_costs_were_all_given_to_participants_is_not_reminded(): void
+    {
+        $owner = $this->seedTrip('2026-06-19');
+        $participantId = $this->participantLhp($owner['budget_id'], '2026-06-19');
+        // Satu-satunya baris biaya dipindah ke peserta: pemilik tidak punya apa-apa untuk dilaporkan.
+        DB::table('budget_request_items')->where('budget_request_id', $owner['budget_id'])
+            ->update(['employee_id' => $participantId]);
+
+        $result = LpjReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(1, $result['sent']);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $participantId]);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => $owner['employee_id']]);
+    }
+
+    public function test_due_list_names_each_author_once_per_budget(): void
+    {
+        $owner = $this->seedTrip('2026-06-19');
+        $participantId = $this->participantLhp($owner['budget_id'], '2026-06-19');
+        $this->personalCost($owner['budget_id'], $participantId);
+
+        $due = LpjReminderService::dueForDate(Carbon::today());
+
+        $this->assertCount(2, $due);
+        $this->assertEqualsCanonicalizing(
+            [$owner['employee_id'], $participantId],
+            $due->map(fn ($row) => $row['employee']->id)->all(),
+        );
+        $this->assertSame([$owner['budget_id']], $due->pluck('reference_id')->unique()->values()->all());
+    }
+
+    public function test_due_list_names_only_the_owner_when_participants_have_no_personal_costs(): void
     {
         $owner = $this->seedTrip('2026-06-19');
         $this->participantLhp($owner['budget_id'], '2026-06-19');
@@ -175,20 +271,40 @@ class LpjReminderTest extends TestCase
 
         $this->assertCount(1, $due);
         $this->assertSame($owner['employee_id'], $due->first()['employee']->id);
-        $this->assertSame($owner['budget_id'], $due->first()['reference_id']);
+    }
+
+    private function participant(): int
+    {
+        return DB::table('employees')->insertGetId([
+            'full_name' => 'Peserta', 'email' => 'peserta'.uniqid().'@test.id', 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     /** Peserta lain yang menulis LHP untuk anggaran yang sama. */
     private function participantLhp(int $budgetId, string $returnDate): int
     {
-        $participantId = DB::table('employees')->insertGetId([
-            'full_name' => 'Peserta', 'email' => 'peserta'.uniqid().'@test.id', 'created_at' => now(), 'updated_at' => now(),
+        $participantId = $this->participant();
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => $participantId, 'created_at' => now(), 'updated_at' => now(),
         ]);
         DB::table('travel_reports')->insert([
             'budget_request_id' => $budgetId, 'employee_id' => $participantId, 'return_date' => $returnDate, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
         return $participantId;
+    }
+
+    /** Biaya pribadi peserta (uang makan, tunjangan), yang dilaporkan di LPJ-nya sendiri. */
+    private function personalCost(int $budgetId, int $participantId): void
+    {
+        DB::table('budget_request_participants')->updateOrInsert(
+            ['budget_request_id' => $budgetId, 'employee_id' => $participantId],
+            ['created_at' => now(), 'updated_at' => now()],
+        );
+        DB::table('budget_request_items')->insert([
+            'budget_request_id' => $budgetId, 'employee_id' => $participantId, 'type' => 'meal', 'amount' => 75000,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     public function test_does_not_send_when_budget_not_approved(): void

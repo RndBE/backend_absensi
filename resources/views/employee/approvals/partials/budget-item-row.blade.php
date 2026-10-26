@@ -5,6 +5,8 @@
         $selectedType = old("items.{$index}.type", data_get($item, 'type'));
         $description = old("items.{$index}.description", data_get($item, 'description'));
         $amount = old("items.{$index}.amount", data_get($item, 'amount'));
+        $itemOwner = (string) old("items.{$index}.employee_id", data_get($item, 'employee_id'));
+        $ownerOptions = $ownerOptions ?? collect();
         $attachments = $attachments ?? collect();
     @endphp
     <input type="hidden" name="items[{{ $index }}][id]" value="{{ $itemId }}">
@@ -35,6 +37,17 @@
             <input type="number" min="0" name="items[{{ $index }}][amount]" value="{{ $amount }}" required class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100" placeholder="0">
         </label>
     </div>
+    @if($ownerOptions->isNotEmpty())
+        <label class="block">
+            <span class="block text-[11px] font-bold uppercase text-gray-400 mb-1">Untuk</span>
+            <select name="items[{{ $index }}][employee_id]" class="employee-native-field w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100">
+                <option value="">Bersama / milik pengaju</option>
+                @foreach($ownerOptions as $ownerId => $ownerName)
+                    <option value="{{ $ownerId }}" @selected($itemOwner === (string) $ownerId)>{{ $ownerName }}</option>
+                @endforeach
+            </select>
+        </label>
+    @endif
     @if($attachments->isNotEmpty())
         <div class="flex flex-wrap gap-2">
             @foreach($attachments as $att)

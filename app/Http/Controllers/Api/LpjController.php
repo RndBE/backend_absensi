@@ -10,15 +10,16 @@ use App\Models\LpjItem;
 use App\Models\Notification;
 use App\Models\TravelReport;
 use App\Services\FcmService;
+use App\Support\LpjEligibility;
 use App\Support\LpjPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
  * LPJ (laporan pertanggungjawaban anggaran) untuk app mobile: daftar, detail, dan buat.
- * Aturannya sama dengan portal employee (Employee\LpjController): satu LPJ per anggaran, dibuat
- * pemilik anggaran; peserta anggaran tim hanya melihat. Angka uang dikirim sebagai angka, bukan
- * teks desimal, supaya app tidak perlu menebak bentuknya.
+ * Aturannya sama dengan portal employee (Employee\LpjController): tiap orang membuat LPJ untuk
+ * biayanya sendiri, biaya bersama dilaporkan pemilik anggaran; peserta tim melihat LPJ pemilik.
+ * Angka uang dikirim sebagai angka, bukan teks desimal, supaya app tidak perlu menebak bentuknya.
  */
 class LpjController extends Controller
 {
@@ -47,29 +48,36 @@ class LpjController extends Controller
     }
 
     /**
-     * Anggaran yang bisa dibuatkan LPJ: milik sendiri, disetujui/cair, dan belum punya LPJ.
-     * Beserta kategori pengeluaran untuk formulirnya.
+     * Anggaran yang bisa dibuatkan LPJ oleh peminta: disetujui/cair, ia punya biaya untuk
+     * dilaporkan, dan belum membuat LPJ-nya. `items` dan `total_amount` hanya memuat biaya
+     * yang ia laporkan (biaya bersama ada di LPJ pemilik anggaran). Beserta kategori
+     * pengeluaran untuk formulirnya.
      */
     public function availableRequests(Request $request)
     {
-        $requests = $this->eligibleBudgets($request->user()->id)
-            ->whereDoesntHave('lpj')
+        $viewerId = $request->user()->id;
+
+        $requests = BudgetRequest::awaitingLpjFrom($viewerId)
             ->with(['items', 'travelReport:id,budget_request_id,destination_city'])
             ->latest()
             ->get()
-            ->map(fn (BudgetRequest $budget) => [
-                'id' => $budget->id,
-                'title' => $budget->title,
-                'total_amount' => (float) $budget->total_amount,
-                'surat_tugas_no' => $budget->surat_tugas_no,
-                'destination_city' => $budget->travelReport?->destination_city,
-                'items' => $budget->items->map(fn ($item) => [
-                    'uraian' => $item->description,
-                    'kategori' => $item->type,
-                    'kategori_label' => $item->type_label,
-                    'jumlah' => (float) $item->amount,
-                ])->values(),
-            ]);
+            ->map(function (BudgetRequest $budget) use ($viewerId) {
+                $items = $budget->itemsForLpj($viewerId);
+
+                return [
+                    'id' => $budget->id,
+                    'title' => $budget->title,
+                    'total_amount' => (float) $items->sum('amount'),
+                    'surat_tugas_no' => $budget->surat_tugas_no,
+                    'destination_city' => $budget->travelReport?->destination_city,
+                    'items' => $items->map(fn ($item) => [
+                        'uraian' => $item->description,
+                        'kategori' => $item->type,
+                        'kategori_label' => $item->type_label,
+                        'jumlah' => (float) $item->amount,
+                    ])->values(),
+                ];
+            });
 
         return response()->json([
             'success' => true,
@@ -103,25 +111,15 @@ class LpjController extends Controller
             'items.*.bukti_file.max'    => 'Ukuran bukti maksimal 10 MB.',
         ]);
 
-        $budgetRequest = $this->eligibleBudgets($employee->id)->find($request->budget_request_id);
+        $budgetRequest = BudgetRequest::awaitingLpjFrom($employee->id)
+            ->with('items')
+            ->find($request->budget_request_id);
 
         if (! $budgetRequest) {
-            $asParticipant = BudgetRequest::whereKey($request->budget_request_id)
-                ->whereHas('participants', fn ($q) => $q->where('employees.id', $employee->id))
-                ->exists();
-
             return response()->json([
                 'success' => false,
-                'message' => $asParticipant
-                    ? 'LPJ anggaran tim dibuat oleh pemilik anggaran. Peserta cukup melihat LPJ-nya.'
-                    : 'Anggaran tidak ditemukan, belum disetujui, atau bukan milik Anda.',
-            ], 422);
-        }
-
-        if ($budgetRequest->lpj()->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'LPJ untuk anggaran ini sudah dibuat.',
+                'message' => LpjEligibility::whyNot((int) $request->budget_request_id, $employee->id)
+                    ?? 'Anggaran tidak ditemukan, belum disetujui, atau Anda bukan pemilik maupun pesertanya.',
             ], 422);
         }
 
@@ -138,7 +136,7 @@ class LpjController extends Controller
                     ->value('id'),
                 'employee_id'       => $employee->id,
                 'nomor_lpj'         => $request->nomor_lpj,
-                'total_anggaran'    => $budgetRequest->total_amount,
+                'total_anggaran'    => $budgetRequest->itemsForLpj($employee->id)->sum('amount'),
                 'catatan'           => $request->catatan,
                 'status'            => 'pending',
                 'current_step'      => 1,
@@ -200,13 +198,6 @@ class LpjController extends Controller
             'message' => 'LPJ berhasil diajukan',
             'data'    => LpjPresenter::summary($lpj),
         ], 201);
-    }
-
-    /** Anggaran milik karyawan yang sudah disetujui atau cair. Peserta tidak membuat LPJ sendiri. */
-    private function eligibleBudgets(int $employeeId)
-    {
-        return BudgetRequest::where('employee_id', $employeeId)
-            ->whereIn('status', ['approved', 'paid']);
     }
 
     /** Pembuat LPJ, dan apakah itu yang sedang melihat (false = LPJ tim, hanya bisa dilihat). */
