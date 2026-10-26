@@ -489,7 +489,10 @@ final class AssignmentLetterApprovalFlow
         return ! self::dedicatedHolders((int) $actor->company_id, $permission, $permissions)->isNotEmpty();
     }
 
-    /** Pemegang izin aktif di perusahaan ini yang bukan sekadar superadmin. */
+    /**
+     * Pemegang izin aktif di perusahaan ini lewat role selain superadmin. HRD yang juga superadmin
+     * tetap terhitung, jadi superadmin lain mengalah kepadanya.
+     */
     private static function dedicatedHolders(int $companyId, string $permission, AdminPermission $permissions): Collection
     {
         $hasRoleTables = Schema::hasTable('roles') && Schema::hasTable('employee_roles');
@@ -504,8 +507,7 @@ final class AssignmentLetterApprovalFlow
                 }
             })
             ->get()
-            ->filter(fn (Employee $employee) => ! in_array('superadmin', $permissions->roleSlugs($employee), true)
-                && $permissions->can($employee, $permission))
+            ->filter(fn (Employee $employee) => $permissions->canWithoutSuperadmin($employee, $permission))
             ->values();
     }
 
