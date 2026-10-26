@@ -465,9 +465,48 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
 
         $asked = fn (int $id) => DB::table('notifications')->where('employee_id', $id)->where('title', 'Surat Tugas Menunggu Persetujuan')->count();
         $this->assertSame(1, $asked(self::ADMIN), 'pemegang izin HRD dikabari');
-        $this->assertSame(0, $asked(50), 'superadmin tidak dikabari, tapi tetap boleh memutuskan');
-        $approval = $this->approvalFor($letter, 'hrd');
-        $this->assertTrue(AssignmentLetterApprovalFlow::actionableFor($letter->fresh(), Employee::find(50))->contains('id', $approval->id));
+        $this->assertSame(0, $asked(50), 'superadmin tidak dikabari');
+    }
+
+    public function test_superadmin_yields_the_hrd_and_ga_hse_boxes_while_real_holders_are_active(): void
+    {
+        DB::table('employees')->insert([
+            'id' => 50, 'company_id' => 1, 'department_id' => 3, 'full_name' => 'Superadmin', 'position' => 'Admin', 'job_level' => 1,
+            'employment_status' => 'permanent', 'role' => 'superadmin', 'is_active' => true, 'employee_code' => '050/X/I/2024',
+        ]);
+        $letter = $this->publish();
+        $superadmin = fn () => Employee::find(50);
+        $actionable = fn (Employee $who) => AssignmentLetterApprovalFlow::actionableFor($letter->fresh(), $who)->pluck('role')->all();
+
+        // HRD (hr_admin) dan GA HSE (admin) aktif: kotak mereka bukan untuk superadmin, jadi
+        // paraf dan tanda tangannya tidak jatuh ke superadmin yang kebetulan membuka surat.
+        $this->assertNotContains('hrd', $actionable($superadmin()));
+        $this->assertNotContains('ga_hse', $actionable($superadmin()));
+        $this->assertContains('ga_hse', $actionable(Employee::find(self::GA_HSE)), 'pemegang izin GA HSE tetap bisa');
+        $this->assertContains('hrd', $actionable(Employee::find(self::ADMIN)), 'pemegang izin HRD tetap bisa');
+
+        $error = AssignmentLetterApprovalFlow::approve($this->approvalFor($letter, 'ga_hse'), $superadmin());
+        $this->assertArrayHasKey('error', $error);
+        $this->assertNull($this->approvalFor($letter, 'ga_hse')->fresh()->acted_by);
+        $this->assertNull($this->approvalFor($letter, 'ga_hse')->fresh()->signature_path);
+    }
+
+    public function test_superadmin_decides_a_box_again_when_no_real_holder_is_left(): void
+    {
+        DB::table('employees')->insert([
+            'id' => 50, 'company_id' => 1, 'department_id' => 3, 'full_name' => 'Superadmin', 'position' => 'Admin', 'job_level' => 1,
+            'employment_status' => 'permanent', 'role' => 'superadmin', 'is_active' => true, 'employee_code' => '050/X/I/2024',
+        ]);
+        $letter = $this->publish();
+
+        // Pemegang izin GA HSE keluar: kotaknya tidak boleh macet, jadi superadmin kembali boleh.
+        DB::table('employees')->where('id', self::GA_HSE)->update(['is_active' => false]);
+
+        $this->assertContains('ga_hse', AssignmentLetterApprovalFlow::actionableFor($letter->fresh(), Employee::find(50))->pluck('role')->all());
+        $this->assertNotContains('hrd', AssignmentLetterApprovalFlow::actionableFor($letter->fresh(), Employee::find(50))->pluck('role')->all(), 'HRD masih aktif');
+
+        $this->assertArrayNotHasKey('error', AssignmentLetterApprovalFlow::approve($this->approvalFor($letter, 'ga_hse'), Employee::find(50)));
+        $this->assertSame(50, (int) $this->approvalFor($letter, 'ga_hse')->fresh()->acted_by);
     }
 
     public function test_hrd_and_ga_hse_see_which_letters_wait_for_them(): void

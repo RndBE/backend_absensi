@@ -462,10 +462,51 @@ final class AssignmentLetterApprovalFlow
     private static function mayAct(AssignmentLetterApproval $approval, Employee $actor, AdminPermission $permissions): bool
     {
         return match ($approval->role) {
-            AssignmentLetterApproval::ROLE_HRD => $permissions->can($actor, self::PERMISSION_HRD),
-            AssignmentLetterApproval::ROLE_GA_HSE => $permissions->can($actor, self::PERMISSION_HSE),
+            AssignmentLetterApproval::ROLE_HRD => self::mayActAsHolder($actor, self::PERMISSION_HRD, $permissions),
+            AssignmentLetterApproval::ROLE_GA_HSE => self::mayActAsHolder($actor, self::PERMISSION_HSE, $permissions),
             default => (int) $approval->approver_id === (int) $actor->id,
         };
+    }
+
+    /**
+     * Pemegang izin HRD/GA HSE boleh memutuskan kotaknya. Superadmin lolos semua izin, tapi ia
+     * mengalah selama masih ada pemegang izin sungguhan yang aktif (mis. GA HSE), supaya paraf
+     * dan tanda tangan di kotak itu tidak jatuh ke superadmin yang kebetulan membuka surat. Bila
+     * tak ada pemegang lain (atau mereka nonaktif), superadmin tetap bisa memutuskan. Superadmin
+     * yang juga memegang izin itu lewat role lain (mis. HRD yang juga superadmin) tidak mengalah.
+     */
+    private static function mayActAsHolder(Employee $actor, string $permission, AdminPermission $permissions): bool
+    {
+        if (! $permissions->can($actor, $permission)) {
+            return false;
+        }
+
+        if (! in_array('superadmin', $permissions->roleSlugs($actor), true)
+            || $permissions->canWithoutSuperadmin($actor, $permission)) {
+            return true;
+        }
+
+        return ! self::dedicatedHolders((int) $actor->company_id, $permission, $permissions)->isNotEmpty();
+    }
+
+    /** Pemegang izin aktif di perusahaan ini yang bukan sekadar superadmin. */
+    private static function dedicatedHolders(int $companyId, string $permission, AdminPermission $permissions): Collection
+    {
+        $hasRoleTables = Schema::hasTable('roles') && Schema::hasTable('employee_roles');
+
+        return Employee::where('company_id', $companyId)
+            ->where('is_active', true)
+            ->where(function ($q) use ($hasRoleTables) {
+                $q->where('role', '!=', 'employee');
+
+                if ($hasRoleTables) {
+                    $q->orWhereHas('roles', fn ($r) => $r->where('slug', '!=', 'employee'));
+                }
+            })
+            ->get()
+            ->filter(fn (Employee $employee) => ! in_array('superadmin', $permissions->roleSlugs($employee), true)
+                && $permissions->can($employee, $permission))
+            ->values();
     }
 
     /** Karyawan yang boleh memutuskan langkah ini: atasan yang ditunjuk, atau pemegang izin HRD/GA HSE. */

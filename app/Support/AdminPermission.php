@@ -180,6 +180,23 @@ class AdminPermission
             return true;
         }
 
+        return $this->grants($employee, $permission, $roles);
+    }
+
+    /**
+     * Apakah izin ini dipegang lewat role selain superadmin (atau pengecualian per karyawan).
+     * Beda dengan can(): superadmin yang tak punya role lain pemegang izin itu mendapat false,
+     * dipakai untuk membedakan pemegang izin sungguhan dari superadmin yang sekadar lolos semua.
+     */
+    public function canWithoutSuperadmin(Employee $employee, string $permission): bool
+    {
+        $roles = array_values(array_diff($this->roleSlugs($employee), ['superadmin']));
+
+        return $this->grants($employee, $permission, $roles);
+    }
+
+    private function grants(Employee $employee, string $permission, array $roles): bool
+    {
         $override = $this->employeeOverride($employee->id, $permission);
         if ($override !== null) {
             return $override;

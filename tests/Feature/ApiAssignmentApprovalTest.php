@@ -136,12 +136,35 @@ class ApiAssignmentApprovalTest extends AssignmentLetterTestCase
         }
     }
 
-    public function test_the_superadmin_holds_both_hrd_and_ga_hse_steps_as_separate_rows(): void
+    /** Pemegang izin HRD dan GA HSE sungguhan keluar, jadi hanya superadmin yang tersisa. */
+    private function onlySuperadminHoldsHrdAndGaHse(): void
     {
+        DB::table('employees')->whereIn('id', [self::ADMIN, self::GA_HSE])->update(['is_active' => false]);
+    }
+
+    public function test_the_superadmin_yields_hrd_and_ga_hse_steps_to_the_real_holders(): void
+    {
+        $this->assertSame([], $this->queue(self::SUPERADMIN), 'ada pemegang izin HRD dan GA HSE yang aktif');
+        $this->assertSame(['HRD', 'GA HSE'], array_column($this->queue(self::GA_HSE), 'label'), 'role admin memegang kedua izin');
+    }
+
+    public function test_the_superadmin_holds_both_hrd_and_ga_hse_steps_when_no_real_holder_is_left(): void
+    {
+        $this->onlySuperadminHoldsHrdAndGaHse();
+
         $rows = $this->queue(self::SUPERADMIN);
 
         $this->assertSame(['HRD', 'GA HSE'], array_column($rows, 'label'));
         $this->assertCount(2, array_unique(array_column($rows, 'approval_id')));
+    }
+
+    public function test_the_superadmin_cannot_decide_the_ga_hse_step_while_its_holder_is_active(): void
+    {
+        // Bukan pihak di surat ini lagi, jadi suratnya pun tidak terbuka baginya.
+        $this->approve(self::SUPERADMIN, ['approval_id' => $this->approvalFor('ga_hse')->id])->assertNotFound();
+
+        $this->assertSame('pending', $this->approvalFor('ga_hse')->fresh()->status);
+        $this->assertNull($this->approvalFor('ga_hse')->fresh()->acted_by);
     }
 
     public function test_a_decided_step_leaves_the_queue(): void
@@ -190,11 +213,12 @@ class ApiAssignmentApprovalTest extends AssignmentLetterTestCase
 
     public function test_only_people_in_the_flow_can_open_it(): void
     {
-        foreach ([self::LEADER_SOFTWARE, self::MANAGER_HARDWARE, self::ADMIN, self::GA_HSE, self::SUPERADMIN] as $who) {
+        foreach ([self::LEADER_SOFTWARE, self::MANAGER_HARDWARE, self::ADMIN, self::GA_HSE] as $who) {
             $this->asEmployee($who)->getJson('/api/assignment-approvals/'.$this->letter->id)->assertOk();
         }
 
-        foreach ([self::DIRECTOR, self::PERMANENT, self::OTHER_COMPANY] as $who) {
+        // Superadmin bukan pihak di surat ini selama pemegang izin HRD/GA HSE sungguhan masih aktif.
+        foreach ([self::DIRECTOR, self::PERMANENT, self::OTHER_COMPANY, self::SUPERADMIN] as $who) {
             $this->asEmployee($who)->getJson('/api/assignment-approvals/'.$this->letter->id)->assertNotFound();
         }
     }
@@ -374,6 +398,7 @@ class ApiAssignmentApprovalTest extends AssignmentLetterTestCase
 
     public function test_without_an_approval_id_the_first_waiting_step_is_decided(): void
     {
+        $this->onlySuperadminHoldsHrdAndGaHse();
         $this->approve(self::SUPERADMIN)->assertOk();
 
         $this->assertSame('approved', $this->approvalFor('hrd')->fresh()->status);
@@ -382,6 +407,7 @@ class ApiAssignmentApprovalTest extends AssignmentLetterTestCase
 
     public function test_the_approval_id_picks_which_of_several_steps_is_decided(): void
     {
+        $this->onlySuperadminHoldsHrdAndGaHse();
         $this->approve(self::SUPERADMIN, ['approval_id' => $this->approvalFor('ga_hse')->id])->assertOk();
 
         $this->assertSame('approved', $this->approvalFor('ga_hse')->fresh()->status);
