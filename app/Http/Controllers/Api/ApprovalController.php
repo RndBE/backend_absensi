@@ -240,6 +240,8 @@ class ApprovalController extends Controller
         }
         if ($modelClass === BudgetRequest::class) {
             $relations[] = 'items';
+            // Pemilik tiap baris biaya (peserta untuk biaya pribadinya), supaya approver melihatnya.
+            $relations[] = 'items.employee:id,full_name';
             $relations[] = 'participants';
             $relations[] = 'travelZone';
         }
