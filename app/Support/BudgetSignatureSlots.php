@@ -36,6 +36,22 @@ final class BudgetSignatureSlots
             'direktur'      => '',
         ];
 
+        foreach (self::approvers($chain) as $slot => $approver) {
+            $slots[$slot] = (string) $approver->full_name;
+        }
+
+        return $slots;
+    }
+
+    /**
+     * Approver yang menempati tiap kotak (selain Pengaju), dengan aturan yang sama seperti map().
+     *
+     * @return array<string, Employee>
+     */
+    public static function approvers(mixed $chain): array
+    {
+        $approvers = [];
+
         foreach (Collection::wrap($chain) as $step) {
             $approver = $step->approver ?? null;
 
@@ -47,12 +63,51 @@ final class BudgetSignatureSlots
 
             // Kalau dua approver jatuh ke kotak yang sama, yang lebih awal di
             // rantai yang menang — approver berikutnya tidak menggeser siapa pun.
-            if ($slot !== null && $slots[$slot] === '') {
-                $slots[$slot] = (string) $approver->full_name;
+            if ($slot !== null && ! isset($approvers[$slot])) {
+                $approvers[$slot] = $approver;
             }
         }
 
-        return $slots;
+        return $approvers;
+    }
+
+    /**
+     * Tanda tangan dan tanggal yang tercetak di kotak approver: hanya bila orang di kotak itu
+     * sendiri yang menyetujui (bukan superadmin atas namanya), pada putaran persetujuan
+     * terakhir (setelah penolakan terakhir, bila ada). Tanda tangannya diambil dari profil.
+     * Kotak yang belum disetujui tidak ada di hasil dan tetap manual.
+     *
+     * @param  iterable<mixed>  $approvalLogs  approvalLogs anggaran, dengan relasi approver
+     * @return array<string, array{signature: ?string, date: string}>
+     */
+    public static function signed(mixed $chain, iterable $approvalLogs): array
+    {
+        $logs = Collection::wrap($approvalLogs)->sortBy(fn ($log) => [$log->created_at, $log->id])->values();
+
+        // Penolakan menutup putaran itu; persetujuan sebelumnya tidak berlaku lagi.
+        $lastRejection = $logs->filter(fn ($log) => $log->action === 'rejected')->keys()->last();
+        if ($lastRejection !== null) {
+            $logs = $logs->slice($lastRejection + 1);
+        }
+
+        $signed = [];
+
+        foreach (self::approvers($chain) as $slot => $approver) {
+            $log = $logs->last(fn ($log) => $log->action === 'approved'
+                && (int) $log->approver_id === (int) $approver->id
+                && ($log->acted_by_id === null || (int) $log->acted_by_id === (int) $approver->id));
+
+            if ($log === null) {
+                continue;
+            }
+
+            $signed[$slot] = [
+                'signature' => SignatureImage::url($log->approver?->signature ?? $approver->signature),
+                'date' => $log->created_at->timezone(config('app.timezone'))->format('d / m / Y'),
+            ];
+        }
+
+        return $signed;
     }
 
     /**

@@ -68,11 +68,18 @@
         $rows = max(10, $budgetRequest->items->count());
 
         // Kotak Pengaju terisi otomatis: gambar tanda tangan dari profil pegawai
-        // dan tanggal pengajuan. Kotak lain tetap manual.
+        // dan tanggal pengajuan.
         // Dipangkas dulu: file unggahan biasanya punya ruang kosong di sekeliling
         // tinta, dan ruang itu ikut membesar saat diskalakan CSS.
         $pengajuSignature = \App\Support\SignatureImage::url($budgetRequest->employee?->signature);
         $pengajuDate = $budgetRequest->created_at?->timezone(config('app.timezone'))->format('d / m / Y');
+
+        // Kotak approver terisi tanda tangan profil dan tanggal setuju, setelah orang di kotak
+        // itu sendiri menyetujui. Yang belum menyetujui tetap manual.
+        $approverSigns = \App\Support\BudgetSignatureSlots::signed(
+            $approvalChain ?? collect(),
+            $budgetRequest->approvalLogs ?? collect()
+        );
     @endphp
 
     <main class="sheet">
@@ -155,15 +162,11 @@
                     <div class="signature-line"></div>
                     <div class="signature-name">{{ $signatureNames['pengaju'] }}</div>
                 </td>
-                <td>
-                    <div class="signature-date">(__________/__________/__________)</div>
-                    <div class="signature-line"></div>
-                    <div class="signature-name">{{ $signatureNames['pj'] }}</div>
+                <td class="{{ isset($approverSigns['pj']) ? 'has-sign' : '' }}">
+                    @include('budget-requests.partials.approver-sign', ['sign' => $approverSigns['pj'] ?? null, 'name' => $signatureNames['pj']])
                 </td>
-                <td>
-                    <div class="signature-date">(__________/__________/__________)</div>
-                    <div class="signature-line"></div>
-                    <div class="signature-name">{{ $signatureNames['manager'] }}</div>
+                <td class="{{ isset($approverSigns['manager']) ? 'has-sign' : '' }}">
+                    @include('budget-requests.partials.approver-sign', ['sign' => $approverSigns['manager'] ?? null, 'name' => $signatureNames['manager']])
                 </td>
             </tr>
             <tr>
@@ -175,20 +178,14 @@
                 <td class="signature-role">Direktur</td>
             </tr>
             <tr>
-                <td>
-                    <div class="signature-date">(__________/__________/__________)</div>
-                    <div class="signature-line"></div>
-                    <div class="signature-name">{{ $signatureNames['finance'] }}</div>
+                <td class="{{ isset($approverSigns['finance']) ? 'has-sign' : '' }}">
+                    @include('budget-requests.partials.approver-sign', ['sign' => $approverSigns['finance'] ?? null, 'name' => $signatureNames['finance']])
                 </td>
-                <td>
-                    <div class="signature-date">(__________/__________/__________)</div>
-                    <div class="signature-line"></div>
-                    <div class="signature-name">{{ $signatureNames['manager_admin'] }}</div>
+                <td class="{{ isset($approverSigns['manager_admin']) ? 'has-sign' : '' }}">
+                    @include('budget-requests.partials.approver-sign', ['sign' => $approverSigns['manager_admin'] ?? null, 'name' => $signatureNames['manager_admin']])
                 </td>
-                <td>
-                    <div class="signature-date">(__________/__________/__________)</div>
-                    <div class="signature-line"></div>
-                    <div class="signature-name">{{ $signatureNames['direktur'] }}</div>
+                <td class="{{ isset($approverSigns['direktur']) ? 'has-sign' : '' }}">
+                    @include('budget-requests.partials.approver-sign', ['sign' => $approverSigns['direktur'] ?? null, 'name' => $signatureNames['direktur']])
                 </td>
             </tr>
         </table>
