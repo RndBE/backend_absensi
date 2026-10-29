@@ -130,6 +130,26 @@ class TravelReport extends Model
         return ! $hasResubmission;
     }
 
+    /**
+     * Pengaju masih boleh mengedit LHP ini: selama belum selesai dan belum melewati step HSE
+     * (dari awal sampai tepat ditinjau HSE); setelah HSE meloloskan, terkunci. Rantai tanpa
+     * approver HSE bisa diedit selama masih diproses. Dipakai portal dan API mobile bersama,
+     * supaya aturannya tidak berbeda antar kanal.
+     */
+    public function canBeEditedByRequester(): bool
+    {
+        if (! in_array($this->status, ['pending', 'in_review'], true)) {
+            return false;
+        }
+
+        $hseStep = EmployeeApprover::where('employee_id', $this->employee_id)
+            ->where('request_type', 'travel_report')
+            ->whereHas('approver', fn ($q) => $q->where('position', 'like', '%HSE%'))
+            ->min('step_order');
+
+        return $hseStep === null || (int) $this->current_step <= (int) $hseStep;
+    }
+
     public function attachments()
     {
         return $this->morphMany(RequestAttachment::class, 'attachable');

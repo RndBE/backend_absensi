@@ -43,7 +43,7 @@ class TravelReportController extends Controller
             'documents',
             'approvalLogs.approver:id,full_name,photo',
         ])->findOrFail($id);
-        $report->setAttribute('can_edit', $this->canEditTravelReport($report));
+        $report->setAttribute('can_edit', $report->canBeEditedByRequester());
 
         if (Schema::hasColumn('travel_reports', 'resubmission_of_id')) {
             // Untuk app: tombol "Ajukan ulang" dan tautan ke LHP lama/pengganti.
@@ -241,7 +241,7 @@ class TravelReportController extends Controller
             ->where('employee_id', $employee->id)
             ->firstOrFail();
 
-        if (! $this->canEditTravelReport($report)) {
+        if (! $report->canBeEditedByRequester()) {
             $reason = match ($report->status) {
                 'approved' => 'sudah disetujui',
                 'rejected' => 'sudah ditolak',
@@ -380,24 +380,6 @@ class TravelReportController extends Controller
                 'message' => 'Gagal memperbarui LHP: '.$e->getMessage(),
             ], 500);
         }
-    }
-
-    private function canEditTravelReport(TravelReport $report): bool
-    {
-        if (! in_array($report->status, ['pending', 'in_review'], true)) {
-            return false;
-        }
-
-        $hseStep = EmployeeApprover::where('employee_id', $report->employee_id)
-            ->where('request_type', 'travel_report')
-            ->whereHas('approver', fn ($q) => $q->where('position', 'like', '%HSE%'))
-            ->min('step_order');
-
-        if ($hseStep === null) {
-            return true;
-        }
-
-        return (int) $report->current_step === (int) $hseStep;
     }
 
     /**

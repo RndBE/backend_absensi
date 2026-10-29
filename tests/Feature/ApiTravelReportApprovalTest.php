@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class ApiTravelReportApprovalTest extends TestCase
@@ -225,8 +226,11 @@ class ApiTravelReportApprovalTest extends TestCase
         $this->assertSame('Inspeksi area', $payload['data']['activities'][0]['description']);
     }
 
-    public function test_travel_report_detail_allows_edit_only_on_active_hse_approver_step(): void
+    public function test_travel_report_detail_allows_edit_until_the_hse_step_has_reviewed_it(): void
     {
+        DB::table('employees')->insert([
+            'id' => 4, 'full_name' => 'Direktur', 'email' => 'direktur@example.test', 'password' => 'secret', 'role' => 'manager', 'position' => 'Direktur', 'created_at' => now(), 'updated_at' => now(),
+        ]);
         DB::table('employee_approvers')->insert([
             [
                 'employee_id' => 1,
@@ -241,6 +245,14 @@ class ApiTravelReportApprovalTest extends TestCase
                 'request_type' => 'travel_report',
                 'step_order' => 2,
                 'approver_id' => 3,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'employee_id' => 1,
+                'request_type' => 'travel_report',
+                'step_order' => 3,
+                'approver_id' => 4,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -299,6 +311,20 @@ class ApiTravelReportApprovalTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                // Sudah diloloskan HSE (step 2) dan menunggu step 3: terkunci.
+                'id' => 14,
+                'employee_id' => 1,
+                'destination_city' => 'Bandung',
+                'departure_date' => '2026-06-05',
+                'return_date' => '2026-06-05',
+                'purpose' => 'Audit HSE',
+                'conclusion' => 'Aman',
+                'status' => 'in_review',
+                'current_step' => 3,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
 
         DB::table('approval_logs')->insert([
@@ -324,10 +350,114 @@ class ApiTravelReportApprovalTest extends TestCase
             ->show(Request::create('/api/travel-reports/12', 'GET'), 12)
             ->getData(true);
 
-        $this->assertFalse($pendingPayload['data']['can_edit']);
-        $this->assertTrue($processedPayload['data']['can_edit']);
-        $this->assertFalse($managerStepPayload['data']['can_edit']);
-        $this->assertFalse($approvedPayload['data']['can_edit']);
+        $passedHsePayload = app(TravelReportController::class)
+            ->show(Request::create('/api/travel-reports/14', 'GET'), 14)
+            ->getData(true);
+
+        // Dari awal sampai tepat ditinjau HSE masih bisa diedit, sama seperti portal.
+        $this->assertTrue($pendingPayload['data']['can_edit'], 'baru diajukan, belum sampai HSE');
+        $this->assertTrue($processedPayload['data']['can_edit'], 'sedang di step HSE');
+        $this->assertTrue($managerStepPayload['data']['can_edit'], 'masih di step atasan, sebelum HSE');
+        $this->assertFalse($passedHsePayload['data']['can_edit'], 'sudah diloloskan HSE');
+        $this->assertFalse($approvedPayload['data']['can_edit'], 'sudah selesai');
+    }
+
+    public function test_an_lhp_before_the_hse_step_can_be_updated_from_the_app(): void
+    {
+        $this->hseChain();
+        $this->lhp(10, 'pending', 1);
+
+        $response = $this->updateLhp(10, 'Malang');
+
+        $this->assertSame(200, $response->getStatusCode(), json_encode($response->getData(true)));
+        $this->assertSame('Malang', DB::table('travel_reports')->where('id', 10)->value('destination_city'));
+        // Approver di step yang sedang berjalan diberi tahu LHP-nya diperbarui.
+        $this->assertDatabaseHas('notifications', ['employee_id' => 2, 'title' => 'LHP Diperbarui', 'reference_id' => 10]);
+    }
+
+    public function test_an_lhp_the_hse_step_already_passed_cannot_be_updated_from_the_app(): void
+    {
+        $this->hseChain();
+        $this->lhp(10, 'in_review', 3);
+
+        $response = $this->updateLhp(10, 'Malang');
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame('LHP tidak dapat diedit karena sedang dalam proses persetujuan lanjutan.', $response->getData(true)['message']);
+        $this->assertSame('Surabaya', DB::table('travel_reports')->where('id', 10)->value('destination_city'));
+    }
+
+    public function test_a_chain_without_an_hse_approver_keeps_the_lhp_editable_while_it_is_processed(): void
+    {
+        DB::table('employee_approvers')->insert([
+            ['employee_id' => 1, 'request_type' => 'travel_report', 'step_order' => 1, 'approver_id' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $this->lhp(10, 'in_review', 2);
+
+        $this->assertTrue(TravelReport::findOrFail(10)->canBeEditedByRequester());
+
+        DB::table('travel_reports')->where('id', 10)->update(['status' => 'approved']);
+
+        $this->assertFalse(TravelReport::findOrFail(10)->canBeEditedByRequester());
+    }
+
+    public function test_the_app_edit_request_works_through_the_real_route_with_method_override(): void
+    {
+        $this->hseChain();
+        $this->lhp(10, 'in_review', 1);
+        Sanctum::actingAs(Employee::findOrFail(1));
+
+        // Persis seperti app: POST multipart dengan _method=PUT ke /api/travel-reports/{id}.
+        $response = $this->withHeaders(['Accept' => 'application/json'])->post('/api/travel-reports/10', [
+            '_method' => 'PUT',
+            'destination_city' => 'Malang',
+            'departure_date' => '2026-06-03',
+            'return_date' => '2026-06-03',
+            'purpose' => 'Audit lanjutan',
+            'conclusion' => 'Aman',
+            'activities' => json_encode([['date' => '2026-06-03', 'description' => 'Inspeksi area', 'results' => ['OK']]]),
+        ]);
+
+        $response->assertOk()->assertJsonPath('success', true);
+        $this->assertSame('Malang', DB::table('travel_reports')->where('id', 10)->value('destination_city'));
+    }
+
+    /** Atasan di step 1, lalu HSE di step 2, lalu direksi di step 3. */
+    private function hseChain(): void
+    {
+        DB::table('employees')->insert([
+            'id' => 4, 'full_name' => 'Direktur', 'email' => 'direktur@example.test', 'password' => 'secret', 'role' => 'manager', 'position' => 'Direktur', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach ([1 => 2, 2 => 3, 3 => 4] as $step => $approver) {
+            DB::table('employee_approvers')->insert([
+                'employee_id' => 1, 'request_type' => 'travel_report', 'step_order' => $step, 'approver_id' => $approver,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+    }
+
+    private function lhp(int $id, string $status, int $step): void
+    {
+        DB::table('travel_reports')->insert([
+            'id' => $id, 'employee_id' => 1, 'destination_city' => 'Surabaya', 'departure_date' => '2026-06-01',
+            'return_date' => '2026-06-01', 'purpose' => 'Audit HSE', 'conclusion' => 'Aman',
+            'status' => $status, 'current_step' => $step, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    private function updateLhp(int $id, string $city)
+    {
+        $request = Request::create("/api/travel-reports/$id", 'PUT', [
+            'destination_city' => $city,
+            'departure_date' => '2026-06-03',
+            'return_date' => '2026-06-03',
+            'purpose' => 'Audit lanjutan',
+            'conclusion' => 'Aman',
+            'activities' => json_encode([['date' => '2026-06-03', 'description' => 'Inspeksi area', 'results' => ['OK']]]),
+        ]);
+        $request->setUserResolver(fn () => Employee::findOrFail(1));
+
+        return app(TravelReportController::class)->update($request, $id);
     }
 
     public function test_travel_report_cannot_be_updated_after_final_approval(): void

@@ -152,7 +152,7 @@ class TravelReportController extends Controller
         $employee = $request->attributes->get('employee');
         $report = $this->ownedReport($employee, $id);
 
-        if (! $this->canEditTravelReport($report)) {
+        if (! $report->canBeEditedByRequester()) {
             return redirect()
                 ->route('employee.travel-reports.show', $report->id)
                 ->with('error', 'LHP tidak dapat diedit karena sedang dalam proses persetujuan lanjutan atau sudah selesai.');
@@ -174,7 +174,7 @@ class TravelReportController extends Controller
         $employee = $request->attributes->get('employee');
         $report = $this->ownedReport($employee, $id);
 
-        if (! $this->canEditTravelReport($report)) {
+        if (! $report->canBeEditedByRequester()) {
             return redirect()
                 ->route('employee.travel-reports.show', $report->id)
                 ->with('error', 'LHP tidak dapat diedit karena sedang dalam proses persetujuan lanjutan atau sudah selesai.');
@@ -446,26 +446,6 @@ class TravelReportController extends Controller
                 'budget_request_id' => 'Anda tidak berhak memakai budget request ini.',
             ]);
         }
-    }
-
-    private function canEditTravelReport(TravelReport $report): bool
-    {
-        if (! in_array($report->status, ['pending', 'in_review'], true)) {
-            return false;
-        }
-
-        $hseStep = EmployeeApprover::where('employee_id', $report->employee_id)
-            ->where('request_type', 'travel_report')
-            ->whereHas('approver', fn ($query) => $query->where('position', 'like', '%HSE%'))
-            ->min('step_order');
-
-        if ($hseStep === null) {
-            return true;
-        }
-
-        // Boleh edit selama LHP belum melewati step HSE (saat pending di awal
-        // hingga tepat ditinjau HSE). Setelah lewat HSE, terkunci.
-        return (int) $report->current_step <= (int) $hseStep;
     }
 
     private function notifyFirstApprover(Employee $employee, TravelReport $report): void
