@@ -421,6 +421,16 @@ class Employee extends Authenticatable
         return $shift && ! $shift->is_off ? $shift : null;
     }
 
+    /**
+     * Karyawan yang dinonaktifkan atau resign langsung keluar dari app: semua token login dicabut
+     * (request berikutnya dapat 401) dan HP-nya berhenti menerima push notification.
+     */
+    public function revokeAppAccess(): void
+    {
+        $this->tokens()->delete();
+        $this->update(['fcm_token' => null]);
+    }
+
     private static function normalizeDate(Carbon|string $date): Carbon
     {
         return $date instanceof Carbon

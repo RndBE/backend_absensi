@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EmployeeSessionLifetime;
+use App\Http\Middleware\EnsureEmployeeActive;
 use App\Http\Middleware\ServiceApiKey;
 use App\Http\Middleware\TessaActor;
 use App\Http\Middleware\TessaApiKey;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'tessa.actor' => TessaActor::class,    // token per-user: data & aksi (ikut role HRIS)
             'tessa.api' => TessaApiKey::class,      // alias lama (kompatibilitas)
             'service.api' => ServiceApiKey::class,  // sistem lain baca data HRIS (mis. inventory)
+            'employee.active' => EnsureEmployeeActive::class, // API app: karyawan nonaktif/resign dipaksa logout
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

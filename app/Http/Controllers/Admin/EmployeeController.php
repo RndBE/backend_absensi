@@ -489,6 +489,7 @@ class EmployeeController extends Controller
 
         DB::transaction(function () use ($employee, $id) {
             $employee->update(['is_active' => false]);
+            $employee->revokeAppAccess();
 
             EmployeePayrollComponent::where('employee_id', $id)
                 ->where('is_active', true)
@@ -606,6 +607,7 @@ class EmployeeController extends Controller
             'resign_reason' => $request->resign_reason,
             'resign_notes' => $request->resign_notes,
         ]);
+        $employee->revokeAppAccess();
 
         // 2. Deactivate all payroll component assignments
         EmployeePayrollComponent::where('employee_id', $id)
