@@ -66,6 +66,10 @@ return [
         // Pasangan periode:employee_id (dipisah koma) yang lemburnya sengaja tidak dibayar di periode itu.
         'skip_overtime' => array_values(array_filter(array_map('trim', explode(',', (string) env('PAYROLL_SKIP_OVERTIME', ''))))),
 
+        // Tanggal (Y-m-d) denda keterlambatan LHP mulai berlaku, sejak diumumkan. LHP yang batas
+        // pengumpulannya sebelum tanggal ini tidak didenda walau dikumpulkan sesudahnya. Kosong = semua.
+        'lhp_late_penalty_from' => env('LHP_LATE_PENALTY_FROM') ?: null,
+
         // Potongan terlambat clock in per hari menurut Level KPI, berlaku mulai periode (Y-m) di bawah.
         // Format env: "L2:25000,L3:20000,L4:15000". Level lain / tanpa level memakai tarif di data payroll.
         'late_penalty_by_level_from' => env('PAYROLL_LATE_PENALTY_BY_LEVEL_FROM', '2026-10'),

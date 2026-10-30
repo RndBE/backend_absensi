@@ -2173,6 +2173,10 @@ class PayrollRunController extends Controller
      * Denda LHP yang DIKUMPULKAN lewat batas, dihitung di periode tanggal pengumpulannya.
      * Nominalnya tetap per LHP, berapa pun lamanya telat. LHP pengajuan ulang tidak dihitung
      * lagi karena status telatnya diwarisi dari LHP pertama yang sudah kena denda.
+     *
+     * Denda baru berlaku sejak diumumkan (services.payroll.lhp_late_penalty_from): keterlambatan
+     * yang batasnya sudah lewat sebelum tanggal itu ditiadakan. LHP tanpa batas tercatat memakai
+     * tanggal pengumpulannya.
      */
     private function calculateLhpLatePenalty(int $empId, $periodStart, $periodEnd, float $penaltyPerReport): array
     {
@@ -2180,9 +2184,16 @@ class PayrollRunController extends Controller
             return ['days' => 0, 'amount' => 0.0, 'lines' => []];
         }
 
+        $penaltyFrom = config('services.payroll.lhp_late_penalty_from');
+
         $reports = TravelReport::where('employee_id', $empId)
             ->where('is_late', true)
             ->when(Schema::hasColumn('travel_reports', 'resubmission_of_id'), fn ($query) => $query->whereNull('resubmission_of_id'))
+            ->when($penaltyFrom, fn ($query) => $query->where(fn ($from) => $from
+                ->whereDate('submission_deadline', '>=', Carbon::parse($penaltyFrom)->toDateString())
+                ->orWhere(fn ($noDeadline) => $noDeadline
+                    ->whereNull('submission_deadline')
+                    ->where('created_at', '>=', Carbon::parse($penaltyFrom)->startOfDay()))))
             ->whereBetween('created_at', [
                 Carbon::parse($periodStart)->startOfDay(),
                 Carbon::parse($periodEnd)->endOfDay(),

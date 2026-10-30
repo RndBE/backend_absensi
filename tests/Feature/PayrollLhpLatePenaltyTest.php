@@ -97,13 +97,40 @@ class PayrollLhpLatePenaltyTest extends TestCase
         return $report;
     }
 
-    private function penalty(int $employeeId = 7, float $rate = 20000): array
+    private function penalty(int $employeeId = 7, float $rate = 20000, string $from = '2026-06-01', string $to = '2026-06-30'): array
     {
         $controller = new PayrollRunController;
         $method = (new ReflectionClass($controller))->getMethod('calculateLhpLatePenalty');
         $method->setAccessible(true);
 
-        return $method->invoke($controller, $employeeId, '2026-06-01', '2026-06-30', $rate);
+        return $method->invoke($controller, $employeeId, $from, $to, $rate);
+    }
+
+    public function test_lateness_whose_deadline_passed_before_the_announcement_is_waived(): void
+    {
+        // Denda diumumkan 21 Oktober 2026: keterlambatan yang sudah terjadi sebelum itu ditiadakan.
+        config(['services.payroll.lhp_late_penalty_from' => '2026-10-21']);
+
+        $this->report(['destination_city' => 'Magelang', 'submission_deadline' => '2026-10-12', 'created_at' => '2026-10-21 08:18:02']);
+        $this->report(['destination_city' => 'Surabaya', 'submission_deadline' => '2026-10-12', 'created_at' => '2026-10-29 12:00:18']);
+        $this->report(['destination_city' => 'Kendal', 'submission_deadline' => '2026-10-26', 'created_at' => '2026-10-29 12:19:21']);
+        $this->report(['destination_city' => 'Tanpa batas lama', 'submission_deadline' => null, 'created_at' => '2026-10-20 09:00:00']);
+        $this->report(['destination_city' => 'Tanpa batas baru', 'submission_deadline' => null, 'created_at' => '2026-10-22 09:00:00']);
+
+        $result = $this->penalty(7, 20000, '2026-10-01', '2026-10-31');
+
+        $this->assertSame(2, $result['days']);
+        $this->assertSame(40000.0, $result['amount']);
+        $this->assertSame(['LHP ke Tanpa batas baru dikumpulkan setelah batas', 'LHP ke Kendal dikumpulkan setelah batas'], array_column($result['lines'], 'description'));
+    }
+
+    public function test_without_a_start_date_every_late_lhp_is_fined(): void
+    {
+        config(['services.payroll.lhp_late_penalty_from' => null]);
+
+        $this->report(['submission_deadline' => '2026-10-12', 'created_at' => '2026-10-29 12:00:18']);
+
+        $this->assertSame(1, $this->penalty(7, 20000, '2026-10-01', '2026-10-31')['days']);
     }
 
     public function test_each_late_lhp_costs_the_same_amount_however_late_it_was(): void
