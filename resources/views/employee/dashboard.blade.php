@@ -121,7 +121,7 @@
         <div class="p-4 sm:p-5 border-t border-gray-100">
             @if($actionType)
                 <a href="{{ route('employee.attendance.show', $actionType) }}"
-                   class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[14px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all">
+                   class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[14px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all press">
                     <span class="material-symbols-outlined text-[19px]">{{ $actionType === 'clock-in' ? 'login' : 'logout' }}</span>
                     {{ $actionLabel }}
                 </a>
@@ -286,11 +286,11 @@
             ];
         }
     @endphp
-    <section class="employee-dashboard-shortcuts grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+    <section class="employee-dashboard-shortcuts grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 stagger">
         @foreach($shortcuts as $shortcut)
             <a href="{{ $shortcut['href'] }}"
                @if(!empty($shortcut['external'])) target="_blank" rel="noopener noreferrer" @endif
-               class="min-h-[96px] bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 hover:-translate-y-0.5 hover:shadow-md transition-all">
+               class="min-h-[96px] bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 hover:-translate-y-0.5 hover:shadow-md transition-all press">
                 <div class="flex h-full flex-col justify-between gap-3">
                     <div class="w-9 h-9 rounded-lg {{ $shortcut['color'] }} flex items-center justify-center">
                         <span class="material-symbols-outlined text-[19px]">{{ $shortcut['icon'] }}</span>

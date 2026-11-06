@@ -7,7 +7,7 @@
     <link rel="icon" type="image/x-icon" href="{{ asset('images/title.ico') }}">
     <title>@yield('title', 'Employee Portal') - HRIS Beacon</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/employee-portal.js'])
     <style>
         .material-symbols-outlined { font-size: 20px; }
         .employee-native-field {
@@ -95,7 +95,7 @@
         </div>
     </header>
 
-    <main class="max-w-5xl mx-auto px-4 sm:px-5 py-5 sm:py-7">
+    <main class="max-w-5xl mx-auto px-4 sm:px-5 py-5 sm:py-7 page-stagger">
         @if(session('success'))
             <div class="flex items-center gap-2.5 px-4 py-3.5 rounded-lg text-[13.5px] font-medium mb-4 bg-emerald-50 text-emerald-800 border border-emerald-200 animate-slide-down">
                 <span class="material-symbols-outlined text-[18px]">check_circle</span> {{ session('success') }}

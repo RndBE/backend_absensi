@@ -128,6 +128,56 @@
     }
 }
 
+/* Anak langsung muncul bergantian (fade-in-up). Dua cara pakai:
+   - `.stagger` di wrapper mana pun;
+   - `.page-stagger` di <main> portal karyawan: yang dianimasikan anak dari
+     wrapper halaman (semua halaman membuka dengan `space-y-*`), jadi tiap
+     halaman tidak perlu diubah satu per satu.
+   Delay dibatasi 8 anak pertama supaya daftar panjang tidak terasa lambat. */
+:is(.stagger, .page-stagger > [class*="space-y-"]) > * {
+    /* `backwards`, bukan `both`: kalau transform akhir animasi ditahan, hover:-translate-y
+       dan efek .press di anak-anaknya tertimpa. */
+    animation: fadeInUp 0.45s ease backwards;
+}
+
+:is(.stagger, .page-stagger > [class*="space-y-"]) > :nth-child(2) { animation-delay: 0.06s; }
+:is(.stagger, .page-stagger > [class*="space-y-"]) > :nth-child(3) { animation-delay: 0.12s; }
+:is(.stagger, .page-stagger > [class*="space-y-"]) > :nth-child(4) { animation-delay: 0.18s; }
+:is(.stagger, .page-stagger > [class*="space-y-"]) > :nth-child(5) { animation-delay: 0.24s; }
+:is(.stagger, .page-stagger > [class*="space-y-"]) > :nth-child(6) { animation-delay: 0.30s; }
+:is(.stagger, .page-stagger > [class*="space-y-"]) > :nth-child(7) { animation-delay: 0.36s; }
+:is(.stagger, .page-stagger > [class*="space-y-"]) > :nth-child(n+8) { animation-delay: 0.42s; }
+
+/* Efek tertekan untuk tombol/kartu yang bisa diklik. Elemennya sendiri yang
+   wajib membawa `transition-all` (atau `transition-transform`). */
+.press:active {
+    transform: scale(0.97);
+}
+
+/* Portal karyawan: semua tombol berlatar (rounded + bg-*) ikut efek tertekan tanpa
+   perlu menambah `.press` satu per satu. Link polos tanpa latar tidak kena. */
+.page-stagger :is(a, button)[class*="rounded-lg"][class*="bg-"] {
+    transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.page-stagger :is(a, button)[class*="rounded-lg"][class*="bg-"]:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+/* Hormati pengguna yang mematikan animasi di perangkatnya. */
+@media (prefers-reduced-motion: reduce) {
+    :is(.stagger, .page-stagger > [class*="space-y-"]) > *,
+    .animate-fade-in-up,
+    .animate-slide-down {
+        animation: none;
+    }
+
+    .press:active,
+    .page-stagger :is(a, button)[class*="rounded-lg"][class*="bg-"]:active:not(:disabled) {
+        transform: none;
+    }
+}
+
 @keyframes slideDown {
     from {
         opacity: 0;
