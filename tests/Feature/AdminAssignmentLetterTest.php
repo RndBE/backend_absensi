@@ -33,6 +33,24 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
         $this->assertSame([self::INTERN], $letter->employees()->pluck('employee_id')->all());
     }
 
+    public function test_printed_letter_omits_the_employee_number_of_an_intern_only(): void
+    {
+        $letter = $this->storeDraft(['employees' => [
+            ['employee_id' => self::PERMANENT, 'position' => ''],
+            ['employee_id' => self::INTERN, 'position' => 'Magang Software'],
+        ]]);
+
+        $html = $this->asRole('hr_admin')->get(route('admin.assignment-letters.print', $letter->id))
+            ->assertOk()
+            ->assertSee('Anak Magang')
+            ->getContent();
+
+        // Satu baris "Nomor Karyawan" saja: milik karyawan tetap, bukan magang.
+        $this->assertSame(1, substr_count($html, 'Nomor Karyawan'));
+        $this->assertStringContainsString(sprintf('%03d/SOFTW/I/2024', self::PERMANENT), $html);
+        $this->assertStringNotContainsString(sprintf('%03d/SOFTW/I/2024', self::INTERN), $html);
+    }
+
     public function test_create_form_only_offers_eligible_employees(): void
     {
         $response = $this->asRole('hr_admin')->get(route('admin.assignment-letters.create'))->assertOk();

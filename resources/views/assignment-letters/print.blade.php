@@ -141,7 +141,9 @@
         <table class="fields">
             @foreach($letter->employees as $i => $row)
                 <tr><td class="col-no">{{ $i + 1 }}.</td><td class="col-label">Nama</td><td class="col-sep">:</td><td>{{ $row->name }}</td></tr>
-                <tr><td></td><td class="col-label">Nomor Karyawan</td><td class="col-sep">:</td><td>{{ $row->employee_code ?: '-' }}</td></tr>
+                @if($row->showsEmployeeCodeOnLetter())
+                    <tr><td></td><td class="col-label">Nomor Karyawan</td><td class="col-sep">:</td><td>{{ $row->employee_code ?: '-' }}</td></tr>
+                @endif
                 <tr><td></td><td class="col-label">Jabatan</td><td class="col-sep">:</td><td>{{ $row->position ?: '-' }}</td></tr>
             @endforeach
             @foreach($facilityRows as $group)

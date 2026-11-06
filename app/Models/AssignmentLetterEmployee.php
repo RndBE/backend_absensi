@@ -21,4 +21,13 @@ class AssignmentLetterEmployee extends Model
     {
         return $this->belongsTo(Employee::class);
     }
+
+    /**
+     * Surat cetak memuat nomor karyawan, kecuali untuk peserta magang (mereka tidak punya
+     * nomor karyawan yang dipakai di surat). Status dibaca dari data karyawan saat ini.
+     */
+    public function showsEmployeeCodeOnLetter(): bool
+    {
+        return $this->employee?->employment_status !== 'intern';
+    }
 }
