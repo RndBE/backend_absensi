@@ -105,7 +105,7 @@ final class AssignmentLetterApprovalFlow
             return null;
         }
 
-        return 'Atasan level 3/2 belum terdaftar di rantai approval cuti untuk: '.implode(', ', $plan['problems'])
+        return 'Atasan level 3/2 belum terdaftar di rantai approval (cuti; presensi untuk magang) untuk: '.implode(', ', $plan['problems'])
             .'. Lengkapi rantai approval karyawan itu (menu Karyawan → Approver) atau keluarkan dari surat.';
     }
 

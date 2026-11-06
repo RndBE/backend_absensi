@@ -122,7 +122,7 @@
             </div>
         </div>
         <p class="text-[11px] text-gray-400 mt-3">
-            Hanya karyawan aktif berstatus tetap, kontrak, atau probation; magang dan outsourcing tidak muncul. Nama dan nomor karyawan diambil dari data karyawan; jabatan boleh ditulis ulang sesuai surat.
+            Hanya karyawan aktif berstatus tetap, kontrak, probation, atau magang; outsourcing tidak muncul. Nama dan nomor karyawan diambil dari data karyawan; jabatan boleh ditulis ulang sesuai surat.
             Tanda <span class="font-semibold text-amber-700">peringatan kuning</span> = cuti atau sudah tercantum di surat tugas lain pada tanggal jadwal (surat tetap boleh disimpan).
         </p>
     </div>
@@ -177,10 +177,10 @@
                        value="{{ old('initial_boxes', $letter->initial_boxes ? implode(', ', $letter->initial_boxes) : '') }}">
                 @if($approvalRequired)
                     <p class="text-[11px] text-gray-400 mt-1">Kolom otomatis, diisi tanda tangan digital lewat persetujuan: <span id="initialBoxesAuto" class="font-semibold text-gray-600"></span></p>
-                    <p class="text-[11px] text-gray-400">Otomatis = atasan level 3 lalu level 2 tiap peserta (rantai approval cuti), kemudian HRD dan GA HSE. Isi kolom ini hanya untuk kolom paraf basah tambahan; biasanya kosong.</p>
+                    <p class="text-[11px] text-gray-400">Otomatis = atasan level 3 lalu level 2 tiap peserta (rantai approval cuti; peserta magang memakai rantai presensi), kemudian HRD dan GA HSE. Isi kolom ini hanya untuk kolom paraf basah tambahan; biasanya kosong.</p>
                 @else
                     <p class="text-[11px] text-gray-400 mt-1">Kosongkan untuk otomatis: <span id="initialBoxesAuto" class="font-semibold text-gray-600"></span></p>
-                    <p class="text-[11px] text-gray-400">Otomatis = atasan level 3 lalu level 2 dari tiap peserta (menurut rantai approval cuti), kemudian HRD dan GA HSE.</p>
+                    <p class="text-[11px] text-gray-400">Otomatis = atasan level 3 lalu level 2 dari tiap peserta (menurut rantai approval cuti; magang menurut rantai presensi), kemudian HRD dan GA HSE.</p>
                 @endif
             </div>
             <div>
@@ -303,7 +303,7 @@
                 el('div', {class: 'min-w-0 flex-1'}, [
                     el('div', {class: 'text-[13px] font-semibold text-gray-900', text: emp.name}),
                     el('div', {class: 'text-[11px] text-gray-400', text: [emp.code, emp.department].filter(Boolean).join(' · ') || '-'}),
-                    emp.eligible ? null : el('div', {class: 'text-[11px] font-semibold text-red-600', text: 'Tidak memenuhi syarat (magang/outsourcing/nonaktif). Hapus dari surat.'}),
+                    emp.eligible ? null : el('div', {class: 'text-[11px] font-semibold text-red-600', text: 'Tidak memenuhi syarat (outsourcing/nonaktif). Hapus dari surat.'}),
                     el('div', {class: 'mt-0.5 space-y-0.5', 'data-conflicts': true}, conflictLines(emp.id)),
                 ]),
                 el('div', {class: 'flex items-center shrink-0'}, [

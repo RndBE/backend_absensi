@@ -49,7 +49,7 @@ class AssignmentLetterPrecheck extends Command
             foreach ($blocked as $e) {
                 $this->line("  - {$e->full_name} ({$e->position}, level ".($e->job_level ?: '-').')');
             }
-            $this->line('  Lengkapi di menu Karyawan, Approver (tipe cuti), atau abaikan bila orangnya memang tidak diberi surat tugas.');
+            $this->line('  Lengkapi di menu Karyawan, Approver (tipe cuti; presensi untuk magang), atau abaikan bila orangnya memang tidak diberi surat tugas.');
         }
 
         $active = Employee::where('is_active', true)->count();

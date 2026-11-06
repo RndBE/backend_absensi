@@ -140,6 +140,56 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
             ->assertSee('Belum bisa diterbitkan');
     }
 
+    public function test_an_intern_gets_superior_boxes_from_the_attendance_chain_not_the_leave_chain(): void
+    {
+        // Magang punya dua rantai berbeda: yang dibaca surat tugas adalah rantai presensi.
+        DB::table('employee_approvers')->insert([
+            ['employee_id' => self::INTERN, 'request_type' => 'leave', 'step_order' => 1, 'approver_id' => self::MANAGER_HARDWARE],
+            ['employee_id' => self::INTERN, 'request_type' => 'attendance', 'step_order' => 1, 'approver_id' => self::LEADER_SOFTWARE],
+            ['employee_id' => self::INTERN, 'request_type' => 'attendance', 'step_order' => 2, 'approver_id' => self::MANAGER_SOFTWARE],
+        ]);
+
+        $letter = $this->publish($this->storeDraft(['employees' => [['employee_id' => self::INTERN, 'position' => 'Magang Software']]]));
+
+        // Atasan dari rantai presensi, lalu HRD dan GA HSE tetap ditambahkan.
+        $this->assertSame(
+            [['LV 3 SOFTWARE', 1], ['LV 2 SOFTWARE', 1], ['HRD', 2], ['GA HSE', 3]],
+            $letter->approvals->map(fn ($a) => [$a->label, $a->step_group])->all()
+        );
+        $this->assertSame([self::LEADER_SOFTWARE, self::MANAGER_SOFTWARE], $letter->approvals->take(2)->pluck('approver_id')->all());
+    }
+
+    public function test_an_employee_and_an_intern_in_one_letter_each_follow_their_own_chain(): void
+    {
+        DB::table('employee_approvers')->insert([
+            ['employee_id' => self::INTERN, 'request_type' => 'attendance', 'step_order' => 1, 'approver_id' => self::MANAGER_HARDWARE],
+        ]);
+
+        $letter = $this->publish($this->storeDraft(['employees' => [
+            ['employee_id' => self::PERMANENT, 'position' => ''],
+            ['employee_id' => self::INTERN, 'position' => ''],
+        ]]));
+
+        $this->assertEqualsCanonicalizing(
+            [self::LEADER_SOFTWARE, self::MANAGER_SOFTWARE, self::MANAGER_HARDWARE],
+            $letter->approvals->whereNotNull('approver_id')->pluck('approver_id')->all()
+        );
+    }
+
+    public function test_issue_is_blocked_for_an_intern_without_an_attendance_chain_even_with_a_leave_chain(): void
+    {
+        DB::table('employee_approvers')->insert([
+            ['employee_id' => self::INTERN, 'request_type' => 'leave', 'step_order' => 1, 'approver_id' => self::MANAGER_HARDWARE],
+        ]);
+
+        $letter = $this->storeDraft(['employees' => [['employee_id' => self::INTERN, 'position' => '']]]);
+        $this->asRole('hr_admin')->post(route('admin.assignment-letters.issue', $letter->id))->assertSessionHas('error');
+
+        $letter = $letter->fresh();
+        $this->assertTrue($letter->isDraft());
+        $this->assertNull($letter->number);
+    }
+
     public function test_hrd_and_ga_hse_do_not_wait_for_the_superiors_or_each_other(): void
     {
         $letter = $this->publish();

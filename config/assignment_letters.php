@@ -16,8 +16,9 @@ return [
     'company_name' => 'PT. Arta Teknologi Comunindo',
     'company_address' => 'Kadirojo I, Purwomartani, Kec. Kalasan, Kabupaten Sleman, Daerah Istimewa Yogyakarta',
 
-    // Magang dan outsourcing tidak diberi surat tugas.
-    'eligible_employment_statuses' => ['permanent', 'contract', 'probation'],
+    // Outsourcing tidak diberi surat tugas. Magang boleh; atasannya dicari di rantai presensi
+    // (intern_approval_chain_type di bawah), bukan rantai cuti.
+    'eligible_employment_statuses' => ['permanent', 'contract', 'probation', 'intern'],
 
     // Kolom paraf yang selalu ada setelah kolom LV 2 per divisi peserta.
     'fixed_initial_boxes' => ['HRD', 'GA HSE'],
@@ -28,6 +29,9 @@ return [
 
     // Rantai approval karyawan yang dipakai mencari atasan L3/L2 peserta (employee_approvers.request_type).
     'approval_chain_type' => 'leave',
+
+    // Sama, tetapi untuk peserta berstatus magang: atasan magang didaftarkan di rantai presensi.
+    'intern_approval_chain_type' => 'attendance',
 
     // Karyawan yang dipasangi role "GA HSE" oleh GaHseSetupSeeder (nomor karyawan, bukan nama).
     // Ubah lewat env, dipisah koma: ASSIGNMENT_GA_HSE_EMPLOYEE_CODES="007/HRDCS/IX/2026,010/XXX/I/2025"

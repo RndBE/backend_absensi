@@ -174,7 +174,7 @@
         </div>
         @if($approvalPlan['problems'])
             <div class="mt-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-[12.5px] text-amber-800">
-                Belum bisa diterbitkan: atasan level 3/2 belum terdaftar di rantai approval cuti untuk
+                Belum bisa diterbitkan: atasan level 3/2 belum terdaftar di rantai approval (cuti; presensi untuk magang) untuk
                 <strong>{{ implode(', ', $approvalPlan['problems']) }}</strong>. Lengkapi di menu Karyawan → Approver, atau keluarkan dari surat.
             </div>
         @endif

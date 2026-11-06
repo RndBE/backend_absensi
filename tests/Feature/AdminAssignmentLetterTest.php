@@ -13,9 +13,9 @@ use Illuminate\Support\Facades\Storage;
 
 class AdminAssignmentLetterTest extends AssignmentLetterTestCase
 {
-    public function test_store_rejects_intern_and_outsourcing_employees(): void
+    public function test_store_rejects_outsourcing_and_other_company_employees(): void
     {
-        foreach ([self::INTERN, self::OUTSOURCING, self::OTHER_COMPANY] as $id) {
+        foreach ([self::OUTSOURCING, self::OTHER_COMPANY] as $id) {
             $this->asRole('hr_admin')
                 ->post(route('admin.assignment-letters.store'), $this->payload([
                     'employees' => [['employee_id' => $id, 'position' => '']],
@@ -26,12 +26,19 @@ class AdminAssignmentLetterTest extends AssignmentLetterTestCase
         $this->assertSame(0, AssignmentLetter::count());
     }
 
+    public function test_store_accepts_an_intern(): void
+    {
+        $letter = $this->storeDraft(['employees' => [['employee_id' => self::INTERN, 'position' => 'Magang Software']]]);
+
+        $this->assertSame([self::INTERN], $letter->employees()->pluck('employee_id')->all());
+    }
+
     public function test_create_form_only_offers_eligible_employees(): void
     {
         $response = $this->asRole('hr_admin')->get(route('admin.assignment-letters.create'))->assertOk();
 
-        $response->assertSee('Fadel Irsyad')->assertSee('Prastowo Dian');
-        $response->assertDontSee('Anak Magang')->assertDontSee('Petugas Outsourcing')->assertDontSee('Karyawan PT Lain');
+        $response->assertSee('Fadel Irsyad')->assertSee('Prastowo Dian')->assertSee('Anak Magang');
+        $response->assertDontSee('Petugas Outsourcing')->assertDontSee('Karyawan PT Lain');
     }
 
     public function test_transport_row_offers_personal_rental_and_public_choices_and_stores_the_composed_text(): void

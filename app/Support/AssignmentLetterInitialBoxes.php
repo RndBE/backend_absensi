@@ -20,6 +20,9 @@ use Illuminate\Support\Facades\Schema;
  * 2. Bila karyawan belum punya rantai: telusuri manager_id ke atas. Kolom ini sering langsung
  *    menunjuk level 2 dan melewati level 3, makanya hanya jadi cadangan.
  *
+ * Peserta magang memakai rantai approval presensi (assignment_letters.intern_approval_chain_type),
+ * bukan rantai cuti; aturan level dan cadangan manager_id sama.
+ *
  * Hanya atasan dengan level lebih tinggi dari peserta yang dihitung: peserta level 3 hanya
  * butuh paraf level 2, peserta level 2 tidak butuh paraf atasan sama sekali.
  */
@@ -43,15 +46,18 @@ final class AssignmentLetterInitialBoxes
 
         $people = Employee::with('department:id,name')
             ->where('company_id', $companyId)
-            ->get(['id', 'full_name', 'position', 'job_level', 'manager_id', 'department_id'])
+            ->get(['id', 'full_name', 'position', 'job_level', 'manager_id', 'department_id', 'employment_status'])
             ->keyBy('id');
+
+        // Rantai yang dipakai bergantung pada status peserta, jadi ambil kedua jenisnya sekaligus.
+        $chainTypes = array_unique([self::chainTypeFor(false), self::chainTypeFor(true)]);
 
         $chains = Schema::hasTable('employee_approvers')
             ? EmployeeApprover::whereIn('employee_id', $employeeIds)
-                ->where('request_type', config('assignment_letters.approval_chain_type', 'leave'))
+                ->whereIn('request_type', $chainTypes)
                 ->orderBy('step_order')
-                ->get(['employee_id', 'approver_id'])
-                ->groupBy('employee_id')
+                ->get(['employee_id', 'approver_id', 'request_type'])
+                ->groupBy(['employee_id', 'request_type'])
             : collect();
 
         $result = [];
@@ -63,8 +69,9 @@ final class AssignmentLetterInitialBoxes
                 continue;
             }
 
-            $candidateIds = isset($chains[$id])
-                ? $chains[$id]->pluck('approver_id')->all()
+            $chain = $chains[$id][self::chainTypeFor($employee->employment_status === 'intern')] ?? null;
+            $candidateIds = $chain
+                ? $chain->pluck('approver_id')->all()
                 : self::managerLine($employee, $people);
             $ownLevel = (int) $employee->job_level ?: PHP_INT_MAX;
 
@@ -85,6 +92,17 @@ final class AssignmentLetterInitialBoxes
         }
 
         return $result;
+    }
+
+    /**
+     * Jenis rantai approval yang dibaca untuk mencari atasan peserta. Karyawan memakai rantai
+     * cuti; magang memakai rantai presensi karena atasan magang didaftarkan di sana.
+     */
+    public static function chainTypeFor(bool $intern): string
+    {
+        return $intern
+            ? (string) config('assignment_letters.intern_approval_chain_type', 'attendance')
+            : (string) config('assignment_letters.approval_chain_type', 'leave');
     }
 
     /**

@@ -969,7 +969,7 @@ class AssignmentLetterController extends Controller
             $names = Employee::whereIn('id', $rejected)->pluck('full_name')->implode(', ') ?: 'ID '.$rejected->implode(', ');
 
             throw ValidationException::withMessages([
-                'employees' => "Karyawan berikut tidak bisa diberi surat tugas (magang, outsourcing, nonaktif, atau beda perusahaan): {$names}.",
+                'employees' => "Karyawan berikut tidak bisa diberi surat tugas (outsourcing, nonaktif, atau beda perusahaan): {$names}.",
             ]);
         }
 
