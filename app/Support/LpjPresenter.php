@@ -57,6 +57,7 @@ class LpjPresenter
             'kategori_label' => $item->kategori_label,
             'satuan'         => $item->satuan,
             'volume'         => (float) $item->volume,
+            'anggaran'       => (float) $item->anggaran,
             'realisasi'      => (float) $item->realisasi,
             'keterangan'     => $item->keterangan,
             'bukti_url'      => $item->bukti_file ? asset('storage/'.$item->bukti_file) : null,

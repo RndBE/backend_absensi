@@ -115,6 +115,7 @@ Route::middleware(['auth:sanctum', 'employee.active'])->group(function () {
     Route::post('/approvals/{type}/{id}/approve', [ApprovalController::class, 'approve']);
     Route::post('/approvals/{type}/{id}/reject', [ApprovalController::class, 'reject']);
     Route::post('/approvals/lpj/{id}/transfer-date', [ApprovalController::class, 'saveLpjTransferDate'])->whereNumber('id');
+    Route::put('/approvals/lpj/{id}/realisation', [ApprovalController::class, 'correctLpjRealisation'])->whereNumber('id');
     Route::get('/approvals/lpj/{id}/excel-link', [ApprovalController::class, 'lpjExcelLink'])->whereNumber('id');
 
     // Budget / Reimbursement

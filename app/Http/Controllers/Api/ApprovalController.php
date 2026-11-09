@@ -16,6 +16,7 @@ use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Services\FcmService;
 use App\Services\LpjExcelExporter;
+use App\Services\LpjRealisationCorrector;
 use App\Support\AssignmentLetterApprovalFlow;
 use App\Support\AssignmentLetterPresenter;
 use App\Support\BudgetSignatureSlots;
@@ -26,6 +27,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
+use InvalidArgumentException;
 
 class ApprovalController extends Controller
 {
@@ -505,6 +507,17 @@ class ApprovalController extends Controller
                 'total_steps' => max(EmployeeApprover::totalSteps($lpj->employee_id, 'lpj'), 1),
                 // Hanya finance pada step aktif yang melihat isian tanggal transfer.
                 'can_set_transfer_date' => $this->lpjTransferApprover($user, $lpj) !== null,
+                // Finance yang sama juga boleh mengoreksi realisasi item (PUT /approvals/lpj/{id}/realisation).
+                'can_correct_realisation' => $this->lpjTransferApprover($user, $lpj) !== null,
+                'revisions' => $lpj->revisions()->with('editor:id,full_name')->get()->map(fn ($revision) => [
+                    'editor' => $revision->editor?->full_name,
+                    'step_order' => $revision->step_order,
+                    'total_before' => $revision->totalBefore(),
+                    'total_after' => $revision->totalAfter(),
+                    'changes' => $revision->changes(),
+                    'notes' => $revision->notes,
+                    'created_at' => $revision->created_at?->toIso8601String(),
+                ])->values(),
             ],
         ]);
     }
@@ -577,6 +590,57 @@ class ApprovalController extends Controller
             'success' => true,
             'message' => 'Tanggal transfer disimpan',
             'data' => ['transfer_date' => $lpj->transfer_date->toDateString()],
+        ]);
+    }
+
+    /**
+     * Finance pada step aktif mengoreksi realisasi dan keterangan item LPJ sebelum memutuskan.
+     * Hanya dua kolom itu yang bisa diubah; item, bukti nota, dan anggaran tetap milik pengaju.
+     * Pengaju menerima notifikasi berisi total lama dan baru.
+     */
+    public function correctLpjRealisation(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|integer',
+            'items.*.realisasi' => 'required|numeric|min:0|max:9999999999999',
+            'items.*.keterangan' => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $lpj = Lpj::with(['employee', 'items'])->findOrFail($id);
+
+        if (! in_array($lpj->status, ['pending', 'in_review'], true)) {
+            return response()->json(['success' => false, 'message' => 'Pengajuan sudah diproses'], 422);
+        }
+
+        $finance = $this->lpjTransferApprover($request->user(), $lpj);
+
+        if ($finance === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya finance pada step aktif yang bisa mengoreksi realisasi LPJ.',
+            ], 403);
+        }
+
+        try {
+            // Dicatat atas nama finance yang bertugas; bila superadmin menggantikan, tetap atas nama finance itu.
+            $revision = LpjRealisationCorrector::correct($lpj, $finance, $validated['items'], $validated['notes'] ?? null);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $lpj->refresh()->load(LpjPresenter::DETAIL_RELATIONS);
+
+        return response()->json([
+            'success' => true,
+            'message' => $revision ? 'Realisasi LPJ dikoreksi' : 'Tidak ada perubahan pada realisasi LPJ',
+            'data' => [
+                'changed' => $revision !== null,
+                'total_realisasi' => (float) $lpj->total_realisasi,
+                'sisa' => (float) $lpj->sisa,
+                'items' => $lpj->items->map(fn ($item) => LpjPresenter::item($item))->values(),
+            ],
         ]);
     }
 
