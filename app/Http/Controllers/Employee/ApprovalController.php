@@ -17,7 +17,7 @@ use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Services\FcmService;
 use App\Services\LpjExcelExporter;
-use App\Services\LpjRealisationCorrector;
+use App\Services\LpjFinanceEditor;
 use App\Support\AssignmentLetterApprovalFlow;
 use App\Support\BudgetItemOwners;
 use App\Support\BudgetSignatureSlots;
@@ -364,8 +364,8 @@ class ApprovalController extends Controller
     }
 
     /**
-     * Form koreksi realisasi LPJ untuk finance di step aktif. Hanya nominal realisasi dan
-     * keterangan yang bisa diubah; item, bukti nota, dan anggaran tetap milik karyawan.
+     * Form edit tabel pengeluaran LPJ untuk finance di step aktif: ubah, tambah, atau hapus baris,
+     * serta ganti bukti. Anggaran (pemasukan) dan data umum LPJ tidak bisa diubah.
      */
     public function editLpj(Request $request, int $id)
     {
@@ -380,7 +380,7 @@ class ApprovalController extends Controller
 
         if (! $this->canActOn($employee, 'lpj', $lpj) || ! BudgetSignatureSlots::isFinance($employee)) {
             return redirect()->route('employee.approvals.index')
-                ->with('error', 'Hanya finance pada step aktif yang bisa mengoreksi realisasi LPJ.');
+                ->with('error', 'Hanya finance pada step aktif yang bisa mengedit realisasi LPJ.');
         }
 
         return view('employee.approvals.lpj-edit', ['lpj' => $lpj]);
@@ -388,13 +388,7 @@ class ApprovalController extends Controller
 
     public function updateLpj(Request $request, int $id)
     {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.id' => 'required|integer',
-            'items.*.realisasi' => 'required|numeric|min:0|max:9999999999999',
-            'items.*.keterangan' => 'nullable|string|max:500',
-            'notes' => 'nullable|string|max:1000',
-        ]);
+        $validated = $request->validate(LpjFinanceEditor::rules(), LpjFinanceEditor::messages());
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
@@ -402,22 +396,22 @@ class ApprovalController extends Controller
 
         if (! $this->canActOn($employee, 'lpj', $lpj) || ! BudgetSignatureSlots::isFinance($employee)) {
             return redirect()->route('employee.approvals.index')
-                ->with('error', 'Hanya finance pada step aktif yang bisa mengoreksi realisasi LPJ.');
+                ->with('error', 'Hanya finance pada step aktif yang bisa mengedit realisasi LPJ.');
         }
 
         try {
-            $revision = LpjRealisationCorrector::correct($lpj, $employee, $validated['items'], $validated['notes'] ?? null);
+            $revision = LpjFinanceEditor::update($lpj, $employee, $validated['items'], $validated['notes'] ?? null);
         } catch (InvalidArgumentException $e) {
             return back()->withInput()->with('error', $e->getMessage());
         }
 
         if (! $revision) {
             return redirect()->route('employee.approvals.index')
-                ->with('success', 'Tidak ada perubahan pada realisasi LPJ.');
+                ->with('success', 'Tidak ada perubahan pada rincian LPJ.');
         }
 
         return redirect()->route('employee.approvals.index')
-            ->with('success', 'Realisasi LPJ dikoreksi. Lanjutkan dengan menyetujui atau menolak.');
+            ->with('success', 'Rincian LPJ disimpan. Lanjutkan dengan menyetujui atau menolak.');
     }
 
     public function printDecision(Request $request, string $type, int $id)

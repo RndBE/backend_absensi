@@ -16,7 +16,7 @@ use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Services\FcmService;
 use App\Services\LpjExcelExporter;
-use App\Services\LpjRealisationCorrector;
+use App\Services\LpjFinanceEditor;
 use App\Support\AssignmentLetterApprovalFlow;
 use App\Support\AssignmentLetterPresenter;
 use App\Support\BudgetSignatureSlots;
@@ -507,8 +507,8 @@ class ApprovalController extends Controller
                 'total_steps' => max(EmployeeApprover::totalSteps($lpj->employee_id, 'lpj'), 1),
                 // Hanya finance pada step aktif yang melihat isian tanggal transfer.
                 'can_set_transfer_date' => $this->lpjTransferApprover($user, $lpj) !== null,
-                // Finance yang sama juga boleh mengoreksi realisasi item (PUT /approvals/lpj/{id}/realisation).
-                'can_correct_realisation' => $this->lpjTransferApprover($user, $lpj) !== null,
+                // Finance yang sama juga boleh mengedit tabel pengeluaran (POST /approvals/lpj/{id}/items).
+                'can_edit_items' => $this->lpjTransferApprover($user, $lpj) !== null,
                 'revisions' => $lpj->revisions()->with('editor:id,full_name')->get()->map(fn ($revision) => [
                     'editor' => $revision->editor?->full_name,
                     'step_order' => $revision->step_order,
@@ -594,19 +594,14 @@ class ApprovalController extends Controller
     }
 
     /**
-     * Finance pada step aktif mengoreksi realisasi dan keterangan item LPJ sebelum memutuskan.
-     * Hanya dua kolom itu yang bisa diubah; item, bukti nota, dan anggaran tetap milik pengaju.
-     * Pengaju menerima notifikasi berisi total lama dan baru.
+     * Finance pada step aktif mengedit tabel pengeluaran LPJ sebelum memutuskan: ubah isi baris, tambah
+     * baris (tanpa `id`), hapus baris (tidak dikirim), ganti bukti (`bukti_file`) atau lepas bukti
+     * (`remove_bukti`). Anggaran (pemasukan) dan data umum tidak berubah. Yang dikirim adalah daftar
+     * lengkap baris; multipart supaya foto nota bisa ikut. Pengaju menerima notifikasi total lama dan baru.
      */
-    public function correctLpjRealisation(Request $request, $id)
+    public function editLpjItems(Request $request, $id)
     {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.id' => 'required|integer',
-            'items.*.realisasi' => 'required|numeric|min:0|max:9999999999999',
-            'items.*.keterangan' => 'nullable|string|max:500',
-            'notes' => 'nullable|string|max:1000',
-        ]);
+        $validated = $request->validate(LpjFinanceEditor::rules(), LpjFinanceEditor::messages());
 
         $lpj = Lpj::with(['employee', 'items'])->findOrFail($id);
 
@@ -619,13 +614,13 @@ class ApprovalController extends Controller
         if ($finance === null) {
             return response()->json([
                 'success' => false,
-                'message' => 'Hanya finance pada step aktif yang bisa mengoreksi realisasi LPJ.',
+                'message' => 'Hanya finance pada step aktif yang bisa mengedit realisasi LPJ.',
             ], 403);
         }
 
         try {
             // Dicatat atas nama finance yang bertugas; bila superadmin menggantikan, tetap atas nama finance itu.
-            $revision = LpjRealisationCorrector::correct($lpj, $finance, $validated['items'], $validated['notes'] ?? null);
+            $revision = LpjFinanceEditor::update($lpj, $finance, $validated['items'], $validated['notes'] ?? null);
         } catch (InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
@@ -634,7 +629,7 @@ class ApprovalController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $revision ? 'Realisasi LPJ dikoreksi' : 'Tidak ada perubahan pada realisasi LPJ',
+            'message' => $revision ? 'Rincian LPJ disimpan' : 'Tidak ada perubahan pada rincian LPJ',
             'data' => [
                 'changed' => $revision !== null,
                 'total_realisasi' => (float) $lpj->total_realisasi,

@@ -8,9 +8,11 @@ use App\Models\Lpj;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -659,16 +661,18 @@ class ApiLpjApprovalTest extends TestCase
         $this->assertNotNull(Lpj::findOrFail($id)->transfer_date);
     }
 
-    // ── koreksi realisasi oleh finance ────────────────────────────────────────
+    // ── edit tabel pengeluaran oleh finance ───────────────────────────────────
 
-    public function test_finance_corrects_the_realisation_and_the_owner_is_told(): void
+    public function test_finance_edits_the_table_adding_changing_and_removing_rows(): void
     {
+        Storage::fake('public');
         [$id, $parkir, $makan] = $this->lpjWithItems();
 
-        $response = $this->respond('correctLpjRealisation', self::FINANCE, [
+        $response = $this->respond('editLpjItems', self::FINANCE, [
             'items' => [
-                ['id' => $parkir, 'realisasi' => 20000, 'keterangan' => 'Nota hanya Rp 20.000'],
-                ['id' => $makan, 'realisasi' => 50000],
+                ['id' => $parkir, 'kategori' => 'transport', 'uraian' => 'Parkir bandara', 'satuan' => 'hari', 'volume' => 2, 'realisasi' => 20000, 'keterangan' => 'Sesuai nota'],
+                ['kategori' => 'operasional', 'uraian' => 'Tol', 'realisasi' => 35000, 'bukti_file' => UploadedFile::fake()->image('tol.jpg')],
+                // Makan tidak dikirim, jadi terhapus.
             ],
             'notes' => 'Sesuai nota',
         ], $id);
@@ -676,107 +680,136 @@ class ApiLpjApprovalTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $data = $response->getData(true)['data'];
         $this->assertTrue($data['changed']);
-        $this->assertEquals(70000.0, $data["total_realisasi"]);
-        $this->assertEquals(130000.0, $data["sisa"]);
-        $this->assertEquals(20000.0, $data["items"][0]["realisasi"]);
+        $this->assertEquals(55000, $data['total_realisasi']);
+        $this->assertEquals(145000, $data['sisa']);
+        $this->assertSame(['Parkir bandara', 'Tol'], array_column($data['items'], 'uraian'));
+        $this->assertNotNull($data['items'][1]['bukti_url']);
+
+        $this->assertDatabaseMissing('lpj_items', ['id' => $makan]);
+        $this->assertCount(1, Storage::disk('public')->files('lpj-bukti'));
 
         $lpj = Lpj::findOrFail($id);
         $this->assertSame('in_review', $lpj->status, 'belum menyetujui');
         $this->assertSame(0, DB::table('approval_logs')->count());
         $this->assertDatabaseHas('lpj_revisions', ['lpj_id' => $id, 'editor_id' => self::FINANCE, 'notes' => 'Sesuai nota']);
-        $this->assertSame('Realisasi LPJ Dikoreksi', DB::table('notifications')->where('employee_id', self::OWNER)->value('title'));
+        $this->assertSame('Rincian LPJ Diubah Finance', DB::table('notifications')->where('employee_id', self::OWNER)->value('title'));
     }
 
-    public function test_the_detail_offers_the_correction_only_to_active_finance_and_lists_revisions(): void
-    {
-        [$id, $parkir] = $this->lpjWithItems();
-
-        $this->assertTrue($this->invoke('show', self::FINANCE, [], 'lpj', $id)['data']['can_correct_realisation']);
-        $this->assertFalse($this->invoke('show', self::MANAGER, [], 'lpj', $id)['data']['can_correct_realisation']);
-        $this->assertFalse($this->invoke('show', self::OWNER, [], 'lpj', $id)['data']['can_correct_realisation']);
-
-        $this->respond('correctLpjRealisation', self::FINANCE, ['items' => [['id' => $parkir, 'realisasi' => 20000]]], $id);
-
-        $data = $this->invoke('show', self::OWNER, [], 'lpj', $id)['data'];
-        $this->assertEquals(50000.0, $data["items"][0]["anggaran"]);
-        $this->assertCount(1, $data['revisions']);
-        $this->assertSame('Fina Keuangan', $data['revisions'][0]['editor']);
-        $this->assertEquals(120000.0, $data["revisions"][0]["total_before"]);
-        $this->assertEquals(70000.0, $data["revisions"][0]["total_after"]);
-    }
-
-    public function test_a_correction_with_no_difference_leaves_no_trace(): void
+    public function test_the_detail_offers_editing_only_to_active_finance_and_lists_revisions(): void
     {
         [$id, $parkir, $makan] = $this->lpjWithItems();
 
-        $response = $this->respond('correctLpjRealisation', self::FINANCE, [
-            'items' => [['id' => $parkir, 'realisasi' => 70000], ['id' => $makan, 'realisasi' => 50000]],
-        ], $id);
+        $this->assertTrue($this->invoke('show', self::FINANCE, [], 'lpj', $id)['data']['can_edit_items']);
+        $this->assertFalse($this->invoke('show', self::MANAGER, [], 'lpj', $id)['data']['can_edit_items']);
+        $this->assertFalse($this->invoke('show', self::OWNER, [], 'lpj', $id)['data']['can_edit_items']);
+
+        $this->respond('editLpjItems', self::FINANCE, ['items' => [
+            ['id' => $parkir, 'kategori' => 'transport', 'uraian' => 'Parkir', 'realisasi' => 20000],
+            ['id' => $makan, 'kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 50000],
+        ]], $id);
+
+        $data = $this->invoke('show', self::OWNER, [], 'lpj', $id)['data'];
+        $this->assertEquals(50000, $data['items'][0]['anggaran']);
+        $this->assertCount(1, $data['revisions']);
+        $this->assertSame('Fina Keuangan', $data['revisions'][0]['editor']);
+        $this->assertEquals(120000, $data['revisions'][0]['total_before']);
+        $this->assertEquals(70000, $data['revisions'][0]['total_after']);
+        $this->assertSame('changed', $data['revisions'][0]['changes'][0]['kind']);
+    }
+
+    public function test_an_edit_with_no_difference_leaves_no_trace(): void
+    {
+        [$id, $parkir, $makan] = $this->lpjWithItems();
+
+        $response = $this->respond('editLpjItems', self::FINANCE, ['items' => [
+            ['id' => $parkir, 'kategori' => 'transport', 'uraian' => 'Parkir', 'realisasi' => 70000],
+            ['id' => $makan, 'kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 50000],
+        ]], $id);
 
         $this->assertFalse($response->getData(true)['data']['changed']);
         $this->assertSame(0, DB::table('lpj_revisions')->count());
         $this->assertSame(0, DB::table('notifications')->count());
     }
 
-    public function test_nobody_else_can_correct_the_realisation(): void
+    public function test_nobody_else_can_edit_the_table(): void
     {
         [$atFinance, $parkir] = $this->lpjWithItems();
+        $body = ['items' => [['id' => $parkir, 'kategori' => 'transport', 'uraian' => 'Parkir', 'realisasi' => 1]]];
 
         foreach ([
             'manager yang bukan finance' => self::MANAGER,
             'pemohon' => self::OWNER,
             'orang lain' => self::OUTSIDER,
         ] as $label => $who) {
-            $response = $this->respond('correctLpjRealisation', $who, ['items' => [['id' => $parkir, 'realisasi' => 1]]], $atFinance);
-
-            $this->assertSame(403, $response->getStatusCode(), $label);
+            $this->assertSame(403, $this->respond('editLpjItems', $who, $body, $atFinance)->getStatusCode(), $label);
         }
 
-        $this->assertSame(70000.0, (float) DB::table('lpj_items')->where('id', $parkir)->value('realisasi'));
+        $this->assertEquals(70000, DB::table('lpj_items')->where('id', $parkir)->value('realisasi'));
         $this->assertSame(0, DB::table('lpj_revisions')->count());
     }
 
-    public function test_finance_cannot_correct_an_lpj_that_is_not_at_the_finance_step_or_is_processed(): void
+    public function test_finance_cannot_edit_an_lpj_that_is_not_at_the_finance_step_or_is_processed(): void
     {
         $atManager = $this->lpj(step: 1);
         $done = $this->lpj(step: 2, status: 'approved');
-        $body = ['items' => [['id' => 1, 'realisasi' => 1]]];
+        $body = ['items' => [['id' => 1, 'kategori' => 'meal', 'uraian' => 'X', 'realisasi' => 1]]];
 
-        $this->assertSame(403, $this->respond('correctLpjRealisation', self::FINANCE, $body, $atManager)->getStatusCode());
-        $this->assertSame(422, $this->respond('correctLpjRealisation', self::FINANCE, $body, $done)->getStatusCode());
+        $this->assertSame(403, $this->respond('editLpjItems', self::FINANCE, $body, $atManager)->getStatusCode());
+        $this->assertSame(422, $this->respond('editLpjItems', self::FINANCE, $body, $done)->getStatusCode());
     }
 
-    public function test_the_superadmin_can_correct_on_behalf_of_finance_and_it_is_logged_as_finance(): void
+    public function test_the_superadmin_can_edit_on_behalf_of_finance_and_it_is_logged_as_finance(): void
     {
         [$id, $parkir] = $this->lpjWithItems();
 
-        $this->assertSame(200, $this->respond('correctLpjRealisation', self::SUPERADMIN, ['items' => [['id' => $parkir, 'realisasi' => 20000]]], $id)->getStatusCode());
+        $response = $this->respond('editLpjItems', self::SUPERADMIN, ['items' => [
+            ['id' => $parkir, 'kategori' => 'transport', 'uraian' => 'Parkir', 'realisasi' => 20000],
+        ]], $id);
+
+        $this->assertSame(200, $response->getStatusCode());
         $this->assertDatabaseHas('lpj_revisions', ['lpj_id' => $id, 'editor_id' => self::FINANCE]);
     }
 
-    public function test_items_of_another_lpj_are_refused(): void
+    public function test_rows_of_another_lpj_are_refused(): void
     {
         [$id] = $this->lpjWithItems();
         [, $foreign] = $this->lpjWithItems();
 
-        $response = $this->respond('correctLpjRealisation', self::FINANCE, ['items' => [['id' => $foreign, 'realisasi' => 1]]], $id);
+        $response = $this->respond('editLpjItems', self::FINANCE, ['items' => [
+            ['id' => $foreign, 'kategori' => 'meal', 'uraian' => 'X', 'realisasi' => 1],
+        ]], $id);
 
         $this->assertSame(422, $response->getStatusCode());
-        $this->assertSame(70000.0, (float) DB::table('lpj_items')->where('id', $foreign)->value('realisasi'));
+        $this->assertEquals(70000, DB::table('lpj_items')->where('id', $foreign)->value('realisasi'));
     }
 
-    public function test_the_realisation_must_be_a_non_negative_number(): void
+    public function test_every_row_needs_a_category_a_description_and_a_valid_amount(): void
     {
         [$id, $parkir] = $this->lpjWithItems();
 
-        foreach ([-1, 'banyak', null] as $bad) {
+        foreach ([
+            'items.0.realisasi' => ['kategori' => 'transport', 'uraian' => 'Parkir', 'realisasi' => -1],
+            'items.0.kategori' => ['kategori' => 'bukan-kategori', 'uraian' => 'Parkir', 'realisasi' => 1],
+            'items.0.uraian' => ['kategori' => 'transport', 'uraian' => '', 'realisasi' => 1],
+        ] as $errorKey => $row) {
             try {
-                $this->respond('correctLpjRealisation', self::FINANCE, ['items' => [['id' => $parkir, 'realisasi' => $bad]]], $id);
-                $this->fail('Realisasi tidak sah seharusnya ditolak.');
+                $this->respond('editLpjItems', self::FINANCE, ['items' => [['id' => $parkir] + $row]], $id);
+                $this->fail("Baris tidak sah seharusnya ditolak: $errorKey");
             } catch (ValidationException $e) {
-                $this->assertArrayHasKey('items.0.realisasi', $e->errors());
+                $this->assertArrayHasKey($errorKey, $e->errors());
             }
         }
+
+        $this->assertEquals(70000, DB::table('lpj_items')->where('id', $parkir)->value('realisasi'));
+    }
+
+    public function test_an_lpj_cannot_be_emptied(): void
+    {
+        [$id] = $this->lpjWithItems();
+
+        $this->expectException(ValidationException::class);
+
+        $this->respond('editLpjItems', self::FINANCE, ['items' => []], $id);
     }
 
     // ── monitor (superadmin) ──────────────────────────────────────────────────
@@ -805,7 +838,7 @@ class ApiLpjApprovalTest extends TestCase
             ['POST', 'api/approvals/lpj/12/approve', 'approve'],
             ['POST', 'api/approvals/lpj/12/reject', 'reject'],
             ['POST', 'api/approvals/lpj/12/transfer-date', 'saveLpjTransferDate'],
-            ['PUT', 'api/approvals/lpj/12/realisation', 'correctLpjRealisation'],
+            ['POST', 'api/approvals/lpj/12/items', 'editLpjItems'],
             ['GET', 'api/approvals/lpj/12/excel-link', 'lpjExcelLink'],
         ] as [$method, $uri, $action]) {
             $route = Route::getRoutes()->match(Request::create('/'.$uri, $method));

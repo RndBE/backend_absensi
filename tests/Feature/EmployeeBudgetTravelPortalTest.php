@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\BudgetRequest;
 use App\Models\BudgetRequestRevision;
+use App\Models\LpjRevision;
 use App\Models\TravelReport;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
@@ -2208,25 +2209,26 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         $this->assertSame(0, DB::table('budget_request_revisions')->count());
     }
 
-    public function test_finance_can_correct_lpj_realisation_and_it_is_logged(): void
+    public function test_finance_can_edit_the_whole_lpj_expense_table_and_it_is_logged(): void
     {
+        Storage::fake('public');
         $this->seedEmployee(['department_id' => 1]);
         $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fin@example.test', 'full_name' => 'Maritza Finance', 'position' => 'Finance', 'department_id' => 1]);
-        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'mgr@example.test', 'full_name' => 'Manager', 'position' => 'Manager', 'department_id' => 1]);
         $this->seedApprover(1, 'lpj', 2);
         $budgetId = $this->seedApprovedBudgetRequest();
         $lpjId = DB::table('lpjs')->insertGetId([
-            'employee_id' => 1, 'budget_request_id' => $budgetId, 'nomor_lpj' => 'LPJ-KOREKSI',
+            'employee_id' => 1, 'budget_request_id' => $budgetId, 'nomor_lpj' => 'LPJ-EDIT',
             'total_anggaran' => 100000, 'total_realisasi' => 120000, 'sisa' => -20000,
             'status' => 'pending', 'current_step' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
+        Storage::disk('public')->put('lpj-bukti/lama.jpg', 'x');
         $parkirId = DB::table('lpj_items')->insertGetId([
-            'lpj_id' => $lpjId, 'uraian' => 'Parkir', 'kategori' => 'transport', 'anggaran' => 50000, 'realisasi' => 70000,
-            'created_at' => now(), 'updated_at' => now(),
+            'lpj_id' => $lpjId, 'uraian' => 'Parkir', 'kategori' => 'transport', 'anggaran' => 0, 'realisasi' => 70000,
+            'bukti_file' => 'lpj-bukti/lama.jpg', 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);
         $makanId = DB::table('lpj_items')->insertGetId([
-            'lpj_id' => $lpjId, 'uraian' => 'Makan', 'kategori' => 'meal', 'anggaran' => 50000, 'realisasi' => 50000,
-            'created_at' => now(), 'updated_at' => now(),
+            'lpj_id' => $lpjId, 'uraian' => 'Makan', 'kategori' => 'meal', 'anggaran' => 0, 'realisasi' => 50000,
+            'sort_order' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
         $this->withSession(['employee_id' => 2])
@@ -2237,49 +2239,88 @@ class EmployeeBudgetTravelPortalTest extends TestCase
         $this->withSession(['employee_id' => 2])
             ->get("/employee/approvals/lpj/{$lpjId}/edit")
             ->assertOk()
+            ->assertSee('Tambah Baris')
             ->assertSee('Parkir');
 
         $this->withSession(['employee_id' => 2])
             ->put("/employee/approvals/lpj/{$lpjId}", [
                 'items' => [
-                    ['id' => $parkirId, 'realisasi' => 20000, 'keterangan' => 'Nota hanya Rp 20.000'],
-                    ['id' => $makanId, 'realisasi' => 50000, 'keterangan' => ''],
+                    // Parkir: uraian, satuan, volume, nominal, keterangan, dan bukti diganti.
+                    ['id' => $parkirId, 'kategori' => 'transport', 'uraian' => 'Parkir bandara', 'satuan' => 'hari', 'volume' => 2, 'realisasi' => 20000, 'keterangan' => 'Sesuai nota', 'bukti_file' => UploadedFile::fake()->image('baru.jpg')],
+                    // Baris baru, dengan bukti.
+                    ['kategori' => 'operasional', 'uraian' => 'Tol', 'realisasi' => 35000, 'bukti_file' => UploadedFile::fake()->image('tol.jpg')],
+                    // Makan tidak dikirim, jadi terhapus.
                 ],
-                'notes' => 'Sesuai nota',
+                'notes' => 'Disesuaikan dengan nota',
             ])
             ->assertRedirect(route('employee.approvals.index'));
 
-        $this->assertDatabaseHas('lpj_items', ['id' => $parkirId, 'realisasi' => 20000, 'keterangan' => 'Nota hanya Rp 20.000']);
-        $this->assertDatabaseHas('lpjs', ['id' => $lpjId, 'total_realisasi' => 70000, 'sisa' => 30000]);
+        $this->assertDatabaseHas('lpj_items', ['id' => $parkirId, 'uraian' => 'Parkir bandara', 'satuan' => 'hari', 'realisasi' => 20000, 'keterangan' => 'Sesuai nota']);
+        $this->assertDatabaseMissing('lpj_items', ['id' => $makanId]);
+        $this->assertDatabaseHas('lpj_items', ['lpj_id' => $lpjId, 'uraian' => 'Tol', 'kategori' => 'operasional', 'realisasi' => 35000, 'anggaran' => 0]);
+        $this->assertDatabaseHas('lpjs', ['id' => $lpjId, 'total_realisasi' => 55000, 'sisa' => 45000]);
 
-        $revision = \App\Models\LpjRevision::firstOrFail();
+        // Bukti lama diganti: berkas lama dibuang, dua berkas baru tersimpan.
+        Storage::disk('public')->assertMissing('lpj-bukti/lama.jpg');
+        $this->assertCount(2, Storage::disk('public')->files('lpj-bukti'));
+
+        $revision = LpjRevision::firstOrFail();
         $this->assertSame(2, $revision->editor_id);
         $this->assertSame(120000.0, $revision->totalBefore());
-        $this->assertSame(70000.0, $revision->totalAfter());
-        $this->assertStringContainsString('Parkir', implode(' ', $revision->changes()));
-        $this->assertCount(1, $revision->changes());
-        $this->assertDatabaseHas('notifications', ['employee_id' => 1, 'title' => 'Realisasi LPJ Dikoreksi']);
+        $this->assertSame(55000.0, $revision->totalAfter());
+        $kinds = collect($revision->changes())->pluck('kind')->all();
+        $this->assertEqualsCanonicalizing(['changed', 'added', 'removed'], $kinds);
+        $this->assertDatabaseHas('notifications', ['employee_id' => 1, 'title' => 'Rincian LPJ Diubah Finance']);
+    }
 
-        // Tanpa perubahan tidak membuat revisi baru.
+    public function test_an_lpj_edit_without_differences_leaves_no_trace_and_removing_a_proof_deletes_it(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fin@example.test', 'full_name' => 'Maritza Finance', 'position' => 'Finance', 'department_id' => 1]);
+        $this->seedApprover(1, 'lpj', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        $lpjId = DB::table('lpjs')->insertGetId([
+            'employee_id' => 1, 'budget_request_id' => $budgetId, 'nomor_lpj' => 'LPJ-SAMA',
+            'total_anggaran' => 50000, 'total_realisasi' => 50000, 'sisa' => 0,
+            'status' => 'pending', 'current_step' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Storage::disk('public')->put('lpj-bukti/nota.jpg', 'x');
+        $itemId = DB::table('lpj_items')->insertGetId([
+            'lpj_id' => $lpjId, 'uraian' => 'Parkir', 'kategori' => 'transport', 'anggaran' => 0, 'realisasi' => 50000,
+            'bukti_file' => 'lpj-bukti/nota.jpg', 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $same = ['id' => $itemId, 'kategori' => 'transport', 'uraian' => 'Parkir', 'volume' => 1, 'realisasi' => 50000];
+
         $this->withSession(['employee_id' => 2])
-            ->put("/employee/approvals/lpj/{$lpjId}", [
-                'items' => [
-                    ['id' => $parkirId, 'realisasi' => 20000, 'keterangan' => 'Nota hanya Rp 20.000'],
-                    ['id' => $makanId, 'realisasi' => 50000, 'keterangan' => ''],
-                ],
-            ])
+            ->put("/employee/approvals/lpj/{$lpjId}", ['items' => [$same]])
             ->assertRedirect(route('employee.approvals.index'));
-        $this->assertSame(1, DB::table('lpj_revisions')->count());
+        $this->assertSame(0, DB::table('lpj_revisions')->count());
+        Storage::disk('public')->assertExists('lpj-bukti/nota.jpg');
 
-        // Item milik LPJ lain ditolak.
         $this->withSession(['employee_id' => 2])
-            ->put("/employee/approvals/lpj/{$lpjId}", [
-                'items' => [['id' => 99999, 'realisasi' => 1]],
-            ])
+            ->put("/employee/approvals/lpj/{$lpjId}", ['items' => [$same + ['remove_bukti' => '1']]])
+            ->assertRedirect(route('employee.approvals.index'));
+        $this->assertDatabaseHas('lpj_items', ['id' => $itemId, 'bukti_file' => null]);
+        Storage::disk('public')->assertMissing('lpj-bukti/nota.jpg');
+        $this->assertStringContainsString('bukti dilepas', collect(LpjRevision::firstOrFail()->changes())->pluck('text')->implode(' '));
+
+        // Baris wajib berkategori & beruraian, dan LPJ tidak boleh kosong.
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/lpj/{$lpjId}", ['items' => [['id' => $itemId, 'uraian' => '', 'realisasi' => 1]]])
+            ->assertSessionHasErrors(['items.0.kategori', 'items.0.uraian']);
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/lpj/{$lpjId}", ['items' => []])
+            ->assertSessionHasErrors('items');
+        $this->assertDatabaseHas('lpj_items', ['id' => $itemId]);
+
+        // Baris milik LPJ lain ditolak.
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/lpj/{$lpjId}", ['items' => [['id' => 99999, 'kategori' => 'meal', 'uraian' => 'X', 'realisasi' => 1]]])
             ->assertSessionHas('error');
     }
 
-    public function test_only_the_active_finance_approver_can_correct_lpj_realisation(): void
+    public function test_only_the_active_finance_approver_can_edit_the_lpj_table(): void
     {
         $this->seedEmployee(['department_id' => 1]);
         $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fin@example.test', 'full_name' => 'Maritza Finance', 'position' => 'Finance', 'department_id' => 1]);
@@ -2292,10 +2333,10 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'status' => 'pending', 'current_step' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
         $itemId = DB::table('lpj_items')->insertGetId([
-            'lpj_id' => $lpjId, 'uraian' => 'Parkir', 'anggaran' => 50000, 'realisasi' => 50000,
+            'lpj_id' => $lpjId, 'uraian' => 'Parkir', 'kategori' => 'transport', 'anggaran' => 0, 'realisasi' => 50000,
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        $payload = ['items' => [['id' => $itemId, 'realisasi' => 1000]]];
+        $payload = ['items' => [['id' => $itemId, 'kategori' => 'transport', 'uraian' => 'Parkir', 'realisasi' => 1000]]];
 
         // Approver aktif non-finance (manager) tidak boleh.
         $this->withSession(['employee_id' => 3])

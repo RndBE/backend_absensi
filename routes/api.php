@@ -115,7 +115,8 @@ Route::middleware(['auth:sanctum', 'employee.active'])->group(function () {
     Route::post('/approvals/{type}/{id}/approve', [ApprovalController::class, 'approve']);
     Route::post('/approvals/{type}/{id}/reject', [ApprovalController::class, 'reject']);
     Route::post('/approvals/lpj/{id}/transfer-date', [ApprovalController::class, 'saveLpjTransferDate'])->whereNumber('id');
-    Route::put('/approvals/lpj/{id}/realisation', [ApprovalController::class, 'correctLpjRealisation'])->whereNumber('id');
+    // POST (bukan PUT): multipart dengan foto bukti tidak terbaca PHP pada PUT.
+    Route::post('/approvals/lpj/{id}/items', [ApprovalController::class, 'editLpjItems'])->whereNumber('id');
     Route::get('/approvals/lpj/{id}/excel-link', [ApprovalController::class, 'lpjExcelLink'])->whereNumber('id');
 
     // Budget / Reimbursement
