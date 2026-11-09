@@ -234,8 +234,10 @@
                 $kuotaKurang = $balance && (float) $balance->remaining_days < (float) $request->total_days;
             @endphp
             <article class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div class="p-5 border-b border-gray-100 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    <div class="min-w-0">
+                {{-- Baris atas: siapa + aksi; baris bawah: rincian selebar kartu, supaya kolom nama tidak terjepit tombol. --}}
+                <div class="p-5 border-b border-gray-100 space-y-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                    <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
                                 <span class="material-symbols-outlined text-[15px]">
@@ -269,7 +271,7 @@
                             </span>
                         </div>
                         <h2 class="mt-3 text-[16px] font-black text-gray-900">{{ $request->employee?->full_name ?? '-' }}</h2>
-                        <p class="text-[12px] text-gray-500 mt-1">{{ $request->employee?->position ?? 'Karyawan' }}</p>
+                        <p class="text-[12px] text-gray-500 mt-0.5">{{ $request->employee?->position ?? 'Karyawan' }}</p>
 
                         {{-- Posisi keputusan ini dalam rantai approval --}}
                         <p class="mt-2 text-[11.5px]">
@@ -285,7 +287,43 @@
                         </p>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px] text-gray-600 lg:min-w-[420px]">
+                    @if($type === 'budget')
+                    <div class="flex shrink-0 flex-wrap items-center gap-2">
+                        <a href="{{ route('employee.approvals.budget.edit', $request->id) }}" class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-[12px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100">
+                            <span class="material-symbols-outlined text-[16px]">edit</span>
+                            Edit Item
+                        </a>
+                        <a href="{{ route('employee.approvals.budget.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
+                            <span class="material-symbols-outlined text-[16px]">print</span>
+                            Cetak
+                        </a>
+                    </div>
+                    @elseif($type === 'travel_report')
+                    <a href="{{ route('employee.approvals.travel_report.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
+                        <span class="material-symbols-outlined text-[16px]">print</span>
+                        Lihat/Cetak
+                    </a>
+                    @elseif($type === 'lpj')
+                    <div class="flex shrink-0 flex-wrap items-center gap-2">
+                        @if(\App\Support\BudgetSignatureSlots::isFinance($employee))
+                        <a href="{{ route('employee.approvals.lpj.edit', $request->id) }}" class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-[12px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100">
+                            <span class="material-symbols-outlined text-[16px]">edit</span>
+                            Koreksi Realisasi
+                        </a>
+                        @endif
+                        <a href="{{ route('employee.approvals.lpj.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
+                            <span class="material-symbols-outlined text-[16px]">print</span>
+                            Lihat/Cetak
+                        </a>
+                        <a href="{{ route('employee.approvals.lpj.export-excel', $request->id) }}" class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-emerald-700">
+                            <span class="material-symbols-outlined text-[16px]">table_view</span>
+                            Excel
+                        </a>
+                    </div>
+                    @endif
+                </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg bg-gray-50 px-4 py-3 text-[12px] text-gray-600">
                         @if($type === 'leave')
                             <div>
                                 <div class="font-bold text-gray-400 uppercase text-[10px]">Jenis</div>
@@ -366,41 +404,6 @@
                             </div>
                         @endif
                     </div>
-
-                    @if($type === 'budget')
-                    <div class="flex shrink-0 items-center gap-2">
-                        <a href="{{ route('employee.approvals.budget.edit', $request->id) }}" class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-[12px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100">
-                            <span class="material-symbols-outlined text-[16px]">edit</span>
-                            Edit Item
-                        </a>
-                        <a href="{{ route('employee.approvals.budget.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
-                            <span class="material-symbols-outlined text-[16px]">print</span>
-                            Cetak
-                        </a>
-                    </div>
-                    @elseif($type === 'travel_report')
-                    <a href="{{ route('employee.approvals.travel_report.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
-                        <span class="material-symbols-outlined text-[16px]">print</span>
-                        Lihat/Cetak
-                    </a>
-                    @elseif($type === 'lpj')
-                    <div class="flex shrink-0 items-center gap-2">
-                        @if(\App\Support\BudgetSignatureSlots::isFinance($employee))
-                        <a href="{{ route('employee.approvals.lpj.edit', $request->id) }}" class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-[12px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100">
-                            <span class="material-symbols-outlined text-[16px]">edit</span>
-                            Koreksi Realisasi
-                        </a>
-                        @endif
-                        <a href="{{ route('employee.approvals.lpj.print', $request->id) }}" target="_blank" class="approval-print-link inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-teal-700">
-                            <span class="material-symbols-outlined text-[16px]">print</span>
-                            Lihat/Cetak
-                        </a>
-                        <a href="{{ route('employee.approvals.lpj.export-excel', $request->id) }}" class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-emerald-700">
-                            <span class="material-symbols-outlined text-[16px]">table_view</span>
-                            Excel
-                        </a>
-                    </div>
-                    @endif
                 </div>
 
                 <div class="p-5 space-y-4">
