@@ -17,6 +17,7 @@ use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Services\FcmService;
 use App\Services\LpjExcelExporter;
+use App\Services\LpjRealisationCorrector;
 use App\Support\AssignmentLetterApprovalFlow;
 use App\Support\BudgetItemOwners;
 use App\Support\BudgetSignatureSlots;
@@ -27,6 +28,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use InvalidArgumentException;
 
 class ApprovalController extends Controller
 {
@@ -361,6 +363,63 @@ class ApprovalController extends Controller
             ->with('success', 'Tanggal transfer disimpan. Excel LPJ sudah memuatnya.');
     }
 
+    /**
+     * Form koreksi realisasi LPJ untuk finance di step aktif. Hanya nominal realisasi dan
+     * keterangan yang bisa diubah; item, bukti nota, dan anggaran tetap milik karyawan.
+     */
+    public function editLpj(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $lpj = Lpj::with([
+            'employee:id,full_name',
+            'budgetRequest:id,title',
+            'items',
+            'revisions.editor:id,full_name',
+        ])->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'lpj', $lpj) || ! BudgetSignatureSlots::isFinance($employee)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Hanya finance pada step aktif yang bisa mengoreksi realisasi LPJ.');
+        }
+
+        return view('employee.approvals.lpj-edit', ['lpj' => $lpj]);
+    }
+
+    public function updateLpj(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|integer',
+            'items.*.realisasi' => 'required|numeric|min:0|max:9999999999999',
+            'items.*.keterangan' => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $lpj = Lpj::with(['employee', 'items'])->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'lpj', $lpj) || ! BudgetSignatureSlots::isFinance($employee)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Hanya finance pada step aktif yang bisa mengoreksi realisasi LPJ.');
+        }
+
+        try {
+            $revision = LpjRealisationCorrector::correct($lpj, $employee, $validated['items'], $validated['notes'] ?? null);
+        } catch (InvalidArgumentException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+
+        if (! $revision) {
+            return redirect()->route('employee.approvals.index')
+                ->with('success', 'Tidak ada perubahan pada realisasi LPJ.');
+        }
+
+        return redirect()->route('employee.approvals.index')
+            ->with('success', 'Realisasi LPJ dikoreksi. Lanjutkan dengan menyetujui atau menolak.');
+    }
+
     public function printDecision(Request $request, string $type, int $id)
     {
         /** @var Employee $employee */
@@ -655,7 +714,7 @@ class ApprovalController extends Controller
                 'resubmissionOf:id',
                 'resubmissionOf.latestRejection.approver:id,full_name',
             ],
-            'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city'],
+            'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city', 'revisions.editor:id,full_name'],
             default => ['employee:id,full_name,position,photo'],
         };
     }

@@ -47,6 +47,12 @@ class Lpj extends Model
         return $this->hasMany(LpjItem::class)->orderBy('sort_order');
     }
 
+    /** Koreksi realisasi oleh finance, terbaru di atas. */
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(LpjRevision::class)->latest('id');
+    }
+
     public function approvalLogs(): MorphMany
     {
         return $this->morphMany(ApprovalLog::class, 'approvable');

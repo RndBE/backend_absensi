@@ -214,6 +214,9 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/approvals/lpj/{id}/print', [EmployeeApprovalController::class, 'printLpj'])->name('approvals.lpj.print');
     Route::get('/approvals/lpj/{id}/export-excel', [EmployeeApprovalController::class, 'exportLpjExcel'])->name('approvals.lpj.export-excel');
     Route::post('/approvals/lpj/{id}/transfer-date', [EmployeeApprovalController::class, 'saveLpjTransferDate'])->name('approvals.lpj.transfer-date');
+    // Finance di step aktif boleh mengoreksi realisasi & keterangan item LPJ sebelum memutuskan.
+    Route::get('/approvals/lpj/{id}/edit', [EmployeeApprovalController::class, 'editLpj'])->name('approvals.lpj.edit');
+    Route::put('/approvals/lpj/{id}', [EmployeeApprovalController::class, 'updateLpj'])->name('approvals.lpj.update');
     Route::get('/approvals/{type}/{id}/print', [EmployeeApprovalController::class, 'printDecision'])
         ->whereIn('type', ['leave', 'overtime', 'attendance'])
         ->name('approvals.decision.print');
