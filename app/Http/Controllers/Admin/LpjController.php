@@ -17,6 +17,7 @@ class LpjController extends Controller
             'employee:id,full_name,photo,department_id',
             'employee.department:id,name',
             'budgetRequest:id,title,total_amount',
+            'resubmission:id,resubmission_of_id,status',
         ]);
 
         // Manager: hanya melihat departemennya sendiri.
@@ -59,6 +60,10 @@ class LpjController extends Controller
             'travelReport:id,destination_city,departure_date,return_date',
             'items.budgetRequestItem',
             'approvalLogs.approver:id,full_name,photo',
+            'latestRejection.approver:id,full_name',
+            'resubmission:id,resubmission_of_id,status',
+            'resubmissionOf:id,status',
+            'resubmissionOf.latestRejection.approver:id,full_name',
         ])->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
           ->findOrFail($id);
 

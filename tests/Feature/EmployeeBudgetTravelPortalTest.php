@@ -319,8 +319,10 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('budget_request_id');
             $table->unsignedBigInteger('travel_report_id')->nullable();
+            $table->unsignedBigInteger('resubmission_of_id')->nullable()->unique();
             $table->unsignedBigInteger('employee_id');
             $table->string('nomor_lpj')->nullable();
+            $table->string('rejection_reason')->nullable();
             $table->decimal('total_anggaran', 15, 2)->default(0);
             $table->decimal('total_realisasi', 15, 2)->default(0);
             $table->decimal('sisa', 15, 2)->default(0);
@@ -2352,6 +2354,236 @@ class EmployeeBudgetTravelPortalTest extends TestCase
 
         $this->assertDatabaseHas('lpj_items', ['id' => $itemId, 'realisasi' => 50000]);
         $this->assertSame(0, DB::table('lpj_revisions')->count());
+    }
+
+    public function test_rejecting_an_lpj_needs_a_reason_and_stores_it(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'mgr@example.test', 'full_name' => 'Manager', 'position' => 'Manager', 'department_id' => 1]);
+        $this->seedApprover(1, 'lpj', 2);
+        $lpjId = $this->seedLpj(['nomor_lpj' => 'LPJ-TOLAK']);
+
+        $this->withSession(['employee_id' => 2])
+            ->post("/employee/approvals/lpj/{$lpjId}/reject", ['notes' => ''])
+            ->assertRedirect(route('employee.approvals.index'))
+            ->assertSessionHas('error');
+        $this->assertDatabaseHas('lpjs', ['id' => $lpjId, 'status' => 'pending']);
+
+        $this->withSession(['employee_id' => 2])
+            ->post("/employee/approvals/lpj/{$lpjId}/reject", ['notes' => 'Nota parkir belum ada'])
+            ->assertRedirect(route('employee.approvals.index'))
+            ->assertSessionHas('success');
+        $this->assertDatabaseHas('lpjs', ['id' => $lpjId, 'status' => 'rejected', 'rejection_reason' => 'Nota parkir belum ada']);
+        $this->assertDatabaseHas('approval_logs', ['approvable_id' => $lpjId, 'action' => 'rejected', 'notes' => 'Nota parkir belum ada']);
+    }
+
+    public function test_employee_can_resubmit_a_rejected_lpj_as_a_new_lpj_keeping_the_old_one(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'mgr@example.test', 'full_name' => 'Manager', 'position' => 'Manager', 'department_id' => 1]);
+        $this->seedApprover(1, 'lpj', 2);
+        $oldId = $this->seedLpj(['nomor_lpj' => 'LPJ-LAMA', 'status' => 'rejected', 'rejection_reason' => 'Nota parkir belum ada', 'catatan' => 'Catatan lama']);
+        DB::table('approval_logs')->insert([
+            'approvable_type' => \App\Models\Lpj::class, 'approvable_id' => $oldId, 'approver_id' => 2,
+            'action' => 'rejected', 'step_order' => 1, 'notes' => 'Nota parkir belum ada',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Storage::disk('public')->put('lpj-bukti/lama.jpg', 'x');
+        $parkirId = DB::table('lpj_items')->insertGetId([
+            'lpj_id' => $oldId, 'uraian' => 'Parkir', 'kategori' => 'transport', 'anggaran' => 0, 'realisasi' => 70000,
+            'bukti_file' => 'lpj-bukti/lama.jpg', 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $makanId = DB::table('lpj_items')->insertGetId([
+            'lpj_id' => $oldId, 'uraian' => 'Makan', 'kategori' => 'meal', 'anggaran' => 0, 'realisasi' => 50000,
+            'bukti_file' => 'lpj-bukti/makan.jpg', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Storage::disk('public')->put('lpj-bukti/makan.jpg', 'y');
+
+        // Detail LPJ lama menawarkan Ajukan ulang dengan alasan penolakan.
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/lpj/{$oldId}")
+            ->assertOk()
+            ->assertSee('LPJ ditolak')
+            ->assertSee('Nota parkir belum ada')
+            ->assertSee("/employee/lpj/{$oldId}/resubmit", false);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/lpj')
+            ->assertOk()
+            ->assertSee('Ajukan Ulang');
+
+        // Form terisi dari LPJ lama, anggaran terkunci ke anggaran LPJ lama.
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/lpj/{$oldId}/resubmit")
+            ->assertOk()
+            ->assertSee('Ajukan Ulang LPJ')
+            ->assertSee('Nota parkir belum ada')
+            ->assertSee('LPJ-LAMA')
+            ->assertSee('Catatan lama')
+            ->assertSee('Parkir');
+
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/lpj', [
+                'resubmission_of_id' => $oldId,
+                'budget_request_id' => 999999, // diabaikan: anggaran ikut LPJ lama
+                'nomor_lpj' => 'LPJ-BARU',
+                'catatan' => 'Sudah dilengkapi',
+                'items' => [
+                    // Parkir: bukti diganti dengan yang baru.
+                    ['source_item_id' => $parkirId, 'kategori' => 'transport', 'uraian' => 'Parkir', 'realisasi' => 70000, 'bukti_file' => UploadedFile::fake()->image('nota.jpg')],
+                    // Makan: bukti lama dipertahankan (disalin).
+                    ['source_item_id' => $makanId, 'kategori' => 'meal', 'uraian' => 'Makan', 'realisasi' => 50000],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $new = \App\Models\Lpj::where('nomor_lpj', 'LPJ-BARU')->firstOrFail();
+        $this->assertSame($oldId, $new->resubmission_of_id);
+        $this->assertSame('pending', $new->status);
+        $this->assertSame(1, (int) $new->current_step);
+        $this->assertSame(1, (int) $new->employee_id);
+        $this->assertEquals(120000, $new->total_realisasi);
+
+        // LPJ lama tidak berubah, bukti lamanya tetap ada.
+        $this->assertDatabaseHas('lpjs', ['id' => $oldId, 'status' => 'rejected', 'nomor_lpj' => 'LPJ-LAMA']);
+        $this->assertSame(2, DB::table('lpj_items')->where('lpj_id', $oldId)->count());
+        Storage::disk('public')->assertExists('lpj-bukti/lama.jpg');
+        Storage::disk('public')->assertExists('lpj-bukti/makan.jpg');
+
+        // Bukti makan disalin ke berkas milik LPJ baru, bukan dipakai bersama.
+        $newMakan = DB::table('lpj_items')->where('lpj_id', $new->id)->where('uraian', 'Makan')->first();
+        $this->assertNotNull($newMakan->bukti_file);
+        $this->assertNotSame('lpj-bukti/makan.jpg', $newMakan->bukti_file);
+        Storage::disk('public')->assertExists($newMakan->bukti_file);
+        $newParkir = DB::table('lpj_items')->where('lpj_id', $new->id)->where('uraian', 'Parkir')->first();
+        $this->assertNotSame('lpj-bukti/lama.jpg', $newParkir->bukti_file);
+
+        // Approver pertama diberi tahu, dan melihat alasan penolakan sebelumnya di kartu persetujuan.
+        $this->assertDatabaseHas('notifications', ['employee_id' => 2, 'title' => 'Pengajuan Ulang LPJ']);
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee('Ditolak sebelumnya')
+            ->assertSee('Nota parkir belum ada');
+
+        // LPJ lama kini berpengganti: tidak bisa diajukan ulang dua kali, dan menautkan penggantinya.
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/lpj/{$oldId}/resubmit")
+            ->assertRedirect(route('employee.lpj.show', $oldId))
+            ->assertSessionHas('error');
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/lpj/{$oldId}")
+            ->assertOk()
+            ->assertSee('Lihat LPJ pengganti');
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/lpj/{$new->id}")
+            ->assertOk()
+            ->assertSee('Pengajuan ulang dari LPJ yang ditolak')
+            ->assertSee('Nota parkir belum ada');
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/lpj', [
+                'resubmission_of_id' => $oldId,
+                'items' => [['kategori' => 'meal', 'uraian' => 'Lagi', 'realisasi' => 1]],
+            ])
+            ->assertSessionHasErrors('error');
+        $this->assertSame(2, DB::table('lpjs')->count());
+    }
+
+    public function test_only_the_owner_can_resubmit_and_only_a_rejected_lpj(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'other@example.test', 'full_name' => 'Other', 'department_id' => 1]);
+        $rejected = $this->seedLpj(['status' => 'rejected']);
+        $pending = $this->seedLpj(['status' => 'pending', 'budget_request_id' => $this->seedApprovedBudgetRequest()]);
+
+        // Orang lain: 404, tidak bisa membuka form atau mengirim.
+        $this->withSession(['employee_id' => 2])->get("/employee/lpj/{$rejected}/resubmit")->assertNotFound();
+        $this->withSession(['employee_id' => 2])
+            ->post('/employee/lpj', ['resubmission_of_id' => $rejected, 'items' => [['kategori' => 'meal', 'uraian' => 'X', 'realisasi' => 1]]])
+            ->assertSessionHasErrors('error');
+
+        // LPJ yang belum ditolak tidak bisa diajukan ulang.
+        $this->withSession(['employee_id' => 1])
+            ->get("/employee/lpj/{$pending}/resubmit")
+            ->assertRedirect(route('employee.lpj.show', $pending))
+            ->assertSessionHas('error');
+
+        // Membuat LPJ baru biasa untuk anggaran yang LPJ-nya ditolak tetap tertutup.
+        $budgetId = DB::table('lpjs')->where('id', $rejected)->value('budget_request_id');
+        $this->withSession(['employee_id' => 1])
+            ->post('/employee/lpj', ['budget_request_id' => $budgetId, 'items' => [['kategori' => 'meal', 'uraian' => 'X', 'realisasi' => 1]]])
+            ->assertSessionHasErrors('error');
+        $this->assertSame(2, DB::table('lpjs')->count());
+    }
+
+    public function test_admin_lpj_pages_link_a_rejected_lpj_and_its_resubmission(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'ADM001', 'email' => 'admin@example.test', 'full_name' => 'Admin Finance', 'role' => 'superadmin', 'department_id' => 1]);
+        $oldId = $this->seedLpj(['nomor_lpj' => 'LPJ-LAMA', 'status' => 'rejected', 'rejection_reason' => 'Nota parkir belum ada']);
+        DB::table('approval_logs')->insert([
+            'approvable_type' => \App\Models\Lpj::class, 'approvable_id' => $oldId, 'approver_id' => 2,
+            'action' => 'rejected', 'step_order' => 1, 'notes' => 'Nota parkir belum ada',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $newId = $this->seedLpj(['nomor_lpj' => 'LPJ-BARU', 'status' => 'pending', 'resubmission_of_id' => $oldId, 'budget_request_id' => DB::table('lpjs')->where('id', $oldId)->value('budget_request_id')]);
+
+        // Daftar: LPJ lama menautkan penggantinya, LPJ baru menautkan LPJ lama; tautan membawa asal daftar.
+        $this->withSession(['admin_id' => 2])
+            ->get('/admin/lpj')
+            ->assertOk()
+            ->assertSee('DIAJUKAN ULANG')
+            ->assertSee('LPJ pengganti berstatus Pending')
+            ->assertSee('href="'.e(route('admin.lpj.show', ['id' => $newId, 'back' => '/admin/lpj'])).'" title="LPJ pengganti', false)
+            ->assertSee('PENGAJUAN ULANG')
+            ->assertSee('href="'.e(route('admin.lpj.show', ['id' => $oldId, 'back' => '/admin/lpj'])).'" title="Pengganti LPJ yang ditolak', false);
+
+        // Detail LPJ baru: alasan penolakan sebelumnya dan tautan ke LPJ lama.
+        $this->withSession(['admin_id' => 2])
+            ->get("/admin/lpj/{$newId}")
+            ->assertOk()
+            ->assertSee('Pengajuan ulang dari LPJ yang ditolak')
+            ->assertSee('Alasan penolakan sebelumnya: Nota parkir belum ada')
+            ->assertSee('Lihat LPJ yang ditolak');
+
+        // Detail LPJ lama: tahu sudah diajukan ulang dan menautkan penggantinya.
+        $this->withSession(['admin_id' => 2])
+            ->get("/admin/lpj/{$oldId}")
+            ->assertOk()
+            ->assertSee('LPJ ini sudah diajukan ulang oleh karyawan.')
+            ->assertSee('Lihat LPJ pengganti')
+            ->assertSee('Alasan Penolakan');
+    }
+
+    public function test_admin_rejecting_an_lpj_needs_a_reason_and_stores_it(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'ADM001', 'email' => 'admin@example.test', 'full_name' => 'Admin Finance', 'role' => 'superadmin', 'department_id' => 1]);
+        $this->seedApprover(1, 'lpj', 2);
+        $lpjId = $this->seedLpj();
+
+        $this->withSession(['admin_id' => 2])
+            ->post("/admin/approvals/lpj/{$lpjId}/reject", ['notes' => ''])
+            ->assertSessionHas('error');
+        $this->assertDatabaseHas('lpjs', ['id' => $lpjId, 'status' => 'pending']);
+
+        $this->withSession(['admin_id' => 2])
+            ->post("/admin/approvals/lpj/{$lpjId}/reject", ['notes' => 'Bukti tidak lengkap'])
+            ->assertSessionMissing('error');
+        $this->assertDatabaseHas('lpjs', ['id' => $lpjId, 'status' => 'rejected', 'rejection_reason' => 'Bukti tidak lengkap']);
+    }
+
+    private function seedLpj(array $attributes = []): int
+    {
+        return DB::table('lpjs')->insertGetId(array_merge([
+            'employee_id' => 1,
+            'budget_request_id' => $this->seedApprovedBudgetRequest(),
+            'nomor_lpj' => 'LPJ-X',
+            'total_anggaran' => 0, 'total_realisasi' => 0, 'sisa' => 0,
+            'status' => 'pending', 'current_step' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ], $attributes));
     }
 
     private function seedEmployee(array $attributes = []): void

@@ -6,12 +6,14 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Lpj extends Model
 {
     protected $fillable = [
-        'budget_request_id', 'travel_report_id', 'employee_id',
+        'budget_request_id', 'travel_report_id', 'resubmission_of_id', 'employee_id',
         'nomor_lpj', 'total_anggaran', 'total_realisasi', 'sisa',
         'status', 'current_step', 'rejection_reason', 'catatan', 'kategori_notes', 'transfer_date',
     ];
@@ -45,6 +47,40 @@ class Lpj extends Model
     public function items(): HasMany
     {
         return $this->hasMany(LpjItem::class)->orderBy('sort_order');
+    }
+
+    /** Log penolakan terakhir — sumber alasan yang ditampilkan ke pengaju dan approver. */
+    public function latestRejection(): MorphOne
+    {
+        return $this->morphOne(ApprovalLog::class, 'approvable')
+            ->ofMany(['id' => 'max'], fn ($query) => $query->where('action', 'rejected'));
+    }
+
+    /** LPJ ditolak yang digantikan oleh LPJ ini (pengajuan ulang). */
+    public function resubmissionOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'resubmission_of_id');
+    }
+
+    /** LPJ pengganti, bila LPJ ini ditolak lalu diajukan ulang. */
+    public function resubmission(): HasOne
+    {
+        return $this->hasOne(self::class, 'resubmission_of_id');
+    }
+
+    /** Hanya LPJ ditolak yang belum punya pengganti yang boleh diajukan ulang. */
+    public function canBeResubmitted(): bool
+    {
+        if ($this->status !== 'rejected') {
+            return false;
+        }
+
+        // Pakai hasil withExists/eager load bila ada, supaya daftar tidak query per baris.
+        $hasResubmission = array_key_exists('resubmission_exists', $this->getAttributes())
+            ? (bool) $this->resubmission_exists
+            : ($this->relationLoaded('resubmission') ? $this->resubmission !== null : $this->resubmission()->exists());
+
+        return ! $hasResubmission;
     }
 
     /** Koreksi realisasi oleh finance, terbaru di atas. */

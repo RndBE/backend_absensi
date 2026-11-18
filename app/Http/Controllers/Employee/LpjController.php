@@ -15,6 +15,7 @@ use App\Support\LpjEligibility;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class LpjController extends Controller
 {
@@ -26,6 +27,7 @@ class LpjController extends Controller
         // Termasuk LPJ pemilik pada anggaran tim yang diikuti (memuat biaya bersama), hanya baca.
         $lpjs = Lpj::with(['budgetRequest:id,title,total_amount', 'travelReport:id,destination_city', 'employee:id,full_name'])
             ->visibleTo($employee->id)
+            ->withExists('resubmission')
             ->latest()
             ->paginate(15);
 
@@ -54,7 +56,45 @@ class LpjController extends Controller
             }
         }
 
-        return view('employee.lpj.create', compact('employee', 'availableRequests', 'selectedRequest'));
+        return view('employee.lpj.create', compact('employee', 'availableRequests', 'selectedRequest'))
+            ->with('resubmitOf', null);
+    }
+
+    /**
+     * Form ajukan ulang: LPJ baru yang terisi dari LPJ yang ditolak. LPJ lama tidak diubah
+     * (riwayat dan alasan penolakannya tetap utuh); LPJ baru menjalani persetujuan dari step 1.
+     */
+    public function resubmit(Request $request, $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+
+        $original = Lpj::with(['items', 'latestRejection.approver:id,full_name'])
+            ->where('employee_id', $employee->id)
+            ->findOrFail($id);
+
+        if (! $original->canBeResubmitted()) {
+            return redirect()->route('employee.lpj.show', $original->id)
+                ->with('error', 'Hanya LPJ yang ditolak dan belum pernah diajukan ulang yang bisa diajukan ulang.');
+        }
+
+        $budget = BudgetRequest::whereIn('status', ['approved', 'paid'])
+            ->with(['items', 'travelReport'])
+            ->find($original->budget_request_id);
+
+        if (! $budget) {
+            return redirect()->route('employee.lpj.show', $original->id)
+                ->with('error', 'Anggaran LPJ ini sudah tidak berstatus disetujui, jadi LPJ tidak bisa diajukan ulang.');
+        }
+
+        $this->forAuthor($budget, $employee->id);
+
+        return view('employee.lpj.create', [
+            'employee' => $employee,
+            'availableRequests' => collect([$budget]),
+            'selectedRequest' => $budget,
+            'resubmitOf' => $original,
+        ]);
     }
 
     public function store(Request $request)
@@ -62,7 +102,24 @@ class LpjController extends Controller
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
 
+        $original = null;
+        if ($request->filled('resubmission_of_id')) {
+            $original = Lpj::with('items')
+                ->where('employee_id', $employee->id)
+                ->find($request->resubmission_of_id);
+
+            if (! $original || ! $original->canBeResubmitted()) {
+                return back()->withInput()->withErrors([
+                    'error' => 'LPJ ini tidak bisa diajukan ulang. Hanya LPJ yang ditolak dan belum pernah diajukan ulang.',
+                ]);
+            }
+
+            // Anggarannya ikut LPJ lama; pilihan di form tidak boleh mengalihkannya.
+            $request->merge(['budget_request_id' => $original->budget_request_id]);
+        }
+
         $request->validate([
+            'resubmission_of_id' => 'nullable|integer',
             'budget_request_id' => 'required|exists:budget_requests,id',
             'nomor_lpj'         => 'nullable|string|max:100',
             'catatan'           => 'nullable|string',
@@ -70,16 +127,29 @@ class LpjController extends Controller
             'items.*.kategori'  => 'required|string|in:'.implode(',', array_keys(\App\Models\LpjItem::CATEGORIES)),
             'items.*.uraian'    => 'required|string|max:255',
             'items.*.realisasi' => 'required|numeric|min:0',
+            'items.*.source_item_id' => 'nullable|integer',
+            'items.*.remove_bukti' => 'nullable|boolean',
+            'items.*.bukti_file' => 'nullable|file|mimes:'.implode(',', [...\App\Support\LpjPresenter::PROOF_IMAGE_EXTENSIONS, 'pdf']).'|max:10240',
         ], [
+            'items.*.bukti_file.mimes' => 'Bukti harus berupa gambar (JPG, PNG, GIF, WEBP) atau PDF.',
+            'items.*.bukti_file.max'   => 'Ukuran bukti maksimal 10 MB.',
             'items.*.kategori.required' => 'Kategori tiap baris pengeluaran wajib dipilih.',
             'items.*.kategori.in'       => 'Kategori pengeluaran tidak valid.',
             'items.*.uraian.required'   => 'Uraian tiap baris pengeluaran wajib diisi.',
             'items.*.realisasi.required'=> 'Jumlah realisasi tiap baris wajib diisi.',
         ]);
 
-        $budgetRequest = BudgetRequest::awaitingLpjFrom($employee->id)
-            ->with('items')
-            ->find($request->budget_request_id);
+        // Pengajuan ulang: LPJ lama masih ada sehingga anggarannya tidak lagi lolos awaitingLpjFrom;
+        // cukup pastikan anggarannya masih disetujui/cair.
+        $budgetRequest = $original
+            ? BudgetRequest::whereIn('status', ['approved', 'paid'])->with('items')->find($original->budget_request_id)
+            : BudgetRequest::awaitingLpjFrom($employee->id)->with('items')->find($request->budget_request_id);
+
+        if (! $budgetRequest && $original) {
+            return back()->withInput()->withErrors([
+                'error' => 'Anggaran LPJ ini sudah tidak berstatus disetujui, jadi LPJ tidak bisa diajukan ulang.',
+            ]);
+        }
 
         if (! $budgetRequest) {
             $reason = LpjEligibility::whyNot((int) $request->budget_request_id, $employee->id);
@@ -89,12 +159,15 @@ class LpjController extends Controller
             return back()->withInput()->withErrors(['error' => $reason]);
         }
 
+        $storedFiles = [];
+
         DB::beginTransaction();
         try {
             $lpj = Lpj::create([
                 'budget_request_id' => $budgetRequest->id,
                 // LHP yang berlaku (bukan versi yang ditolak lalu diajukan ulang): milik pemilik dulu,
                 // bila pemilik tidak ikut berangkat pakai LHP peserta terbaru.
+                'resubmission_of_id' => $original?->id,
                 'travel_report_id'  => TravelReport::where('budget_request_id', $budgetRequest->id)
                     ->where('status', '!=', 'rejected')
                     ->orderByRaw('employee_id = ? desc', [$employee->id])
@@ -110,10 +183,23 @@ class LpjController extends Controller
             ]);
 
             // PENGELUARAN = baris realisasi bebas (berkategori), tidak diikat ke item anggaran.
+            $sourceItems = $original?->items->keyBy('id') ?? collect();
+
             foreach ($request->items as $i => $itemData) {
                 $buktFile = null;
                 if (isset($itemData['bukti_file']) && $itemData['bukti_file'] instanceof \Illuminate\Http\UploadedFile) {
                     $buktFile = $itemData['bukti_file']->store('lpj-bukti', 'public');
+                    $storedFiles[] = $buktFile;
+                } elseif ($sourceItems->has((int) ($itemData['source_item_id'] ?? 0))
+                    && ! filter_var($itemData['remove_bukti'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    // Bukti lama dipertahankan: disalin, bukan dipakai bersama, karena LPJ lama
+                    // tetap arsip dan filenya tidak boleh ikut hilang bila LPJ baru dihapus.
+                    $sourceFile = $sourceItems->get((int) $itemData['source_item_id'])->bukti_file;
+                    if ($sourceFile && Storage::disk('public')->exists($sourceFile)) {
+                        $buktFile = 'lpj-bukti/'.Str::uuid().'.'.pathinfo($sourceFile, PATHINFO_EXTENSION);
+                        Storage::disk('public')->copy($sourceFile, $buktFile);
+                        $storedFiles[] = $buktFile;
+                    }
                 }
 
                 $lpj->items()->create([
@@ -138,8 +224,8 @@ class LpjController extends Controller
             if ($firstApprover) {
                 $notif = Notification::create([
                     'employee_id'    => $firstApprover->id,
-                    'title'          => 'Pengajuan LPJ Baru',
-                    'message'        => "{$employee->full_name} mengajukan LPJ untuk {$budgetRequest->title}",
+                    'title'          => $original ? 'Pengajuan Ulang LPJ' : 'Pengajuan LPJ Baru',
+                    'message'        => "{$employee->full_name} ".($original ? 'mengajukan ulang' : 'mengajukan')." LPJ untuk {$budgetRequest->title}",
                     'type'           => 'approval',
                     'reference_type' => Lpj::class,
                     'reference_id'   => $lpj->id,
@@ -153,9 +239,12 @@ class LpjController extends Controller
             }
 
             return redirect()->route('employee.lpj.show', $lpj->id)
-                ->with('success', 'LPJ berhasil diajukan.');
+                ->with('success', $original ? 'LPJ berhasil diajukan ulang.' : 'LPJ berhasil diajukan.');
         } catch (\Throwable $e) {
             DB::rollBack();
+            // Berkas yang sudah tersimpan untuk transaksi yang gagal tidak boleh jadi yatim.
+            Storage::disk('public')->delete($storedFiles);
+
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
     }
@@ -171,6 +260,10 @@ class LpjController extends Controller
             'items',
             'approvalLogs.approver:id,full_name,photo',
             'employee:id,full_name',
+            'latestRejection.approver:id,full_name',
+            'resubmission:id,resubmission_of_id',
+            'resubmissionOf:id',
+            'resubmissionOf.latestRejection.approver:id,full_name',
         ])->visibleTo($employee->id)->findOrFail($id);
 
         return view('employee.lpj.show', compact('employee', 'lpj'));

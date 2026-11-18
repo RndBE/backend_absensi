@@ -91,6 +91,25 @@
                         </td>
                         <td class="py-3 px-3">
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold {{ $statusBg }}">{{ $statusLabel }}</span>
+                            {{-- Pengajuan ulang = baris LPJ baru; badge menautkan pasangan LPJ lama dan penggantinya. --}}
+                            @if($lpj->resubmission_of_id)
+                                <div class="mt-1">
+                                    <a href="{{ route('admin.lpj.show', ['id' => $lpj->resubmission_of_id] + \App\Support\AdminBackLink::here()) }}" title="Pengganti LPJ yang ditolak. Klik untuk membuka LPJ lama."
+                                       class="inline-flex items-center gap-0.5 whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-all">
+                                        PENGAJUAN ULANG <span class="material-symbols-outlined text-[12px]">history</span>
+                                    </a>
+                                </div>
+                            @elseif($lpj->status === 'rejected' && $lpj->resubmission)
+                                @php
+                                    $replacementStatus = ['pending' => 'Pending', 'in_review' => 'Diproses', 'approved' => 'Disetujui', 'rejected' => 'Ditolak'][$lpj->resubmission->status] ?? $lpj->resubmission->status;
+                                @endphp
+                                <div class="mt-1">
+                                    <a href="{{ route('admin.lpj.show', ['id' => $lpj->resubmission->id] + \App\Support\AdminBackLink::here()) }}" title="LPJ pengganti berstatus {{ $replacementStatus }}. Klik untuk membukanya."
+                                       class="inline-flex items-center gap-0.5 whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">
+                                        DIAJUKAN ULANG <span class="material-symbols-outlined text-[12px]">arrow_outward</span>
+                                    </a>
+                                </div>
+                            @endif
                         </td>
                         <td class="py-3 px-3 text-center">
                             <a href="{{ route('admin.lpj.show', ['id' => $lpj->id] + \App\Support\AdminBackLink::here()) }}" class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">

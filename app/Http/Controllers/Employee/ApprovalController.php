@@ -518,14 +518,19 @@ class ApprovalController extends Controller
 
         $notes = $validated['notes'] ?? null;
 
-        // LHP yang ditolak diajukan ulang oleh karyawan, jadi alasannya harus jelas.
-        if ($type === 'travel_report' && blank($notes)) {
+        // LHP dan LPJ yang ditolak diajukan ulang oleh karyawan, jadi alasannya harus jelas.
+        if (in_array($type, ['travel_report', 'lpj'], true) && blank($notes)) {
             return redirect()->route('employee.approvals.index')
-                ->with('error', 'Alasan penolakan LHP wajib diisi supaya karyawan tahu apa yang harus diperbaiki.');
+                ->with('error', "Alasan penolakan {$this->typeLabels[$type]} wajib diisi supaya karyawan tahu apa yang harus diperbaiki.");
         }
 
         $currentStep = (int) ($item->current_step ?? 1);
         $item->update(['status' => 'rejected']);
+
+        // Detail LPJ membaca alasan dari kolom ini ("Ditolak karena").
+        if ($modelClass === Lpj::class) {
+            $item->update(['rejection_reason' => $notes]);
+        }
 
         ApprovalLog::create([
             'approvable_type' => $modelClass,
@@ -708,7 +713,7 @@ class ApprovalController extends Controller
                 'resubmissionOf:id',
                 'resubmissionOf.latestRejection.approver:id,full_name',
             ],
-            'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city', 'revisions.editor:id,full_name'],
+            'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city', 'revisions.editor:id,full_name', 'resubmissionOf:id', 'resubmissionOf.latestRejection.approver:id,full_name'],
             default => ['employee:id,full_name,position,photo'],
         };
     }

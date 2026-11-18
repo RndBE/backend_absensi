@@ -281,9 +281,9 @@ class ApprovalController extends Controller
             ->whereHas('employee', fn ($q) => $q->where('company_id', $admin->company_id))
             ->findOrFail($id);
 
-        // LHP yang ditolak diajukan ulang oleh karyawan, jadi alasannya harus jelas.
-        if ($type === 'travel_report' && blank($request->notes)) {
-            return back()->with('error', 'Alasan penolakan LHP wajib diisi supaya karyawan tahu apa yang harus diperbaiki.');
+        // LHP dan LPJ yang ditolak diajukan ulang oleh karyawan, jadi alasannya harus jelas.
+        if (in_array($type, ['travel_report', 'lpj'], true) && blank($request->notes)) {
+            return back()->with('error', "Alasan penolakan {$typeLabel} wajib diisi supaya karyawan tahu apa yang harus diperbaiki.");
         }
 
         // Data change requests: only superadmin can reject
@@ -309,6 +309,11 @@ class ApprovalController extends Controller
         );
 
         $item->update(['status' => 'rejected']);
+
+        // Detail LPJ membaca alasan dari kolom ini ("Alasan Penolakan").
+        if ($modelClass === Lpj::class) {
+            $item->update(['rejection_reason' => $request->notes]);
+        }
 
         ApprovalLog::create([
             'approvable_type' => $modelClass,

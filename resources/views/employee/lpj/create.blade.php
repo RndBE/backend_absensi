@@ -1,14 +1,18 @@
 @extends('employee.layouts.app')
-@section('title', 'Buat LPJ')
+@section('title', ($resubmitOf ?? null) ? 'Ajukan Ulang LPJ' : 'Buat LPJ')
 
 @section('content')
+@php
+    $resubmitOf = $resubmitOf ?? null;
+    $previousRejection = $resubmitOf?->latestRejection;
+@endphp
 <div class="space-y-4">
     <div>
         <a href="{{ route('employee.lpj.index') }}" class="inline-flex items-center gap-1 text-[12px] font-semibold text-gray-500 hover:text-indigo-600 mb-2">
             <span class="material-symbols-outlined text-[16px]">arrow_back</span>
             Kembali
         </a>
-        <h1 class="text-[22px] font-black text-gray-900">Buat LPJ</h1>
+        <h1 class="text-[22px] font-black text-gray-900">{{ $resubmitOf ? 'Ajukan Ulang LPJ' : 'Buat LPJ' }}</h1>
         <p class="text-[13px] text-gray-500 mt-1">Laporan Pertanggungjawaban anggaran kegiatan.</p>
         <p class="text-[12px] text-gray-400 mt-1">Tiap orang membuat LPJ untuk biayanya sendiri. Biaya bersama (misalnya bensin dan tol) dilaporkan pemilik anggaran. Peserta anggaran tim melihat LPJ pemilik di daftar LPJ.</p>
     </div>
@@ -17,8 +21,24 @@
     <div class="px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[13px]">{{ $errors->first('error') }}</div>
     @endif
 
+    @if($resubmitOf)
+    <div class="rounded-xl border border-red-200 bg-red-50 p-4">
+        <div class="text-[13px] font-bold text-red-800">
+            LPJ ini ditolak
+            @if($previousRejection)
+                oleh {{ $previousRejection->approver?->full_name ?? 'approver' }} · step {{ $previousRejection->step_order }} · {{ $previousRejection->created_at?->format('d/m/Y') }}
+            @endif
+        </div>
+        <div class="mt-0.5 text-[13px] text-red-700">{{ $previousRejection?->notes ?: $resubmitOf->rejection_reason ?: 'Approver tidak menuliskan alasan penolakan.' }}</div>
+        <p class="mt-2 text-[12px] text-red-600">Isian di bawah diambil dari LPJ yang ditolak. Perbaiki lalu kirim; LPJ baru menjalani persetujuan dari awal dan LPJ lama tetap tersimpan sebagai arsip.</p>
+    </div>
+    @endif
+
     <form method="POST" action="{{ route('employee.lpj.store') }}" enctype="multipart/form-data" id="lpj-form">
         @csrf
+        @if($resubmitOf)
+        <input type="hidden" name="resubmission_of_id" value="{{ $resubmitOf->id }}">
+        @endif
 
         {{-- Pilih Anggaran --}}
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4">
@@ -42,13 +62,13 @@
                 </div>
                 <div>
                     <label class="block text-[12px] font-semibold text-gray-600 mb-1">Nomor LPJ</label>
-                    <input type="text" name="nomor_lpj" value="{{ old('nomor_lpj') }}" placeholder="contoh: menggunakan nomor surat tugas"
+                    <input type="text" name="nomor_lpj" value="{{ old('nomor_lpj', $resubmitOf?->nomor_lpj) }}" placeholder="contoh: menggunakan nomor surat tugas"
                         class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none [color-scheme:light]">
                 </div>
                 <div>
                     <label class="block text-[12px] font-semibold text-gray-600 mb-1">Catatan</label>
                     <textarea name="catatan" rows="2" placeholder="Catatan tambahan (opsional)"
-                        class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none [color-scheme:light]">{{ old('catatan') }}</textarea>
+                        class="w-full px-3 py-2.5 text-[13px] bg-white text-gray-900 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-300 outline-none [color-scheme:light]">{{ old('catatan', $resubmitOf?->catatan) }}</textarea>
                 </div>
             </div>
         </div>
@@ -144,7 +164,7 @@
         <div class="flex gap-2 justify-end">
             <a href="{{ route('employee.lpj.index') }}" class="px-5 py-2.5 text-[13px] font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Batal</a>
             <button type="submit" class="px-5 py-2.5 text-[13px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg hover:from-indigo-700 hover:to-indigo-600 shadow-sm">
-                Ajukan LPJ
+                {{ $resubmitOf ? 'Ajukan Ulang LPJ' : 'Ajukan LPJ' }}
             </button>
         </div>
     </form>
@@ -196,6 +216,7 @@ function addRow(data = {}) {
     tr.innerHTML = `
         <td class="py-2 px-3 text-center text-gray-400 row-no"></td>
         <td class="py-2 px-3">
+            ${data.source_item_id ? `<input type="hidden" name="items[${i}][source_item_id]" value="${data.source_item_id}">` : ''}
             <select name="items[${i}][kategori]" required
                 class="w-full px-2 py-1.5 text-[12px] bg-white text-gray-900 border border-gray-200 rounded focus:ring-2 focus:ring-indigo-200 outline-none [color-scheme:light] min-w-[130px]">
                 ${categoryOptions(data.kategori || '')}
@@ -219,6 +240,16 @@ function addRow(data = {}) {
                 onchange="recalcTotals()" onkeyup="recalcTotals()">
         </td>
         <td class="py-2 px-3">
+            ${data.bukti_url ? `
+            <div class="mb-1">
+                <a href="${data.bukti_url}" target="_blank" class="inline-block">${data.bukti_is_image
+                    ? `<img src="${data.bukti_url}" alt="Bukti lama" class="h-14 w-14 rounded border border-gray-200 object-cover">`
+                    : '<span class="text-[11px] text-indigo-600 underline">Lihat bukti (PDF)</span>'}</a>
+                <label class="mt-1 flex items-center gap-1 text-[11px] text-gray-500">
+                    <input type="checkbox" name="items[${i}][remove_bukti]" value="1"> Lepas bukti ini
+                </label>
+                <div class="text-[10px] text-gray-400">Unggah file baru untuk mengganti.</div>
+            </div>` : ''}
             <input type="file" name="items[${i}][bukti_file]" accept="image/*,.pdf" onchange="previewBukti(this)"
                 class="text-[11px] text-gray-500 file:mr-1 file:py-1 file:px-2 file:rounded file:border-0 file:bg-indigo-50 file:text-indigo-600 file:text-[11px] file:font-semibold">
             <img class="bukti-preview mt-1 hidden h-14 w-14 rounded border border-gray-200 object-cover" alt="Pratinjau bukti">
@@ -301,6 +332,25 @@ document.getElementById('budget_request_id').addEventListener('change', function
 renderPemasukan(@json($preloadItems), {{ (float) ($selectedRequest->lpj_total ?? 0) }});
 @endif
 
+@if($resubmitOf)
+@php
+    // Baris pengeluaran LPJ lama, lengkap dengan bukti lamanya, sebagai isian awal pengajuan ulang.
+    $resubmitRows = $resubmitOf->items->sortBy('sort_order')->map(fn ($item) => [
+        'source_item_id' => $item->id,
+        'kategori'       => $item->kategori,
+        'uraian'         => $item->uraian,
+        'satuan'         => $item->satuan,
+        'volume'         => (float) $item->volume,
+        'realisasi'      => (float) $item->realisasi,
+        'bukti_url'      => $item->bukti_file ? asset('storage/'.$item->bukti_file) : null,
+        'bukti_is_image' => $item->bukti_file
+            ? in_array(strtolower(pathinfo($item->bukti_file, PATHINFO_EXTENSION)), \App\Support\LpjPresenter::PROOF_IMAGE_EXTENSIONS, true)
+            : false,
+    ])->values();
+@endphp
+@json($resubmitRows).forEach(row => addRow(row));
+@else
 addRow();
+@endif
 </script>
 @endsection

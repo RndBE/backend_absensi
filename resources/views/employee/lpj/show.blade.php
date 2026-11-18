@@ -22,6 +22,48 @@
     <div class="px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[13px]">{{ session('success') }}</div>
     @endif
 
+    @if($lpj->status === 'rejected')
+        @php $rejection = $lpj->latestRejection; @endphp
+        <section class="rounded-xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <span class="material-symbols-outlined text-[22px] text-red-600">report</span>
+            <div class="min-w-0 flex-1">
+                <div class="text-[13px] font-bold text-red-800">
+                    LPJ ditolak
+                    @if($rejection)
+                        oleh {{ $rejection->approver?->full_name ?? 'approver' }} · step {{ $rejection->step_order }} · {{ $rejection->created_at?->format('d/m/Y') }}
+                    @endif
+                </div>
+                <div class="mt-0.5 text-[13px] text-red-700">{{ $rejection?->notes ?: $lpj->rejection_reason ?: 'Approver tidak menuliskan alasan penolakan.' }}</div>
+            </div>
+            @if($lpj->resubmission)
+                <a href="{{ route('employee.lpj.show', $lpj->resubmission->id) }}" class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-3 py-2 text-[12px] font-bold text-red-700 border border-red-200 hover:bg-red-100">
+                    <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                    Lihat LPJ pengganti
+                </a>
+            @elseif((int) $lpj->employee_id === (int) $employee->id)
+                <a href="{{ route('employee.lpj.resubmit', $lpj->id) }}" class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-red-700">
+                    <span class="material-symbols-outlined text-[16px]">refresh</span>
+                    Ajukan ulang
+                </a>
+            @endif
+        </section>
+    @endif
+
+    @if($lpj->resubmissionOf)
+        @php $previousRejection = $lpj->resubmissionOf->latestRejection; @endphp
+        <section class="rounded-xl border border-indigo-200 bg-indigo-50 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <span class="material-symbols-outlined text-[22px] text-indigo-600">history</span>
+            <div class="min-w-0 flex-1">
+                <div class="text-[13px] font-bold text-indigo-800">Pengajuan ulang dari LPJ yang ditolak</div>
+                <div class="mt-0.5 text-[13px] text-indigo-700">Alasan penolakan sebelumnya: {{ $previousRejection?->notes ?: '-' }}</div>
+            </div>
+            <a href="{{ route('employee.lpj.show', $lpj->resubmissionOf->id) }}" class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-3 py-2 text-[12px] font-bold text-indigo-700 border border-indigo-200 hover:bg-indigo-100">
+                <span class="material-symbols-outlined text-[16px]">visibility</span>
+                Lihat LPJ yang ditolak
+            </a>
+        </section>
+    @endif
+
     {{-- Status Card --}}
     @php
         $statusBg = match($lpj->status) {

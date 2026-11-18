@@ -49,6 +49,12 @@
                         @if((int) $lpj->employee_id !== (int) $employee->id)
                         <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700">LPJ Tim · {{ $lpj->employee?->full_name ?? '-' }}</span>
                         @endif
+                        @if($lpj->resubmission_of_id)
+                        <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700">Pengajuan ulang</span>
+                        @endif
+                        @if($lpj->status === 'rejected' && $lpj->resubmission_exists)
+                        <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">Sudah diajukan ulang</span>
+                        @endif
                     </div>
                     <div class="text-[14px] font-bold text-gray-900 truncate">{{ $lpj->budgetRequest?->title ?? '-' }}</div>
                     <div class="text-[12px] text-gray-500 mt-0.5">{{ $lpj->travelReport?->destination_city ?? '' }}</div>
@@ -67,10 +73,18 @@
                         </div>
                     </div>
                 </div>
-                <a href="{{ route('employee.lpj.show', $lpj->id) }}" class="shrink-0 inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">
-                    <span class="material-symbols-outlined text-[15px]">visibility</span>
-                    Detail
-                </a>
+                <div class="shrink-0 flex flex-col items-stretch gap-1.5">
+                    <a href="{{ route('employee.lpj.show', $lpj->id) }}" class="inline-flex items-center justify-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">
+                        <span class="material-symbols-outlined text-[15px]">visibility</span>
+                        Detail
+                    </a>
+                    @if((int) $lpj->employee_id === (int) $employee->id && $lpj->canBeResubmitted())
+                    <a href="{{ route('employee.lpj.resubmit', $lpj->id) }}" class="inline-flex items-center justify-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-[11px] font-bold text-red-700 hover:bg-red-100">
+                        <span class="material-symbols-outlined text-[15px]">restart_alt</span>
+                        Ajukan Ulang
+                    </a>
+                    @endif
+                </div>
             </div>
         </div>
         @empty

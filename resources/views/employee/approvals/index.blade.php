@@ -429,8 +429,8 @@
                     </div>
                     @endif
 
-                    {{-- Pengajuan ulang LHP: approver perlu tahu apa yang dulu ditolak untuk menilai perbaikannya. --}}
-                    @if($type === 'travel_report' && $request->resubmissionOf)
+                    {{-- Pengajuan ulang LHP/LPJ: approver perlu tahu apa yang dulu ditolak untuk menilai perbaikannya. --}}
+                    @if(in_array($type, ['travel_report', 'lpj'], true) && $request->resubmissionOf)
                         @php $previousRejection = $request->resubmissionOf->latestRejection; @endphp
                         <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
                             <div class="text-[11px] font-bold uppercase text-indigo-500">Ditolak sebelumnya</div>
@@ -506,12 +506,12 @@
                         </div>
                         @endif
 
-                        <details class="group rounded-lg border border-gray-200 bg-white px-3 py-2" @if($type === 'travel_report') open @endif>
+                        <details class="group rounded-lg border border-gray-200 bg-white px-3 py-2" @if(in_array($type, ['travel_report', 'lpj'], true)) open @endif>
                             <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-[12px] font-bold text-gray-600">
                                 <span class="inline-flex items-center gap-1.5">
                                     <span class="material-symbols-outlined text-[16px] text-indigo-600">edit_note</span>
                                     Tambah catatan
-                                    <span class="font-normal text-gray-400">{{ $type === 'travel_report' ? '(wajib diisi bila menolak)' : '(opsional)' }}</span>
+                                    <span class="font-normal text-gray-400">{{ in_array($type, ['travel_report', 'lpj'], true) ? '(wajib diisi bila menolak)' : '(opsional)' }}</span>
                                 </span>
                                 <span class="material-symbols-outlined text-[16px] text-gray-400 transition-transform group-open:rotate-180">expand_more</span>
                             </summary>

@@ -59,6 +59,31 @@
 <div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[13px] font-medium">{{ session('error') }}</div>
 @endif
 
+{{-- Pengajuan ulang: tautan antara LPJ yang ditolak dan penggantinya --}}
+@if($lpj->resubmissionOf)
+    @php $previousRejection = $lpj->resubmissionOf->latestRejection; @endphp
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 mb-5">
+        <span class="material-symbols-outlined text-[20px] text-indigo-600">history</span>
+        <div class="min-w-0 flex-1">
+            <div class="text-[13px] font-bold text-indigo-800">Pengajuan ulang dari LPJ yang ditolak</div>
+            <div class="text-[12.5px] text-indigo-700 mt-0.5">
+                Alasan penolakan sebelumnya: {{ $previousRejection?->notes ?: '-' }}
+                @if($previousRejection)
+                    <span class="text-indigo-500">· oleh {{ $previousRejection->approver?->full_name ?? 'approver' }}, step {{ $previousRejection->step_order }}, {{ $previousRejection->created_at?->format('d M Y') }}</span>
+                @endif
+            </div>
+        </div>
+        <a href="{{ route('admin.lpj.show', ['id' => $lpj->resubmissionOf->id] + \App\Support\AdminBackLink::forward()) }}" class="inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Lihat LPJ yang ditolak</a>
+    </div>
+@endif
+@if($lpj->resubmission)
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 mb-5">
+        <span class="material-symbols-outlined text-[20px] text-gray-500">redo</span>
+        <div class="min-w-0 flex-1 text-[13px] font-semibold text-gray-700">LPJ ini sudah diajukan ulang oleh karyawan.</div>
+        <a href="{{ route('admin.lpj.show', ['id' => $lpj->resubmission->id] + \App\Support\AdminBackLink::forward()) }}" class="inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all">Lihat LPJ pengganti</a>
+    </div>
+@endif
+
 {{-- Header Info --}}
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -136,10 +161,11 @@
         <div class="text-[13px] text-gray-700">{{ $lpj->catatan }}</div>
     </div>
     @endif
-    @if($lpj->rejection_reason && $lpj->status === 'rejected')
+    {{-- LPJ yang ditolak sebelum kolom rejection_reason diisi hanya punya alasan di log persetujuan. --}}
+    @if($lpj->status === 'rejected' && ($lpj->rejection_reason || $lpj->latestRejection?->notes))
     <div class="mt-4 pt-4 border-t border-gray-100">
         <div class="text-[11px] font-semibold text-red-400 uppercase tracking-wider mb-1">Alasan Penolakan</div>
-        <div class="text-[13px] text-red-700">{{ $lpj->rejection_reason }}</div>
+        <div class="text-[13px] text-red-700">{{ $lpj->rejection_reason ?: $lpj->latestRejection?->notes }}</div>
     </div>
     @endif
 </div>
