@@ -49,6 +49,12 @@ class Lpj extends Model
         return $this->hasMany(LpjItem::class)->orderBy('sort_order');
     }
 
+    /** Uang yang ditransfer finance untuk LPJ ini; terpisah dari realisasi pengaju. */
+    public function disbursements(): HasMany
+    {
+        return $this->hasMany(LpjDisbursement::class)->orderBy('sort_order')->orderBy('transferred_at');
+    }
+
     /** Log penolakan terakhir — sumber alasan yang ditampilkan ke pengaju dan approver. */
     public function latestRejection(): MorphOne
     {

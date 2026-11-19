@@ -503,6 +503,27 @@
                                 </button>
                             </div>
                             <p class="mt-1.5 text-[11.5px] text-emerald-700/70">Simpan dulu untuk melihatnya di Excel, atau langsung Setujui — tanggal ikut tersimpan.</p>
+
+                            {{-- Uang yang benar-benar ditransfer: tabel sendiri, tidak mengubah realisasi pengaju. --}}
+                            <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-200 pt-3">
+                                <div class="text-[12px] text-emerald-800">
+                                    <span class="font-bold">Dana transfer</span>
+                                    <span class="font-normal text-emerald-700/70">(tabel terpisah di Excel)</span>
+                                    <div class="mt-0.5 font-black">
+                                        @if($request->disbursements->isEmpty())
+                                            <span class="font-semibold text-emerald-700/70">Belum diisi</span>
+                                        @else
+                                            Rp {{ number_format((float) $request->disbursements->sum('amount'), 0, ',', '.') }}
+                                            <span class="font-semibold text-emerald-700/70">· {{ $request->disbursements->count() }} baris</span>
+                                        @endif
+                                    </div>
+                                </div>
+                                <a href="{{ route('employee.approvals.lpj.disbursements', $request->id) }}"
+                                    class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-[12px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100">
+                                    <span class="material-symbols-outlined text-[16px]">edit_note</span>
+                                    Isi dana transfer
+                                </a>
+                            </div>
                         </div>
                         @endif
 

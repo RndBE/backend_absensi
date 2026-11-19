@@ -35,7 +35,7 @@ class ApiLpjApprovalTest extends TestCase
         parent::setUp();
 
         foreach ([
-            'notifications', 'approval_logs', 'employee_approvers', 'lpj_items', 'lpj_revisions', 'lpjs', 'travel_reports',
+            'notifications', 'approval_logs', 'employee_approvers', 'lpj_items', 'lpj_disbursements', 'lpj_revisions', 'lpjs', 'travel_reports',
             'budget_request_participants', 'budget_request_items', 'budget_requests', 'leave_requests',
             'overtime_requests', 'attendance_requests', 'data_change_requests', 'departments', 'companies', 'employees',
         ] as $table) {
@@ -145,6 +145,18 @@ class ApiLpjApprovalTest extends TestCase
             $table->unsignedSmallInteger('sort_order')->default(0);
             $table->timestamps();
         });
+        Schema::create('lpj_disbursements', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('lpj_id');
+            $table->date('transferred_at');
+            $table->decimal('amount', 15, 2);
+            $table->string('notes')->nullable();
+            $table->string('proof_file')->nullable();
+            $table->unsignedBigInteger('recorded_by')->nullable();
+            $table->unsignedSmallInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+
         Schema::create('lpj_revisions', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('lpj_id');

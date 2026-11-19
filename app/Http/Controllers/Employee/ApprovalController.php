@@ -16,6 +16,7 @@ use App\Models\Notification;
 use App\Models\OvertimeRequest;
 use App\Models\TravelReport;
 use App\Services\FcmService;
+use App\Services\LpjDisbursementEditor;
 use App\Services\LpjExcelExporter;
 use App\Services\LpjFinanceEditor;
 use App\Support\AssignmentLetterApprovalFlow;
@@ -414,6 +415,47 @@ class ApprovalController extends Controller
             ->with('success', 'Rincian LPJ disimpan. Lanjutkan dengan menyetujui atau menolak.');
     }
 
+    /**
+     * Form tabel uang yang ditransfer finance untuk LPJ ini. Terpisah dari realisasi pengaju:
+     * finance hanya mencatat, tidak mengubah rincian pengeluaran.
+     */
+    public function editLpjDisbursements(Request $request, int $id)
+    {
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $lpj = Lpj::with(['employee:id,full_name', 'budgetRequest:id,title', 'disbursements'])->findOrFail($id);
+
+        if (! $this->canActOn($employee, 'lpj', $lpj) || ! BudgetSignatureSlots::isFinance($employee)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Hanya finance pada step aktif yang bisa mengisi dana transfer.');
+        }
+
+        return view('employee.approvals.lpj-disbursements', ['lpj' => $lpj]);
+    }
+
+    public function updateLpjDisbursements(Request $request, int $id)
+    {
+        $validated = $request->validate(LpjDisbursementEditor::rules(), LpjDisbursementEditor::messages());
+
+        /** @var Employee $employee */
+        $employee = $request->attributes->get('employee');
+        $lpj = Lpj::findOrFail($id);
+
+        if (! $this->canActOn($employee, 'lpj', $lpj) || ! BudgetSignatureSlots::isFinance($employee)) {
+            return redirect()->route('employee.approvals.index')
+                ->with('error', 'Hanya finance pada step aktif yang bisa mengisi dana transfer.');
+        }
+
+        try {
+            LpjDisbursementEditor::save($lpj, $employee, $validated['disbursements'] ?? []);
+        } catch (InvalidArgumentException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+
+        return redirect()->route('employee.approvals.index')
+            ->with('success', 'Dana transfer disimpan. Excel LPJ sudah memuatnya.');
+    }
+
     public function printDecision(Request $request, string $type, int $id)
     {
         /** @var Employee $employee */
@@ -713,7 +755,7 @@ class ApprovalController extends Controller
                 'resubmissionOf:id',
                 'resubmissionOf.latestRejection.approver:id,full_name',
             ],
-            'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city', 'revisions.editor:id,full_name', 'resubmissionOf:id', 'resubmissionOf.latestRejection.approver:id,full_name'],
+            'lpj' => ['employee:id,full_name,position,photo', 'budgetRequest:id,title,total_amount', 'travelReport:id,destination_city', 'revisions.editor:id,full_name', 'disbursements', 'resubmissionOf:id', 'resubmissionOf.latestRejection.approver:id,full_name'],
             default => ['employee:id,full_name,position,photo'],
         };
     }

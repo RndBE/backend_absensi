@@ -12,6 +12,7 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -35,7 +36,7 @@ class LpjExcelExporter
     {
         $lpj->loadMissing([
             'employee', 'employee.department', 'budgetRequest', 'budgetRequest.items',
-            'travelReport', 'items', 'approvalLogs.approver',
+            'travelReport', 'items', 'approvalLogs.approver', 'disbursements.recorder',
         ]);
 
         $sum = LpjSummary::for($lpj);
@@ -219,6 +220,57 @@ class LpjExcelExporter
         self::totalRow($sheet, "A{$row}:H{$row}", $thin);
         $row += 2;
 
+        // ════════════ DANA DITRANSFER FINANCE (tabel sendiri, terpisah dari realisasi pengaju) ════════════
+        $sheet->mergeCells("A{$row}:H{$row}");
+        $sheet->setCellValue("A{$row}", 'DANA DITRANSFER FINANCE');
+        self::sectionHeader($sheet, "A{$row}:H{$row}", '92D050', $thin);
+        $row++;
+
+        $sheet->setCellValue("A{$row}", 'NO');
+        $sheet->setCellValue("B{$row}", 'TANGGAL');
+        $sheet->setCellValue("C{$row}", 'DITRANSFER OLEH');
+        $sheet->setCellValue("D{$row}", 'JUMLAH');
+        $sheet->mergeCells("E{$row}:G{$row}");
+        $sheet->setCellValue("E{$row}", 'KETERANGAN');
+        $sheet->setCellValue("H{$row}", 'BUKTI TRANSFER');
+        self::columnHeader($sheet, "A{$row}:H{$row}", $thin);
+        $sheet->getRowDimension($row)->setRowHeight(26);
+        $row++;
+
+        $totalTransfer = 0.0;
+        $disbursements = $lpj->disbursements;
+        $disbursementRows = max(1, $disbursements->count());
+        for ($k = 0; $k < $disbursementRows; $k++) {
+            $d = $disbursements->get($k);
+            $sheet->setCellValue("A{$row}", $k + 1);
+            $sheet->mergeCells("E{$row}:G{$row}");
+            if ($d) {
+                $totalTransfer += (float) $d->amount;
+                $sheet->setCellValue("B{$row}", $d->transferred_at?->format('d/m/Y'));
+                $sheet->setCellValue("C{$row}", $d->recorder?->full_name ?? '');
+                $sheet->setCellValue("D{$row}", (float) $d->amount);
+                $sheet->setCellValue("E{$row}", $d->notes ?? '');
+            }
+            $sheet->getStyle("D{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
+            $sheet->getStyle("A{$row}:H{$row}")->applyFromArray([
+                'font' => ['size' => 9],
+                'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
+                'borders' => $thin,
+            ]);
+            $sheet->getStyle("A{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("B{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            if ($d) {
+                self::placeBukti($sheet, $d->proof_file, "H{$row}", $row);
+            }
+            $row++;
+        }
+        $sheet->mergeCells("A{$row}:C{$row}");
+        $sheet->setCellValue("A{$row}", 'Total Ditransfer');
+        $sheet->setCellValue("D{$row}", $totalTransfer);
+        $sheet->getStyle("D{$row}")->getNumberFormat()->setFormatCode($moneyFmt);
+        self::totalRow($sheet, "A{$row}:H{$row}", $thin);
+        $row += 2;
+
         // ── Tanda tangan ──
         $sheet->mergeCells("A{$row}:C{$row}");
         $sheet->setCellValue("A{$row}", 'Yang Membuat,');
@@ -271,6 +323,11 @@ class LpjExcelExporter
         $sheet->getStyle($first)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
     }
 
+    /**
+     * Foto bukti ditanam di sel. JPG/PNG/GIF langsung; WEBP diubah ke PNG karena xlsx tidak menyimpannya.
+     * Berkas lain (PDF, HEIC, dst) atau berkas yang hilang/rusak tidak bisa jadi gambar, jadi sel berisi
+     * tautan yang bisa diklik ke berkasnya.
+     */
     private static function placeBukti($sheet, ?string $buktiFile, string $cell, int $row): void
     {
         if (! $buktiFile) {
@@ -279,8 +336,9 @@ class LpjExcelExporter
 
         $ext = strtolower(pathinfo($buktiFile, PATHINFO_EXTENSION));
         $abs = Storage::disk('public')->path($buktiFile);
+        $exists = is_file($abs);
 
-        if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif'], true) && is_file($abs)) {
+        if ($exists && in_array($ext, ['jpg', 'jpeg', 'png', 'gif'], true)) {
             $drawing = new Drawing();
             $drawing->setPath($abs);
             $drawing->setHeight(46);
@@ -289,9 +347,31 @@ class LpjExcelExporter
             $drawing->setCoordinates($cell);
             $drawing->setWorksheet($sheet);
             $sheet->getRowDimension($row)->setRowHeight(50);
-        } else {
-            $sheet->setCellValue($cell, strtoupper($ext ?: 'FILE') . ' (lihat sistem)');
+
+            return;
         }
+
+        if ($exists && $ext === 'webp' && function_exists('imagecreatefromwebp') && ($image = @imagecreatefromwebp($abs))) {
+            $drawing = new MemoryDrawing();
+            $drawing->setImageResource($image);
+            $drawing->setRenderingFunction(MemoryDrawing::RENDERING_PNG);
+            $drawing->setMimeType(MemoryDrawing::MIMETYPE_DEFAULT);
+            $drawing->setHeight(46);
+            $drawing->setOffsetX(4);
+            $drawing->setOffsetY(4);
+            $drawing->setCoordinates($cell);
+            $drawing->setWorksheet($sheet);
+            $sheet->getRowDimension($row)->setRowHeight(50);
+
+            return;
+        }
+
+        $sheet->setCellValue($cell, 'Lihat bukti (' . strtoupper($ext ?: 'file') . ')');
+        $sheet->getCell($cell)->getHyperlink()->setUrl(asset('storage/' . $buktiFile));
+        $sheet->getStyle($cell)->applyFromArray([
+            'font' => ['color' => ['rgb' => '0563C1'], 'underline' => 'single', 'size' => 9],
+            'alignment' => ['wrapText' => true, 'horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
     }
 
     private static function styleTitle($sheet, string $range, int $size): void

@@ -29,6 +29,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'travel_report_documents',
             'travel_report_activities',
             'lpj_items',
+            'lpj_disbursements',
             'lpj_revisions',
             'lpjs',
             'travel_reports',
@@ -340,6 +341,18 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->json('before');
             $table->json('after');
             $table->text('notes')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('lpj_disbursements', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('lpj_id');
+            $table->date('transferred_at');
+            $table->decimal('amount', 15, 2);
+            $table->string('notes')->nullable();
+            $table->string('proof_file')->nullable();
+            $table->unsignedBigInteger('recorded_by')->nullable();
+            $table->unsignedSmallInteger('sort_order')->default(0);
             $table->timestamps();
         });
 
@@ -2354,6 +2367,150 @@ class EmployeeBudgetTravelPortalTest extends TestCase
 
         $this->assertDatabaseHas('lpj_items', ['id' => $itemId, 'realisasi' => 50000]);
         $this->assertSame(0, DB::table('lpj_revisions')->count());
+    }
+
+    public function test_finance_records_transferred_money_without_touching_the_requesters_realisation(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fin@example.test', 'full_name' => 'Maritza Finance', 'position' => 'Finance', 'department_id' => 1]);
+        $this->seedApprover(1, 'lpj', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        $lpjId = DB::table('lpjs')->insertGetId([
+            'employee_id' => 1, 'budget_request_id' => $budgetId, 'nomor_lpj' => 'LPJ-DANA',
+            'total_anggaran' => 100000, 'total_realisasi' => 90000, 'sisa' => 10000,
+            'status' => 'pending', 'current_step' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $itemId = DB::table('lpj_items')->insertGetId([
+            'lpj_id' => $lpjId, 'uraian' => 'Bensin', 'kategori' => 'transport', 'anggaran' => 0, 'realisasi' => 90000,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/approvals')
+            ->assertOk()
+            ->assertSee("/employee/approvals/lpj/{$lpjId}/disbursements", false);
+
+        $this->withSession(['employee_id' => 2])
+            ->get("/employee/approvals/lpj/{$lpjId}/disbursements")
+            ->assertOk()
+            ->assertSee('Uang yang Ditransfer');
+
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/lpj/{$lpjId}/disbursements", [
+                'disbursements' => [
+                    ['transferred_at' => '2026-06-10', 'amount' => 60000, 'notes' => 'Termin 1'],
+                    ['transferred_at' => '2026-06-12', 'amount' => 30000],
+                ],
+            ])
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertDatabaseHas('lpj_disbursements', ['lpj_id' => $lpjId, 'amount' => 60000, 'notes' => 'Termin 1', 'recorded_by' => 2, 'sort_order' => 0]);
+        $this->assertDatabaseHas('lpj_disbursements', ['lpj_id' => $lpjId, 'amount' => 30000, 'notes' => null, 'sort_order' => 1]);
+
+        // Realisasi pengaju utuh dan tidak ada revisi: ini bukan koreksi rincian.
+        $this->assertDatabaseHas('lpj_items', ['id' => $itemId, 'realisasi' => 90000]);
+        $this->assertDatabaseHas('lpjs', ['id' => $lpjId, 'total_realisasi' => 90000]);
+        $this->assertSame(0, DB::table('lpj_revisions')->count());
+
+        // Menyimpan lagi mengganti seluruh tabel; kosong berarti tidak ada transfer.
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/lpj/{$lpjId}/disbursements", [
+                'disbursements' => [['transferred_at' => '2026-06-13', 'amount' => 90000]],
+            ]);
+        $this->assertSame(1, DB::table('lpj_disbursements')->where('lpj_id', $lpjId)->count());
+
+        $this->withSession(['employee_id' => 2])->put("/employee/approvals/lpj/{$lpjId}/disbursements", []);
+        $this->assertSame(0, DB::table('lpj_disbursements')->where('lpj_id', $lpjId)->count());
+
+        // Isian tidak valid ditolak.
+        $this->withSession(['employee_id' => 2])
+            ->put("/employee/approvals/lpj/{$lpjId}/disbursements", ['disbursements' => [['amount' => 1000]]])
+            ->assertSessionHasErrors('disbursements.0.transferred_at');
+    }
+
+    public function test_finance_uploads_transfer_proof_and_it_survives_resaving(): void
+    {
+        Storage::fake('public');
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fin@example.test', 'full_name' => 'Maritza Finance', 'position' => 'Finance', 'department_id' => 1]);
+        $this->seedApprover(1, 'lpj', 2);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        $lpjId = DB::table('lpjs')->insertGetId([
+            'employee_id' => 1, 'budget_request_id' => $budgetId, 'nomor_lpj' => 'LPJ-BUKTI',
+            'total_anggaran' => 100000, 'total_realisasi' => 90000, 'sisa' => 10000,
+            'status' => 'pending', 'current_step' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $url = "/employee/approvals/lpj/{$lpjId}/disbursements";
+
+        $this->withSession(['employee_id' => 2])->put($url, ['disbursements' => [
+            ['transferred_at' => '2026-06-10', 'amount' => 60000, 'proof_file' => UploadedFile::fake()->image('bukti1.jpg')],
+            ['transferred_at' => '2026-06-12', 'amount' => 30000, 'proof_file' => UploadedFile::fake()->create('bukti2.pdf', 50, 'application/pdf')],
+        ]])->assertRedirect(route('employee.approvals.index'));
+
+        $first = DB::table('lpj_disbursements')->where('amount', 60000)->first();
+        $second = DB::table('lpj_disbursements')->where('amount', 30000)->first();
+        Storage::disk('public')->assertExists($first->proof_file);
+        Storage::disk('public')->assertExists($second->proof_file);
+
+        $this->withSession(['employee_id' => 2])->get($url)->assertOk()->assertSee(basename($first->proof_file));
+
+        // Simpan ulang tanpa berkas baru: bukti lama tetap. Baris kedua dilepas buktinya.
+        $this->withSession(['employee_id' => 2])->put($url, ['disbursements' => [
+            ['id' => $first->id, 'transferred_at' => '2026-06-10', 'amount' => 65000],
+            ['id' => $second->id, 'transferred_at' => '2026-06-12', 'amount' => 30000, 'remove_proof' => '1'],
+        ]]);
+        $this->assertDatabaseHas('lpj_disbursements', ['id' => $first->id, 'amount' => 65000, 'proof_file' => $first->proof_file]);
+        $this->assertDatabaseHas('lpj_disbursements', ['id' => $second->id, 'proof_file' => null]);
+        Storage::disk('public')->assertExists($first->proof_file);
+        Storage::disk('public')->assertMissing($second->proof_file);
+
+        // Berkas diganti: yang lama dibuang. Baris dihapus: buktinya ikut dibuang.
+        $this->withSession(['employee_id' => 2])->put($url, ['disbursements' => [
+            ['id' => $first->id, 'transferred_at' => '2026-06-10', 'amount' => 65000, 'proof_file' => UploadedFile::fake()->image('baru.png')],
+        ]]);
+        Storage::disk('public')->assertMissing($first->proof_file);
+        $this->assertSame(1, DB::table('lpj_disbursements')->count());
+        $replaced = DB::table('lpj_disbursements')->first();
+        Storage::disk('public')->assertExists($replaced->proof_file);
+
+        $this->withSession(['employee_id' => 2])->put($url, []);
+        Storage::disk('public')->assertMissing($replaced->proof_file);
+        $this->assertSame(0, DB::table('lpj_disbursements')->count());
+
+        // Berkas bukan gambar/PDF ditolak, dan id milik LPJ lain ditolak.
+        $this->withSession(['employee_id' => 2])->put($url, ['disbursements' => [
+            ['transferred_at' => '2026-06-10', 'amount' => 1, 'proof_file' => UploadedFile::fake()->create('virus.exe', 10)],
+        ]])->assertSessionHasErrors('disbursements.0.proof_file');
+        $this->withSession(['employee_id' => 2])->put($url, ['disbursements' => [
+            ['id' => 99999, 'transferred_at' => '2026-06-10', 'amount' => 1],
+        ]])->assertSessionHas('error');
+    }
+
+    public function test_only_the_active_finance_approver_can_record_lpj_transfers(): void
+    {
+        $this->seedEmployee(['department_id' => 1]);
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'fin@example.test', 'full_name' => 'Maritza Finance', 'position' => 'Finance', 'department_id' => 1]);
+        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'mgr@example.test', 'full_name' => 'Manager', 'position' => 'Manager', 'department_id' => 1]);
+        $this->seedApprover(1, 'lpj', 3);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        $lpjId = DB::table('lpjs')->insertGetId([
+            'employee_id' => 1, 'budget_request_id' => $budgetId, 'nomor_lpj' => 'LPJ-Y',
+            'total_anggaran' => 50000, 'total_realisasi' => 50000, 'sisa' => 0,
+            'status' => 'pending', 'current_step' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $payload = ['disbursements' => [['transferred_at' => '2026-06-10', 'amount' => 50000]]];
+
+        // Approver aktif non-finance, finance di luar step aktif, dan pengaju: semua ditolak.
+        foreach ([3, 2, 1] as $employeeId) {
+            $this->withSession(['employee_id' => $employeeId])
+                ->put("/employee/approvals/lpj/{$lpjId}/disbursements", $payload)
+                ->assertSessionHas('error');
+        }
+        $this->withSession(['employee_id' => 3])
+            ->get("/employee/approvals/lpj/{$lpjId}/disbursements")
+            ->assertRedirect(route('employee.approvals.index'));
+
+        $this->assertSame(0, DB::table('lpj_disbursements')->count());
     }
 
     public function test_rejecting_an_lpj_needs_a_reason_and_stores_it(): void

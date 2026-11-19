@@ -215,6 +215,9 @@ Route::prefix('employee')->name('employee.')->middleware(EmployeeAuth::class)->g
     Route::get('/approvals/lpj/{id}/print', [EmployeeApprovalController::class, 'printLpj'])->name('approvals.lpj.print');
     Route::get('/approvals/lpj/{id}/export-excel', [EmployeeApprovalController::class, 'exportLpjExcel'])->name('approvals.lpj.export-excel');
     Route::post('/approvals/lpj/{id}/transfer-date', [EmployeeApprovalController::class, 'saveLpjTransferDate'])->name('approvals.lpj.transfer-date');
+    // Finance mencatat uang yang ditransfer; tabel sendiri, tidak mengubah realisasi pengaju.
+    Route::get('/approvals/lpj/{id}/disbursements', [EmployeeApprovalController::class, 'editLpjDisbursements'])->name('approvals.lpj.disbursements');
+    Route::put('/approvals/lpj/{id}/disbursements', [EmployeeApprovalController::class, 'updateLpjDisbursements'])->name('approvals.lpj.disbursements.update');
     // Finance di step aktif boleh mengoreksi realisasi & keterangan item LPJ sebelum memutuskan.
     Route::get('/approvals/lpj/{id}/edit', [EmployeeApprovalController::class, 'editLpj'])->name('approvals.lpj.edit');
     Route::put('/approvals/lpj/{id}', [EmployeeApprovalController::class, 'updateLpj'])->name('approvals.lpj.update');

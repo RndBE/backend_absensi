@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Models\BudgetRequest;
 use App\Models\BudgetRequestItem;
 use App\Models\Lpj;
+use App\Models\LpjDisbursement;
 use App\Models\LpjItem;
 use App\Services\LpjExcelExporter;
 use App\Support\BudgetSignatureSlots;
@@ -14,6 +15,9 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
 use Tests\TestCase;
 
 class LpjExcelExporterTest extends TestCase
@@ -36,6 +40,19 @@ class LpjExcelExporterTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('budget_request_id')->nullable();
             $table->unsignedBigInteger('employee_id');
+            $table->timestamps();
+        });
+
+        Schema::dropIfExists('lpj_disbursements');
+        Schema::create('lpj_disbursements', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('lpj_id')->nullable();
+            $table->date('transferred_at');
+            $table->decimal('amount', 15, 2);
+            $table->string('notes')->nullable();
+            $table->string('proof_file')->nullable();
+            $table->unsignedBigInteger('recorded_by')->nullable();
+            $table->unsignedSmallInteger('sort_order')->default(0);
             $table->timestamps();
         });
 
@@ -214,6 +231,128 @@ class LpjExcelExporterTest extends TestCase
         $this->assertSame(300000.0, (float) $sheet->getCell("D{$tolRow}")->getValue());
         $this->assertSame('Makan', $sheet->getCell("C{$mealRow}")->getValue());
         $this->assertSame(80000.0, (float) $sheet->getCell("D{$mealRow}")->getValue());
+    }
+
+    public function test_export_lists_finance_transfers_in_their_own_table_without_touching_realisation(): void
+    {
+        $lpj = new Lpj(['total_anggaran' => 500000, 'total_realisasi' => 120000]);
+        $lpj->setRelation('employee', new Employee(['full_name' => 'Afif']));
+        $lpj->setRelation('budgetRequest', null);
+        $lpj->setRelation('travelReport', null);
+        $lpj->setRelation('approvalLogs', new Collection());
+        $lpj->setRelation('items', new Collection([
+            new LpjItem(['uraian' => 'Bensin', 'kategori' => 'transport', 'anggaran' => 0, 'realisasi' => 120000]),
+        ]));
+
+        $maritza = new Employee(['full_name' => 'Maritza']);
+        $first = new LpjDisbursement(['transferred_at' => '2026-11-10', 'amount' => 300000, 'notes' => 'Transfer awal']);
+        $first->setRelation('recorder', $maritza);
+        $second = new LpjDisbursement(['transferred_at' => '2026-11-12', 'amount' => 200000, 'notes' => 'Tambahan']);
+        $second->setRelation('recorder', $maritza);
+        $lpj->setRelation('disbursements', new Collection([$first, $second]));
+
+        $sheet = LpjExcelExporter::build($lpj)->getActiveSheet();
+
+        $this->assertNotNull($this->findRowByColumnValue($sheet, 'A', 'DANA DITRANSFER FINANCE'));
+        $this->assertNotNull($this->findRowByColumnValue($sheet, 'H', 'BUKTI TRANSFER'));
+
+        $awal = $this->findRowByColumnValue($sheet, 'E', 'Transfer awal');
+        $tambahan = $this->findRowByColumnValue($sheet, 'E', 'Tambahan');
+        $this->assertNotNull($awal);
+        $this->assertNotNull($tambahan);
+        $this->assertSame('10/11/2026', $sheet->getCell("B{$awal}")->getValue());
+        $this->assertSame('Maritza', $sheet->getCell("C{$awal}")->getValue());
+        $this->assertSame(300000.0, (float) $sheet->getCell("D{$awal}")->getValue());
+        $this->assertSame(200000.0, (float) $sheet->getCell("D{$tambahan}")->getValue());
+
+        $totalRow = $this->findRowByColumnValue($sheet, 'A', 'Total Ditransfer');
+        $this->assertNotNull($totalRow);
+        $this->assertSame(500000.0, (float) $sheet->getCell("D{$totalRow}")->getValue());
+
+        // Realisasi pengaju tetap 120.000: dana transfer tidak ikut terhitung sebagai pengeluaran.
+        $pengeluaranRow = $this->findRowByColumnValue($sheet, 'C', 'TOTAL PENGELUARAN');
+        $this->assertSame(120000.0, (float) $sheet->getCell("E{$pengeluaranRow}")->getValue());
+    }
+
+    public function test_export_without_transfers_still_renders_an_empty_table(): void
+    {
+        $lpj = new Lpj(['total_anggaran' => 0, 'total_realisasi' => 0]);
+        $lpj->setRelation('employee', new Employee(['full_name' => 'Afif']));
+        $lpj->setRelation('budgetRequest', null);
+        $lpj->setRelation('travelReport', null);
+        $lpj->setRelation('approvalLogs', new Collection());
+        $lpj->setRelation('items', new Collection());
+        $lpj->setRelation('disbursements', new Collection());
+
+        $sheet = LpjExcelExporter::build($lpj)->getActiveSheet();
+
+        $totalRow = $this->findRowByColumnValue($sheet, 'A', 'Total Ditransfer');
+        $this->assertNotNull($totalRow);
+        $this->assertSame(0.0, (float) $sheet->getCell("D{$totalRow}")->getValue());
+    }
+
+    public function test_transfer_proof_is_embedded_for_images_and_linked_for_other_files(): void
+    {
+        if (! function_exists('imagecreatefromwebp') || ! function_exists('imagewebp')) {
+            $this->markTestSkipped('GD tanpa dukungan WEBP.');
+        }
+
+        Storage::fake('public');
+        $image = imagecreatetruecolor(40, 30);
+        ob_start();
+        imagejpeg($image);
+        Storage::disk('public')->put('lpj-transfer-bukti/a.jpg', ob_get_clean());
+        ob_start();
+        imagewebp($image);
+        Storage::disk('public')->put('lpj-transfer-bukti/b.webp', ob_get_clean());
+        Storage::disk('public')->put('lpj-transfer-bukti/c.pdf', '%PDF-1.4 contoh');
+
+        $lpj = new Lpj(['total_anggaran' => 0, 'total_realisasi' => 0]);
+        $lpj->setRelation('employee', new Employee(['full_name' => 'Afif']));
+        $lpj->setRelation('budgetRequest', null);
+        $lpj->setRelation('travelReport', null);
+        $lpj->setRelation('approvalLogs', new Collection());
+        $lpj->setRelation('items', new Collection());
+        $rows = [];
+        foreach (['a.jpg', 'b.webp', 'c.pdf', 'hilang.heic'] as $i => $name) {
+            $d = new LpjDisbursement(['transferred_at' => '2026-11-1'.$i, 'amount' => 1000, 'notes' => "baris {$name}", 'proof_file' => 'lpj-transfer-bukti/'.$name]);
+            $d->setRelation('recorder', new Employee(['full_name' => 'Maritza']));
+            $rows[] = $d;
+        }
+        $lpj->setRelation('disbursements', new Collection($rows));
+
+        $spreadsheet = LpjExcelExporter::build($lpj);
+        $sheet = $spreadsheet->getActiveSheet();
+        $rowOf = fn (string $name) => $this->findRowByColumnValue($sheet, 'E', "baris {$name}");
+
+        $drawings = collect($sheet->getDrawingCollection());
+        $at = fn (string $name) => $drawings->first(fn ($d) => $d->getCoordinates() === 'H'.$rowOf($name));
+
+        $this->assertInstanceOf(Drawing::class, $at('a.jpg'));
+        $this->assertInstanceOf(MemoryDrawing::class, $at('b.webp'));
+        $this->assertCount(2, $drawings);
+
+        // File xlsx hasil simpan memuat dua gambar: JPG asli dan WEBP yang sudah menjadi PNG.
+        $path = tempnam(sys_get_temp_dir(), 'lpj').'.xlsx';
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save($path);
+        $zip = new \ZipArchive();
+        $zip->open($path);
+        $media = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            if (str_starts_with($zip->getNameIndex($i), 'xl/media/')) {
+                $media[] = strtolower(pathinfo($zip->getNameIndex($i), PATHINFO_EXTENSION));
+            }
+        }
+        $zip->close();
+        @unlink($path);
+        sort($media);
+        $this->assertSame(['jpg', 'png'], $media);
+
+        foreach (['c.pdf' => 'PDF', 'hilang.heic' => 'HEIC'] as $name => $label) {
+            $cell = 'H'.$rowOf($name);
+            $this->assertSame("Lihat bukti ({$label})", $sheet->getCell($cell)->getValue());
+            $this->assertStringEndsWith('/storage/lpj-transfer-bukti/'.$name, $sheet->getCell($cell)->getHyperlink()->getUrl());
+        }
     }
 
     private function findRowByColumnValue($sheet, string $column, string $value): ?int
