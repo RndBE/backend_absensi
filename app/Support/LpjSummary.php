@@ -19,7 +19,7 @@ class LpjSummary
 {
     public static function for(Lpj $lpj): array
     {
-        $lpj->loadMissing(['items', 'budgetRequest.items']);
+        $lpj->loadMissing(['items', 'budgetRequest.items', 'disbursements']);
 
         // Pemasukan hanya baris biaya milik pembuat LPJ ini (biaya bersama ada di LPJ pemilik).
         // LPJ yang dibuat peserta sebelum anggaran dipecah per orang tidak punya baris atas
@@ -91,8 +91,15 @@ class LpjSummary
         // Perihal/kategori yang over budget (untuk label "OVER BUDGET (…)").
         $overCategories = $perKategori->where('over', '>', 0)->pluck('perihal')->values();
 
-        // Saldo = pemasukan − pengeluaran + over-budget (porsi over di-reimburse terpisah).
-        $saldo = $totalPemasukan - $totalPengeluaran + $totalOver;
+        // Dana yang benar-benar ditransfer finance. Selama belum ada yang dicatat, saldo memakai anggaran
+        // (pemasukan) sebagai dasar supaya LPJ lama tidak tampak minus sebesar seluruh pengeluarannya.
+        $totalDitransfer = (float) $lpj->disbursements->sum('amount');
+        $hasTransfer = $lpj->disbursements->isNotEmpty();
+        $saldoDasar = $hasTransfer ? $totalDitransfer : $totalPemasukan;
+
+        // Saldo = dasar (dana ditransfer, atau anggaran bila belum ada) − pengeluaran + over-budget
+        // (porsi over di-reimburse terpisah).
+        $saldo = $saldoDasar - $totalPengeluaran + $totalOver;
 
         return [
             'pemasukan'         => $pemasukan,
@@ -102,6 +109,8 @@ class LpjSummary
             'per_kategori'      => $perKategori,
             'total_over_budget' => $totalOver,
             'over_categories'   => $overCategories,
+            'total_ditransfer'  => $totalDitransfer,
+            'has_transfer'      => $hasTransfer,
             'saldo'             => $saldo,
         ];
     }

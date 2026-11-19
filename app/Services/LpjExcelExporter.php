@@ -154,11 +154,13 @@ class LpjExcelExporter
         if ($sum['over_categories']->isNotEmpty()) {
             $overLabel .= ' (' . strtoupper($sum['over_categories']->implode(', ')) . ')';
         }
+        // Saldo dihitung dari dana yang ditransfer finance; sebelum ada yang dicatat, dari anggaran.
         $summary = [
             ['TOTAL PEMASUKAN',   $sum['total_pemasukan'],    'FFFFFF', '000000'],
+            ['TOTAL DITRANSFER',  $sum['has_transfer'] ? $sum['total_ditransfer'] : 'Belum diisi', 'E2EFDA', '000000'],
             ['TOTAL PENGELUARAN', $sum['total_pengeluaran'],  'FF0000', 'FFFFFF'],
             [$overLabel,          -$sum['total_over_budget'], 'F2DCDB', '000000'],
-            ['SALDO',             $sum['saldo'],              'E4DFEC', '000000'],
+            [$sum['has_transfer'] ? 'SALDO' : 'SALDO (dari anggaran)', $sum['saldo'], 'E4DFEC', '000000'],
         ];
         foreach ($summary as [$label, $value, $bg, $fg]) {
             $sheet->mergeCells("C{$row}:D{$row}");

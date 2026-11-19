@@ -124,7 +124,8 @@ class LpjExcelExporterTest extends TestCase
 
         $this->assertNotNull($summaryRow);
         $this->assertSame(-180000.0, (float) $sheet->getCell("E{$summaryRow}")->getValue());
-        $this->assertSame('SALDO', $sheet->getCell('C' . ($summaryRow + 1))->getValue());
+        // Belum ada dana transfer: saldo memakai anggaran sebagai dasar dan labelnya mengatakannya.
+        $this->assertSame('SALDO (dari anggaran)', $sheet->getCell('C' . ($summaryRow + 1))->getValue());
         // Saldo = pemasukan 200k - pengeluaran 380k + over 180k = 0 (over di-reimburse terpisah).
         $this->assertSame(0.0, (float) $sheet->getCell('E' . ($summaryRow + 1))->getValue());
     }
@@ -353,6 +354,60 @@ class LpjExcelExporterTest extends TestCase
             $this->assertSame("Lihat bukti ({$label})", $sheet->getCell($cell)->getValue());
             $this->assertStringEndsWith('/storage/lpj-transfer-bukti/'.$name, $sheet->getCell($cell)->getHyperlink()->getUrl());
         }
+    }
+
+    public function test_saldo_uses_money_transferred_by_finance_and_still_adds_back_over_budget(): void
+    {
+        $build = function (array $transfers) {
+            $budgetRequest = new BudgetRequest(['title' => 'Perjalanan', 'total_amount' => 200000]);
+            $budgetRequest->setRelation('items', new Collection([
+                new BudgetRequestItem(['id' => 10, 'description' => 'Tol', 'type' => 'transport', 'amount' => 150000]),
+                new BudgetRequestItem(['id' => 11, 'description' => 'Makan', 'type' => 'meal', 'amount' => 50000]),
+            ]));
+
+            $lpj = new Lpj(['total_anggaran' => 200000, 'total_realisasi' => 380000]);
+            $lpj->setRelation('employee', new Employee(['full_name' => 'Zaeni']));
+            $lpj->setRelation('budgetRequest', $budgetRequest);
+            $lpj->setRelation('travelReport', null);
+            $lpj->setRelation('approvalLogs', new Collection());
+            // Tol 300k (over 150k dari anggaran 150k), Makan 80k (over 30k): over 180k, pengeluaran 380k.
+            $lpj->setRelation('items', new Collection([
+                new LpjItem(['uraian' => 'Tol', 'kategori' => 'transport', 'anggaran' => 0, 'realisasi' => 300000]),
+                new LpjItem(['uraian' => 'Makan', 'kategori' => 'meal', 'anggaran' => 0, 'realisasi' => 80000]),
+            ]));
+            $lpj->setRelation('disbursements', new Collection(array_map(
+                fn ($amount) => new LpjDisbursement(['transferred_at' => '2026-11-10', 'amount' => $amount]),
+                $transfers
+            )));
+
+            return $lpj;
+        };
+
+        // Anggaran 200k, tapi finance hanya mentransfer 120k + 100k = 220k.
+        $lpj = $build([120000, 100000]);
+        $sum = \App\Support\LpjSummary::for($lpj);
+        $this->assertTrue($sum['has_transfer']);
+        $this->assertSame(220000.0, $sum['total_ditransfer']);
+        $this->assertSame(200000.0, $sum['total_pemasukan']);
+        // Saldo = ditransfer 220k - pengeluaran 380k + over 180k = 20k.
+        $this->assertSame(20000.0, $sum['saldo']);
+
+        $sheet = LpjExcelExporter::build($lpj)->getActiveSheet();
+        $ditransfer = $this->findRowByColumnValue($sheet, 'C', 'TOTAL DITRANSFER');
+        $this->assertNotNull($ditransfer);
+        $this->assertSame(220000.0, (float) $sheet->getCell("E{$ditransfer}")->getValue());
+        $this->assertSame('TOTAL PENGELUARAN', $sheet->getCell('C'.($ditransfer + 1))->getValue());
+        $saldoRow = $this->findRowByColumnValue($sheet, 'C', 'SALDO');
+        $this->assertNotNull($saldoRow);
+        $this->assertSame(20000.0, (float) $sheet->getCell("E{$saldoRow}")->getValue());
+
+        // Tanpa dana transfer: baris menulis "Belum diisi" dan saldo jatuh ke anggaran (200k - 380k + 180k = 0).
+        $sheet = LpjExcelExporter::build($build([]))->getActiveSheet();
+        $ditransfer = $this->findRowByColumnValue($sheet, 'C', 'TOTAL DITRANSFER');
+        $this->assertSame('Belum diisi', $sheet->getCell("E{$ditransfer}")->getValue());
+        $saldoRow = $this->findRowByColumnValue($sheet, 'C', 'SALDO (dari anggaran)');
+        $this->assertNotNull($saldoRow);
+        $this->assertSame(0.0, (float) $sheet->getCell("E{$saldoRow}")->getValue());
     }
 
     private function findRowByColumnValue($sheet, string $column, string $value): ?int

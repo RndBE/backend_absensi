@@ -30,7 +30,7 @@ class ApiLpjTest extends TestCase
         parent::setUp();
 
         foreach ([
-            'notifications', 'approval_logs', 'employee_approvers', 'lpj_items', 'lpjs', 'travel_reports',
+            'notifications', 'approval_logs', 'employee_approvers', 'lpj_items', 'lpj_disbursements', 'lpjs', 'travel_reports',
             'budget_request_participants', 'budget_request_items', 'budget_requests', 'employees',
         ] as $table) {
             Schema::dropIfExists($table);
@@ -106,6 +106,18 @@ class ApiLpjTest extends TestCase
             $table->date('transfer_date')->nullable();
             $table->timestamps();
         });
+        Schema::create('lpj_disbursements', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('lpj_id');
+            $table->date('transferred_at');
+            $table->decimal('amount', 15, 2);
+            $table->string('notes')->nullable();
+            $table->string('proof_file')->nullable();
+            $table->unsignedBigInteger('recorded_by')->nullable();
+            $table->unsignedSmallInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+
         Schema::create('lpj_items', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('lpj_id');
