@@ -55,7 +55,7 @@ class LhpReminderService
 
         $budgets = BudgetRequest::with([
                 'employee:id,full_name,company_id',
-                'participants:id,full_name,company_id',
+                'participants:id,full_name,company_id,employment_status',
             ])
             ->whereIn('status', ['approved', 'paid'])
             ->whereNotNull('return_date')
@@ -133,7 +133,7 @@ class LhpReminderService
 
         $budgets = BudgetRequest::with([
                 'employee:id,full_name,phone,company_id',
-                'participants:id,full_name,phone,company_id',
+                'participants:id,full_name,phone,company_id,employment_status',
             ])
             ->whereIn('status', ['approved', 'paid'])
             ->whereNotNull('return_date')
@@ -175,11 +175,11 @@ class LhpReminderService
         return $items;
     }
 
-    /** Pemilik anggaran + peserta yang di-tag, unik per id. */
+    /** Pemilik anggaran + peserta yang di-tag (kecuali peserta magang), unik per id. */
     private static function responsibleEmployees(BudgetRequest $budget)
     {
         return collect([$budget->employee])
-            ->concat($budget->participants)
+            ->concat($budget->participants->filter(fn ($participant) => BudgetRequest::participantMustSubmitLhp($participant)))
             ->filter()
             ->unique('id')
             ->values();

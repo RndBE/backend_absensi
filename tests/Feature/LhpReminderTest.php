@@ -34,6 +34,8 @@ class LhpReminderTest extends TestCase
             $table->string('full_name');
             $table->string('email')->unique();
             $table->unsignedBigInteger('company_id')->default(1);
+            $table->string('employment_status')->default('permanent');
+            $table->string('phone')->nullable();
             $table->string('fcm_token')->nullable();
             $table->timestamps();
         });
@@ -86,12 +88,13 @@ class LhpReminderTest extends TestCase
         });
     }
 
-    private function seedEmployee(string $name = 'Budi'): int
+    private function seedEmployee(string $name = 'Budi', string $status = 'permanent'): int
     {
         return DB::table('employees')->insertGetId([
             'full_name' => $name,
             'email' => strtolower($name).uniqid().'@test.id',
             'company_id' => 1,
+            'employment_status' => $status,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -222,5 +225,26 @@ class LhpReminderTest extends TestCase
         $this->assertSame(2, $result['sent']);
         $this->assertDatabaseHas('notifications', ['employee_id' => $owner, 'type' => 'lhp_reminder_after']);
         $this->assertDatabaseHas('notifications', ['employee_id' => $participant, 'type' => 'lhp_reminder_after']);
+    }
+
+    public function test_intern_participants_are_not_reminded_but_an_intern_owner_is(): void
+    {
+        // Peserta magang tidak wajib LHP; pemilik anggaran tetap diingatkan walau magang.
+        $owner = $this->seedEmployee('Owner');
+        $intern = $this->seedEmployee('Magang', 'intern');
+        $budget = $this->seedBudget($owner, '2026-06-22');
+        DB::table('budget_request_participants')->insert([
+            'budget_request_id' => $budget, 'employee_id' => $intern, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $internOwner = $this->seedEmployee('PengajuMagang', 'intern');
+        $this->seedBudget($internOwner, '2026-06-22');
+
+        $result = LhpReminderService::remindForDate(Carbon::today());
+
+        $this->assertSame(2, $result['sent']);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $owner, 'type' => 'lhp_reminder_after']);
+        $this->assertDatabaseHas('notifications', ['employee_id' => $internOwner, 'type' => 'lhp_reminder_after']);
+        $this->assertDatabaseMissing('notifications', ['employee_id' => $intern]);
+        $this->assertFalse(LhpReminderService::dueForDate(Carbon::today())->contains(fn ($item) => $item['employee']->id === $intern));
     }
 }

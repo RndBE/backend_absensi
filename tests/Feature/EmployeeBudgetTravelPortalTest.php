@@ -51,9 +51,18 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             'settings',
             'employees',
             'departments',
+            'companies',
         ] as $table) {
             Schema::dropIfExists($table);
         }
+
+        // Dashboard memuat identitas perusahaan karyawan (DashboardTimeline).
+        Schema::create('companies', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('logo')->nullable();
+            $table->timestamps();
+        });
 
         Schema::create('departments', function (Blueprint $table) {
             $table->id();
@@ -72,6 +81,7 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             $table->string('role')->default('employee');
             $table->string('position')->nullable();
             $table->integer('job_level')->nullable();
+            $table->string('employment_status')->default('permanent');
             $table->string('photo')->nullable();
             $table->string('signature')->nullable();
             $table->boolean('is_active')->default(true);
@@ -2042,6 +2052,31 @@ class EmployeeBudgetTravelPortalTest extends TestCase
             ->assertOk()
             ->assertSee('Ada 1 pengajuan menunggu approval Anda')
             ->assertSee('/employee/approvals', false);
+    }
+
+    public function test_dashboard_lhp_reminder_skips_intern_participants(): void
+    {
+        // Peserta magang boleh membuat LHP, tapi tidak wajib, jadi dashboard tidak mengingatkan.
+        $this->seedEmployee();
+        $this->seedEmployee(['id' => 2, 'employee_code' => 'EMP002', 'email' => 'peserta@example.test', 'full_name' => 'Peserta Tetap']);
+        $this->seedEmployee(['id' => 3, 'employee_code' => 'EMP003', 'email' => 'magang@example.test', 'full_name' => 'Peserta Magang', 'employment_status' => 'intern']);
+        $budgetId = $this->seedApprovedBudgetRequest();
+        DB::table('budget_requests')->where('id', $budgetId)->update(['departure_date' => '2026-06-17', 'return_date' => '2026-06-18']);
+        foreach ([2, 3] as $participantId) {
+            DB::table('budget_request_participants')->insert([
+                'budget_request_id' => $budgetId, 'employee_id' => $participantId, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $this->withSession(['employee_id' => 2])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Pengingat LHP');
+
+        $this->withSession(['employee_id' => 3])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertDontSee('Pengingat LHP');
     }
 
     public function test_current_budget_approver_can_adjust_items_before_approving(): void

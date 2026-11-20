@@ -59,11 +59,14 @@ class DashboardController extends Controller
         $earlyDepartureDates = AttendanceLateExcuse::earlyDepartureDates($approvedLeaves, $monthStart, $monthEnd);
 
         // Perjalanan yang LHP-nya belum dibuat oleh karyawan ini (pemilik atau peserta).
+        // Peserta magang tidak wajib LHP, jadi untuk mereka hanya anggaran milik sendiri.
         $pendingLhp = Schema::hasTable('budget_requests')
             ? BudgetRequest::query()
                 ->where(function ($query) use ($employee) {
-                    $query->where('employee_id', $employee->id)
-                        ->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+                    $query->where('employee_id', $employee->id);
+                    if (BudgetRequest::participantMustSubmitLhp($employee)) {
+                        $query->orWhereHas('participants', fn ($q) => $q->where('employees.id', $employee->id));
+                    }
                 })
                 ->whereIn('status', ['approved', 'paid'])
                 ->whereNotNull('return_date')

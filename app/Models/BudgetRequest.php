@@ -68,6 +68,15 @@ class BudgetRequest extends Model
         return $this->belongsToMany(Employee::class, 'budget_request_participants')->withTimestamps();
     }
 
+    /**
+     * Peserta yang di-tag wajib membuat LHP sendiri, kecuali peserta magang: mereka boleh
+     * membuat LHP tapi tidak diingatkan. Pemilik anggaran tetap wajib, magang atau bukan.
+     */
+    public static function participantMustSubmitLhp(?Employee $employee): bool
+    {
+        return $employee !== null && $employee->employment_status !== 'intern';
+    }
+
     public function attachments(): MorphMany
     {
         return $this->morphMany(RequestAttachment::class, 'attachable');
