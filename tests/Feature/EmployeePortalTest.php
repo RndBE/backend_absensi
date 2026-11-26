@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\WebClockin;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -38,6 +39,15 @@ class EmployeePortalTest extends TestCase
         Schema::dropIfExists('shifts');
         Schema::dropIfExists('settings');
         Schema::dropIfExists('employees');
+        Schema::dropIfExists('companies');
+
+        // Kepala timeline dashboard membaca nama & logo perusahaan karyawan (DashboardTimeline).
+        Schema::create('companies', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('logo')->nullable();
+            $table->timestamps();
+        });
 
         Schema::create('employees', function (Blueprint $table) {
             $table->id();
@@ -176,6 +186,8 @@ class EmployeePortalTest extends TestCase
             $table->boolean('clock_out_is_mocked')->default(false);
             $table->timestamp('clock_in_location_recorded_at')->nullable();
             $table->timestamp('clock_out_location_recorded_at')->nullable();
+            $table->string('clock_in_source', 10)->nullable();
+            $table->string('clock_out_source', 10)->nullable();
             $table->string('clock_in_photo')->nullable();
             $table->string('clock_out_photo')->nullable();
             $table->string('status')->default('present');
@@ -728,6 +740,127 @@ class EmployeePortalTest extends TestCase
             'date' => '2026-06-15 00:00:00',
             'clock_in' => '09:00:30',
             'is_late' => false,
+        ]);
+    }
+
+    public function test_portal_clock_in_and_out_are_recorded_as_web(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->postJson('/employee/attendance/clock-in', ['latitude' => '1.0456', 'longitude' => '104.0305'])
+            ->assertOk();
+
+        Carbon::setTestNow('2026-06-15 17:05:00');
+
+        $this->withSession(['employee_id' => 1])
+            ->postJson('/employee/attendance/clock-out', ['latitude' => '1.0456', 'longitude' => '104.0305'])
+            ->assertOk();
+
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => 1,
+            'clock_in_source' => 'web',
+            'clock_out_source' => 'web',
+        ]);
+    }
+
+    public function test_closed_portal_rejects_clock_in_and_points_to_the_app(): void
+    {
+        $this->seedEmployee();
+        $this->closeWebClockin();
+
+        $this->withSession(['employee_id' => 1])
+            ->postJson('/employee/attendance/clock-in', ['latitude' => '1.0456', 'longitude' => '104.0305'])
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', WebClockin::closedMessage())
+            ->assertJsonPath('download_links.android', WebClockin::DEFAULT_ANDROID_URL);
+
+        $this->assertDatabaseCount('attendances', 0);
+    }
+
+    public function test_closed_portal_rejects_clock_out(): void
+    {
+        $this->seedEmployee();
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-06-15',
+            'clock_in' => '08:00:00',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->closeWebClockin();
+
+        $this->withSession(['employee_id' => 1])
+            ->postJson('/employee/attendance/clock-out', ['latitude' => '1.0456', 'longitude' => '104.0305'])
+            ->assertForbidden();
+
+        $this->assertNull(DB::table('attendances')->where('employee_id', 1)->value('clock_out'));
+    }
+
+    public function test_closed_portal_attendance_page_goes_back_to_dashboard(): void
+    {
+        $this->seedEmployee();
+        $this->closeWebClockin();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/attendance/clock-in')
+            ->assertRedirect(route('employee.dashboard'));
+    }
+
+    public function test_dashboard_offers_app_download_instead_of_clock_in_when_portal_is_closed(): void
+    {
+        $this->seedEmployee();
+        $this->closeWebClockin();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Clock In lewat aplikasi HP')
+            ->assertSee('Unduh untuk Android')
+            ->assertSee(WebClockin::DEFAULT_ANDROID_URL, false)
+            ->assertSee('Unduh untuk iPhone')
+            ->assertSee(WebClockin::DEFAULT_IOS_URL, false)
+            ->assertDontSee('Pengguna iPhone: hubungi HRD')
+            ->assertDontSee(route('employee.attendance.show', 'clock-in'), false);
+    }
+
+    public function test_dashboard_tells_iphone_users_to_contact_hr_when_ios_link_is_cleared(): void
+    {
+        $this->seedEmployee();
+        $this->closeWebClockin();
+        DB::table('settings')->insert([
+            'key' => WebClockin::KEY_IOS_URL,
+            'value' => '',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertDontSee('Unduh untuk iPhone')
+            ->assertSee('Pengguna iPhone: hubungi HRD');
+    }
+
+    public function test_dashboard_keeps_clock_in_button_while_portal_is_open(): void
+    {
+        $this->seedEmployee();
+
+        $this->withSession(['employee_id' => 1])
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee(route('employee.attendance.show', 'clock-in'), false)
+            ->assertDontSee('Unduh untuk Android');
+    }
+
+    private function closeWebClockin(): void
+    {
+        DB::table('settings')->insert([
+            'key' => WebClockin::KEY_ENABLED,
+            'value' => '0',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 

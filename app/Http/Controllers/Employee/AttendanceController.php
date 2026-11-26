@@ -10,6 +10,7 @@ use App\Models\LeaveRequest;
 use App\Models\Setting;
 use App\Support\AttendanceLateExcuse;
 use App\Support\AttendanceOpenShift;
+use App\Support\WebClockin;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -18,6 +19,11 @@ class AttendanceController extends Controller
     public function show(Request $request, string $type)
     {
         abort_unless(in_array($type, ['clock-in', 'clock-out'], true), 404);
+
+        // Jalur ditutup: dashboard yang menjelaskan dan memberi tautan unduh aplikasi.
+        if (! WebClockin::enabled()) {
+            return redirect()->route('employee.dashboard');
+        }
 
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
@@ -125,9 +131,20 @@ class AttendanceController extends Controller
 
     private function asEmployeeRequest(Request $request, callable $handler)
     {
+        // Ditolak di server, bukan cuma tombolnya yang disembunyikan: halaman clock-in yang sudah
+        // terbuka sebelum jalur ini ditutup masih bisa mengirim.
+        if (! WebClockin::enabled()) {
+            return response()->json([
+                'success' => false,
+                'message' => WebClockin::closedMessage(),
+                'download_links' => WebClockin::downloadLinks(),
+            ], 403);
+        }
+
         /** @var Employee $employee */
         $employee = $request->attributes->get('employee');
         $request->setUserResolver(fn () => $employee);
+        WebClockin::markFromPortal($request);
 
         return $handler($request);
     }

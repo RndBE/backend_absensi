@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Controllers\Admin\AttendanceSettingController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Models\Setting;
+use App\Support\WebClockin;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -110,6 +111,37 @@ class AttendanceGpsAccuracySettingTest extends TestCase
 
         $this->update(['max_gps_accuracy_meters' => '500']);
         $this->assertSame('500', Setting::getValue('max_gps_accuracy_meters', '100'));
+    }
+
+    public function test_admin_can_close_portal_clockin_and_set_download_links(): void
+    {
+        $this->update([
+            'app_download_url_android' => 'https://drive.google.com/file/d/baru/view',
+            'app_download_url_ios' => 'https://testflight.apple.com/join/abc123',
+        ]);
+
+        // Kotak centang tidak ikut terkirim = dimatikan, sama seperti pengaturan lain di form ini.
+        $this->assertFalse(WebClockin::enabled());
+        $this->assertSame([
+            'android' => 'https://drive.google.com/file/d/baru/view',
+            'ios' => 'https://testflight.apple.com/join/abc123',
+        ], WebClockin::downloadLinks());
+    }
+
+    public function test_portal_clockin_stays_open_and_uses_the_store_links_when_never_configured(): void
+    {
+        $this->assertTrue(WebClockin::enabled());
+        $this->assertSame([
+            'android' => WebClockin::DEFAULT_ANDROID_URL,
+            'ios' => WebClockin::DEFAULT_IOS_URL,
+        ], WebClockin::downloadLinks());
+    }
+
+    public function test_download_link_must_be_a_web_address(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->update(['app_download_url_android' => 'javascript:alert(1)']);
     }
 
     /** Admin menyimpan Pengaturan Presensi; isian wajib (kantor) diisi seadanya. */

@@ -145,6 +145,43 @@
                             class="w-4.5 h-4.5 accent-amber-500 rounded cursor-pointer">
                     </label>
                 </div>
+
+                {{-- Clock in/out dari portal web --}}
+                <label class="flex items-center justify-between p-3.5 rounded-lg border border-gray-100 hover:bg-gray-50 transition-all cursor-pointer group">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-[20px] text-gray-400 group-hover:text-indigo-500 transition-colors">language</span>
+                        <div>
+                            <div class="text-[13px] font-semibold text-gray-800">Izinkan Clock In/Out dari Portal Web</div>
+                            <div class="text-[11px] text-gray-400">Matikan untuk mewajibkan presensi lewat aplikasi. Browser tidak bisa mendeteksi lokasi palsu.</div>
+                        </div>
+                    </div>
+                    <input type="checkbox" name="{{ \App\Support\WebClockin::KEY_ENABLED }}" value="1" {{ $settings[\App\Support\WebClockin::KEY_ENABLED] == '1' ? 'checked' : '' }}
+                        class="w-5 h-5 accent-indigo-500 rounded cursor-pointer">
+                </label>
+
+                <div class="ml-8 p-3 rounded-lg border border-dashed border-gray-200 space-y-3">
+                    @if($webClockinUsage !== null)
+                        <div class="text-[11px] text-gray-500">
+                            {{ $webClockinUsage['days'] }} hari terakhir:
+                            <span class="font-semibold text-gray-700">{{ $webClockinUsage['attendances'] }} presensi</span>
+                            lewat portal web oleh
+                            <span class="font-semibold text-gray-700">{{ $webClockinUsage['employees'] }} karyawan</span>.
+                        </div>
+                    @endif
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">Tautan Unduh Aplikasi Android</label>
+                        <input type="url" name="{{ \App\Support\WebClockin::KEY_ANDROID_URL }}" value="{{ old(\App\Support\WebClockin::KEY_ANDROID_URL, $settings[\App\Support\WebClockin::KEY_ANDROID_URL]) }}"
+                            placeholder="https://drive.google.com/..."
+                            class="w-full px-3 py-2 text-[12px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-gray-700 mb-1">Tautan Unduh Aplikasi iPhone</label>
+                        <input type="url" name="{{ \App\Support\WebClockin::KEY_IOS_URL }}" value="{{ old(\App\Support\WebClockin::KEY_IOS_URL, $settings[\App\Support\WebClockin::KEY_IOS_URL]) }}"
+                            placeholder="https://apps.apple.com/..."
+                            class="w-full px-3 py-2 text-[12px] border border-gray-300 rounded-lg outline-none focus:border-indigo-500 transition-all">
+                    </div>
+                    <div class="text-[10px] text-gray-400">Muncul di dashboard portal karyawan saat clock in/out dari portal ditutup.</div>
+                </div>
             </div>
         </div>
 

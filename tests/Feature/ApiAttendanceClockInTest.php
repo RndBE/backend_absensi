@@ -114,6 +114,8 @@ class ApiAttendanceClockInTest extends TestCase
             $table->boolean('clock_out_is_mocked')->default(false);
             $table->timestamp('clock_in_location_recorded_at')->nullable();
             $table->timestamp('clock_out_location_recorded_at')->nullable();
+            $table->string('clock_in_source', 10)->nullable();
+            $table->string('clock_out_source', 10)->nullable();
             $table->string('clock_in_photo')->nullable();
             $table->string('clock_out_photo')->nullable();
             $table->string('status')->default('present');
@@ -343,6 +345,7 @@ class ApiAttendanceClockInTest extends TestCase
             'status' => 'present',
             'review_status' => 'pending',
             'clock_in_is_mocked' => true,
+            'clock_in_source' => 'app',
         ]);
         $this->assertStringContainsString(
             'Fake GPS',

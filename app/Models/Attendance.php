@@ -7,12 +7,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Attendance extends Model
 {
+    /** Nilai kolom clock_in_source / clock_out_source. NULL = diisi admin atau sistem. */
+    public const SOURCE_APP = 'app';
+
+    public const SOURCE_WEB = 'web';
+
     protected $fillable = [
         'employee_id', 'date', 'clock_in', 'clock_out',
         'clock_in_lat', 'clock_in_lng', 'clock_out_lat', 'clock_out_lng',
         'clock_in_accuracy_meters', 'clock_out_accuracy_meters',
         'clock_in_is_mocked', 'clock_out_is_mocked',
         'clock_in_location_recorded_at', 'clock_out_location_recorded_at',
+        'clock_in_source', 'clock_out_source',
         'clock_in_photo', 'clock_out_photo', 'status', 'review_status',
         'suspicious_reason', 'security_flags', 'reviewed_by', 'reviewed_at',
         'review_notes', 'is_late',

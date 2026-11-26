@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Services\WorkAnniversaryService;
 use App\Support\HrContact;
+use App\Support\WebClockin;
 use Illuminate\Http\Request;
 
 class AttendanceSettingController extends Controller
@@ -21,6 +22,9 @@ class AttendanceSettingController extends Controller
         'allow_remote_clockin' => '0',
         'remote_requires_approval' => '1',
         'remote_requires_notes' => '1',
+        WebClockin::KEY_ENABLED => '1',
+        WebClockin::KEY_ANDROID_URL => WebClockin::DEFAULT_ANDROID_URL,
+        WebClockin::KEY_IOS_URL => WebClockin::DEFAULT_IOS_URL,
         'clockin_reminder_enabled' => '0',
         'clockin_reminder_before' => '15',
         'auto_clockout_enabled' => '0',
@@ -48,7 +52,10 @@ class AttendanceSettingController extends Controller
             $settings[$key] = Setting::getValue($key, $default);
         }
 
-        return view('admin.attendance-settings.index', compact('settings'));
+        // Berapa yang masih presensi lewat portal, sebagai bahan sebelum jalur itu ditutup.
+        $webClockinUsage = WebClockin::recentUsage();
+
+        return view('admin.attendance-settings.index', compact('settings', 'webClockinUsage'));
     }
 
     public function update(Request $request)
@@ -83,14 +90,18 @@ class AttendanceSettingController extends Controller
                 }
             }],
             HrContact::KEY_EMAIL => 'nullable|email|max:255',
+            WebClockin::KEY_ANDROID_URL => 'nullable|url:http,https|max:500',
+            WebClockin::KEY_IOS_URL => 'nullable|url:http,https|max:500',
         ], [
+            WebClockin::KEY_ANDROID_URL.'.url' => 'Tautan unduh Android harus berupa alamat web (diawali https://).',
+            WebClockin::KEY_IOS_URL.'.url' => 'Tautan unduh iPhone harus berupa alamat web (diawali https://).',
             'anniversary_milestones.regex' => 'Kelipatan tahun harus berupa angka dipisah koma, contoh: 1,3,5,10.',
             'anniversary_milestones.required_if' => 'Isi tahun yang dirayakan, contoh: 1,3,5,10. Atau pilih "Setiap tahun".',
         ]);
 
         $booleanKeys = [
             'require_photo', 'require_gps', 'allow_remote_clockin',
-            'remote_requires_approval', 'remote_requires_notes',
+            'remote_requires_approval', 'remote_requires_notes', WebClockin::KEY_ENABLED,
             'clockin_reminder_enabled', 'auto_clockout_enabled',
             'face_verification_enabled', 'lpj_reminder_enabled',
             'lhp_reminder_enabled', 'anniversary_greeting_enabled',
@@ -103,6 +114,7 @@ class AttendanceSettingController extends Controller
             'lpj_reminder_days', 'lpj_reminder_time',
             'lhp_reminder_after_days', 'lhp_reminder_before_days', 'lhp_reminder_time',
             'anniversary_greeting_time',
+            WebClockin::KEY_ANDROID_URL, WebClockin::KEY_IOS_URL,
         ];
 
         foreach ($booleanKeys as $key) {

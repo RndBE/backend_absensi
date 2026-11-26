@@ -119,7 +119,12 @@
             Dua tombol berdampingan menyiratkan keduanya terbuka.
         --}}
         <div class="p-4 sm:p-5 border-t border-gray-100">
-            @if($actionType)
+            @if($actionType && ! ($webClockinEnabled ?? true))
+                @include('employee.attendance.partials.use-app-notice', [
+                    'actionType' => $actionType,
+                    'links' => $appDownloadLinks ?? ['android' => null, 'ios' => null],
+                ])
+            @elseif($actionType)
                 <a href="{{ route('employee.attendance.show', $actionType) }}"
                    class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-[14px] font-bold text-white bg-gradient-to-br from-indigo-600 to-indigo-500 rounded-lg shadow-sm hover:-translate-y-0.5 transition-all press">
                     <span class="material-symbols-outlined text-[19px]">{{ $actionType === 'clock-in' ? 'login' : 'logout' }}</span>

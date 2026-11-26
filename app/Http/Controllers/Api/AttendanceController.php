@@ -18,6 +18,7 @@ use App\Support\AttendanceOpenShift;
 use App\Support\AttendanceLateExcuse;
 use App\Support\MonthlyAttendance;
 use App\Support\AttendanceLeaveSync;
+use App\Support\WebClockin;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -251,6 +252,7 @@ class AttendanceController extends Controller
                 'clock_in_lat' => $request->latitude,
                 'clock_in_lng' => $request->longitude,
                 ...$this->locationAuditAttributes($request, 'clock_in'),
+                ...WebClockin::sourceAttributes($request, 'clock_in'),
                 ...$this->locationReviewAttributes($request, 'clock_in', $requireGps, null, $face['issue'], $face['flags']),
                 'clock_in_photo' => $photoPath,
                 'status' => $clockInStatus,
@@ -723,6 +725,7 @@ class AttendanceController extends Controller
             'clock_out_lat' => $request->latitude,
             'clock_out_lng' => $request->longitude,
             ...$this->locationAuditAttributes($request, 'clock_out'),
+            ...WebClockin::sourceAttributes($request, 'clock_out'),
             ...$this->locationReviewAttributes($request, 'clock_out', $requireGps, $attendance, $face['issue'], $face['flags']),
             'clock_out_photo' => $photoPath,
             ...$clockOutStatus,

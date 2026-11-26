@@ -14,6 +14,7 @@ use App\Support\AttendanceOpenShift;
 use App\Support\AttendanceLateExcuse;
 use App\Support\DashboardTimeline;
 use App\Support\PendingApprovalCounter;
+use App\Support\WebClockin;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
@@ -86,6 +87,8 @@ class DashboardController extends Controller
             'schedule' => $this->todaySchedule($employee, $today),
             'timeline' => DashboardTimeline::for($employee, $today),
             'pendingApprovalCount' => app(PendingApprovalCounter::class)->countForApprover($employee),
+            'webClockinEnabled' => WebClockin::enabled(),
+            'appDownloadLinks' => WebClockin::downloadLinks(),
             'settings' => [
                 'office_latitude' => (float) Setting::getValue('office_latitude', '0'),
                 'office_longitude' => (float) Setting::getValue('office_longitude', '0'),
