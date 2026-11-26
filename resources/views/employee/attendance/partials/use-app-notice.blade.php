@@ -1,6 +1,8 @@
 {{--
     Pengganti tombol Clock In / Clock Out saat presensi lewat portal ditutup (allow_web_clockin = 0).
-    Variabel: $actionType ('clock-in' | 'clock-out'), $links (['android' => ?string, 'ios' => ?string]).
+    Judulnya menyebut keduanya, bukan hanya aksi berikutnya: yang membaca "Clock In lewat aplikasi"
+    di pagi hari jangan sampai mengira sore nanti masih bisa clock out dari portal.
+    Variabel: $links (['android' => ?string, 'ios' => ?string]).
 --}}
 <div class="rounded-lg border border-indigo-100 bg-indigo-50/60 p-4">
     <div class="flex items-start gap-3">
@@ -9,10 +11,10 @@
         </div>
         <div>
             <div class="text-[13px] font-bold text-gray-900">
-                {{ $actionType === 'clock-out' ? 'Clock Out' : 'Clock In' }} lewat aplikasi HP
+                Clock In &amp; Clock Out lewat aplikasi HP
             </div>
             <p class="text-[12px] text-gray-600 mt-0.5">
-                Presensi tidak lagi bisa dilakukan dari portal web. Buka aplikasi HRIS Beacon di HP Anda.
+                Clock in dan clock out tidak lagi bisa dilakukan dari portal web. Buka aplikasi HRIS Beacon di HP Anda.
                 Belum punya aplikasinya? Unduh di bawah.
             </p>
         </div>

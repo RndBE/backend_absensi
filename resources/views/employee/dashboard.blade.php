@@ -121,7 +121,6 @@
         <div class="p-4 sm:p-5 border-t border-gray-100">
             @if($actionType && ! ($webClockinEnabled ?? true))
                 @include('employee.attendance.partials.use-app-notice', [
-                    'actionType' => $actionType,
                     'links' => $appDownloadLinks ?? ['android' => null, 'ios' => null],
                 ])
             @elseif($actionType)

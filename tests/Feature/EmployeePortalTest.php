@@ -798,14 +798,36 @@ class EmployeePortalTest extends TestCase
         $this->assertNull(DB::table('attendances')->where('employee_id', 1)->value('clock_out'));
     }
 
-    public function test_closed_portal_attendance_page_goes_back_to_dashboard(): void
+    public function test_closed_portal_attendance_pages_go_back_to_dashboard(): void
     {
         $this->seedEmployee();
         $this->closeWebClockin();
 
+        foreach (['clock-in', 'clock-out'] as $type) {
+            $this->withSession(['employee_id' => 1])
+                ->get('/employee/attendance/'.$type)
+                ->assertRedirect(route('employee.dashboard'));
+        }
+    }
+
+    public function test_dashboard_offers_app_download_instead_of_clock_out_when_portal_is_closed(): void
+    {
+        $this->seedEmployee();
+        DB::table('attendances')->insert([
+            'employee_id' => 1,
+            'date' => '2026-06-15',
+            'clock_in' => '08:00:00',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->closeWebClockin();
+
         $this->withSession(['employee_id' => 1])
-            ->get('/employee/attendance/clock-in')
-            ->assertRedirect(route('employee.dashboard'));
+            ->get('/employee/dashboard')
+            ->assertOk()
+            ->assertSee('Clock In & Clock Out lewat aplikasi HP')
+            ->assertSee('Unduh untuk Android')
+            ->assertDontSee(route('employee.attendance.show', 'clock-out'), false);
     }
 
     public function test_dashboard_offers_app_download_instead_of_clock_in_when_portal_is_closed(): void
@@ -816,7 +838,7 @@ class EmployeePortalTest extends TestCase
         $this->withSession(['employee_id' => 1])
             ->get('/employee/dashboard')
             ->assertOk()
-            ->assertSee('Clock In lewat aplikasi HP')
+            ->assertSee('Clock In & Clock Out lewat aplikasi HP')
             ->assertSee('Unduh untuk Android')
             ->assertSee(WebClockin::DEFAULT_ANDROID_URL, false)
             ->assertSee('Unduh untuk iPhone')
