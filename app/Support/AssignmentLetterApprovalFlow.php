@@ -55,15 +55,13 @@ final class AssignmentLetterApprovalFlow
         $ids = $letter->employees->pluck('employee_id')->map(fn ($id) => (int) $id)->all();
 
         $superiors = AssignmentLetterInitialBoxes::superiorsFor((int) $letter->company_id, $ids);
-        $people = Employee::whereIn('id', $ids)->get(['id', 'full_name', 'job_level'])->keyBy('id');
+        $people = Employee::whereIn('id', $ids)->get(['id', 'full_name'])->keyBy('id');
 
-        // Karyawan di bawah level 2 wajib punya atasan L3/L2. Level 2 ke atas memang tak butuh.
+        // Karyawan di bawah level 2 wajib punya atasan L3/L2, kecuali yang atasan langsungnya
+        // Direktur. Level 2 ke atas memang tak butuh.
         $problems = [];
-        foreach ($ids as $id) {
-            $level = (int) ($people[$id]->job_level ?? 0);
-            if (($level === 0 || $level > 2) && empty($superiors[$id])) {
-                $problems[] = $people[$id]->full_name ?? "ID {$id}";
-            }
+        foreach (AssignmentLetterInitialBoxes::blockedEmployeeIds((int) $letter->company_id, $ids) as $id) {
+            $problems[] = $people[$id]->full_name ?? "ID {$id}";
         }
 
         $rows = [];

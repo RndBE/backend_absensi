@@ -140,6 +140,32 @@ class AssignmentLetterApprovalTest extends AssignmentLetterTestCase
             ->assertSee('Belum bisa diterbitkan');
     }
 
+    public function test_a_participant_who_reports_straight_to_the_director_needs_no_superior_initials(): void
+    {
+        // Level 3 yang atasan langsungnya Direktur: tidak ada L3/L2 di atasnya, jadi surat tetap terbit.
+        DB::table('employees')->insert([
+            ['id' => 31, 'company_id' => 1, 'department_id' => 1, 'full_name' => 'Direktur', 'position' => 'Director',
+                'job_level' => 1, 'employment_status' => 'permanent', 'role' => 'employee', 'is_active' => true, 'employee_code' => '031/X/I/2024'],
+            ['id' => 32, 'company_id' => 1, 'department_id' => 1, 'full_name' => 'Zaeni Account Manager', 'position' => 'Account Manager',
+                'job_level' => 3, 'employment_status' => 'permanent', 'role' => 'employee', 'is_active' => true, 'employee_code' => '032/X/I/2024'],
+        ]);
+        DB::table('employee_approvers')->insert([
+            ['employee_id' => 32, 'request_type' => 'leave', 'step_order' => 1, 'approver_id' => 31],
+        ]);
+
+        $letter = $this->publish($this->storeDraft(['employees' => [
+            ['employee_id' => 32, 'position' => ''],
+            ['employee_id' => self::CONTRACT, 'position' => ''],
+        ]]));
+
+        $this->assertTrue($letter->isIssued());
+        // Direktur tidak diberi kotak paraf; atasan peserta lain tetap diminta.
+        $this->assertSame(
+            [['LV 2 HARDWARE', 1], ['HRD', 2], ['GA HSE', 3]],
+            $letter->approvals->map(fn ($a) => [$a->label, $a->step_group])->all()
+        );
+    }
+
     public function test_an_intern_gets_superior_boxes_from_the_attendance_chain_not_the_leave_chain(): void
     {
         // Magang punya dua rantai berbeda: yang dibaca surat tugas adalah rantai presensi.

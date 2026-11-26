@@ -32,18 +32,18 @@ class AssignmentLetterPrecheck extends Command
             ->whereIn('employment_status', config('assignment_letters.eligible_employment_statuses'))
             ->get(['id', 'company_id', 'full_name', 'position', 'job_level']);
 
-        $superiors = [];
+        // Sama dengan aturan AssignmentLetterApprovalFlow::plan(): level di bawah 2 wajib punya atasan
+        // L3/L2, kecuali yang atasan langsungnya Direktur.
+        $blockedIds = [];
         foreach ($eligible->groupBy('company_id') as $companyId => $group) {
-            $superiors += AssignmentLetterInitialBoxes::superiorsFor((int) $companyId, $group->pluck('id')->all());
+            $blockedIds = array_merge($blockedIds, AssignmentLetterInitialBoxes::blockedEmployeeIds((int) $companyId, $group->pluck('id')->all()));
         }
-
-        // Sama dengan aturan AssignmentLetterApprovalFlow::plan(): level di bawah 2 wajib punya atasan L3/L2.
-        $blocked = $eligible->filter(fn (Employee $e) => ((int) $e->job_level === 0 || (int) $e->job_level > 2) && empty($superiors[$e->id]));
+        $blocked = $eligible->whereIn('id', $blockedIds);
 
         $this->line("Karyawan layak diberi surat tugas: {$eligible->count()}");
 
         if ($blocked->isEmpty()) {
-            $this->info('Semua punya atasan L3/L2 di rantai cuti (atau memang level 2 ke atas).');
+            $this->info('Semua punya atasan L3/L2 di rantai cuti (atau memang level 2 ke atas / langsung di bawah Direktur).');
         } else {
             $this->warn("Tanpa atasan L3/L2 di rantai cuti (surat yang memuat mereka TIDAK bisa diterbitkan): {$blocked->count()}");
             foreach ($blocked as $e) {

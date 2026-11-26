@@ -24,7 +24,8 @@ use Illuminate\Support\Facades\Schema;
  * bukan rantai cuti; aturan level dan cadangan manager_id sama.
  *
  * Hanya atasan dengan level lebih tinggi dari peserta yang dihitung: peserta level 3 hanya
- * butuh paraf level 2, peserta level 2 tidak butuh paraf atasan sama sekali.
+ * butuh paraf level 2, peserta level 2 tidak butuh paraf atasan sama sekali. Peserta yang
+ * atasan langsungnya Direktur juga tidak butuh paraf atasan (lihat blockedEmployeeIds()).
  */
 final class AssignmentLetterInitialBoxes
 {
@@ -38,6 +39,38 @@ final class AssignmentLetterInitialBoxes
      * @return array<int, array<int, array{id: int, level: int, label: string, name: string}>>
      */
     public static function superiorsFor(int $companyId, array $employeeIds): array
+    {
+        return array_map(fn (array $line) => $line['superiors'], self::lines($companyId, $employeeIds));
+    }
+
+    /**
+     * Peserta yang membuat surat belum bisa terbit: di bawah level 2 tapi tidak punya atasan
+     * L3/L2. Peserta yang atasan langsungnya Direktur (level 1, orang pertama di rantainya)
+     * tidak dihitung: di atas mereka memang tidak ada L3/L2, dan Direktur menandatangani surat.
+     *
+     * @param  array<int, int>  $employeeIds
+     * @return array<int, int>
+     */
+    public static function blockedEmployeeIds(int $companyId, array $employeeIds): array
+    {
+        $blocked = [];
+        foreach (self::lines($companyId, $employeeIds) as $id => $line) {
+            $level = (int) ($line['employee']?->job_level ?? 0);
+            if (($level === 0 || $level > 2) && ! $line['superiors'] && ! $line['reports_to_director']) {
+                $blocked[] = $id;
+            }
+        }
+
+        return $blocked;
+    }
+
+    /**
+     * Per peserta: atasan L3/L2 yang memaraf, dan apakah atasan langsungnya Direktur.
+     *
+     * @param  array<int, int>  $employeeIds
+     * @return array<int, array{employee: ?Employee, superiors: array<int, array{id: int, level: int, label: string, name: string}>, reports_to_director: bool}>
+     */
+    private static function lines(int $companyId, array $employeeIds): array
     {
         $employeeIds = array_values(array_unique(array_map('intval', $employeeIds)));
         if (! $employeeIds) {
@@ -64,7 +97,7 @@ final class AssignmentLetterInitialBoxes
         foreach ($employeeIds as $id) {
             $employee = $people->get($id);
             if (! $employee) {
-                $result[$id] = [];
+                $result[$id] = ['employee' => null, 'superiors' => [], 'reports_to_director' => false];
 
                 continue;
             }
@@ -74,21 +107,26 @@ final class AssignmentLetterInitialBoxes
                 ? $chain->pluck('approver_id')->all()
                 : self::managerLine($employee, $people);
             $ownLevel = (int) $employee->job_level ?: PHP_INT_MAX;
+            $first = isset($candidateIds[0]) ? $people->get((int) $candidateIds[0]) : null;
 
-            $result[$id] = collect($candidateIds)
-                ->map(fn ($approverId) => $people->get((int) $approverId))
-                ->filter(fn (?Employee $superior) => $superior
-                    && in_array((int) $superior->job_level, self::LEVELS, true)
-                    && (int) $superior->job_level < $ownLevel)
-                ->unique('id')
-                ->map(fn (Employee $superior) => [
-                    'id' => $superior->id,
-                    'level' => (int) $superior->job_level,
-                    'label' => self::label($superior),
-                    'name' => (string) $superior->full_name,
-                ])
-                ->values()
-                ->all();
+            $result[$id] = [
+                'employee' => $employee,
+                'superiors' => collect($candidateIds)
+                    ->map(fn ($approverId) => $people->get((int) $approverId))
+                    ->filter(fn (?Employee $superior) => $superior
+                        && in_array((int) $superior->job_level, self::LEVELS, true)
+                        && (int) $superior->job_level < $ownLevel)
+                    ->unique('id')
+                    ->map(fn (Employee $superior) => [
+                        'id' => $superior->id,
+                        'level' => (int) $superior->job_level,
+                        'label' => self::label($superior),
+                        'name' => (string) $superior->full_name,
+                    ])
+                    ->values()
+                    ->all(),
+                'reports_to_director' => $first !== null && (int) $first->job_level === 1,
+            ];
         }
 
         return $result;
