@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\EmployeeApprover;
 use App\Models\Holiday;
@@ -238,6 +239,12 @@ class OvertimeController extends Controller
         // Determine overtime type
         $overtimeType = ($isOff || $isHoliday || $startTime === null) ? 'holiday' : 'workday';
 
+        // Jam clock-in/out aktual hari itu, untuk auto-isi jam mulai/selesai lembur hari libur
+        // (sama dengan portal: Employee\OvertimeController::attendanceTimes()).
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->whereDate('date', $date->toDateString())
+            ->first();
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -248,6 +255,8 @@ class OvertimeController extends Controller
                 'shift_name' => $shiftName,
                 'shift_start' => $startTime ? substr($startTime, 0, 5) : null,
                 'shift_end' => $endTime ? substr($endTime, 0, 5) : null,
+                'clock_in' => $attendance?->clock_in ? substr($attendance->clock_in, 0, 5) : null,
+                'clock_out' => $attendance?->clock_out ? substr($attendance->clock_out, 0, 5) : null,
             ],
         ]);
     }
